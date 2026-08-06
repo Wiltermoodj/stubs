@@ -1,6 +1,9 @@
 import { promises as fs, existsSync } from 'fs';
 import * as path from 'path';
 import { parseOkfSpec } from '../parser/okf';
+import { loadConfig } from '../config/schema';
+import { SandingEngine, SyncResult } from '../sanding/engine';
+import { MaterializerEngine } from '../materializer/engine';
 
 export interface CliContext {
   configPath?: string;
@@ -39,6 +42,10 @@ export class CliRouter {
           return await this.handleValidate(context);
         case 'grill':
           return await this.handleGrill(context);
+        case 'sync':
+          return await this.handleSync(context);
+        case 'materialize':
+          return await this.handleMaterialize(context);
         default:
           console.error(`Error: Unknown command "${context.command}". Use --help for usage.`);
           return 1;
@@ -79,11 +86,13 @@ Usage:
   stubs <command> [options]
 
 Commands:
-  validate <file>    Parse and validate an OKF sidecar (*.ts.md) file.
+  validate <file>     Parse and validate an OKF sidecar (*.ts.md) file.
+  materialize <file>  Parse, extract, typecheck, and write executable code from sidecar.
   grill <file>       Execute the Interactive Grill Engine on a sidecar specification.
-  serve              Start the local Web Portal and Event Bridge background server.
-  help               Display this help message.
-  version            Display version information.
+  sync [file]      Synchronize sidecars and code files.
+  serve               Start the local Web Portal and Event Bridge background server.
+  help                Display this help message.
+  version             Display version information.
 
 Options:
   -c, --config <path>  Specify path to stubs configuration file (default: .stubs/config.json)
@@ -189,6 +198,44 @@ Options:
     return 0;
   }
 
+  private async handleMaterialize(ctx: CliContext): Promise<number> {
+    if (ctx.args.length === 0) {
+      console.error('Error: "materialize" command requires a file path argument.');
+      console.error('Usage: stubs materialize <file.ts.md>');
+      return 1;
+    }
+    const targetFile = path.resolve(ctx.args[0]);
+    if (!existsSync(targetFile)) {
+      console.error(`Error: File not found at "${targetFile}"`);
+      return 1;
+    }
+
+    try {
+      const materializer = new MaterializerEngine();
+      const result = await materializer.materialize(targetFile);
+
+      if (!result.success) {
+        console.error(`Materialization failed for "${ctx.args[0]}":`);
+        if (result.error) {
+          console.error(`  Error: ${result.error}`);
+        }
+        if (result.diagnostics && result.diagnostics.length > 0) {
+          console.error('  Diagnostics:');
+          for (const diag of result.diagnostics) {
+            console.error(`    - ${diag}`);
+          }
+        }
+        return 1;
+      }
+
+      console.log(`Materialization succeeded for "${ctx.args[0]}"!`);
+      return 0;
+    } catch (error: any) {
+      console.error(`Error during materialization: ${error.message || error}`);
+      return 1;
+    }
+  }
+
   private async handleValidate(ctx: CliContext): Promise<number> {
     if (ctx.args.length === 0) {
       console.error('Error: "validate" command requires a file path argument.');
@@ -223,6 +270,51 @@ Options:
     } catch (error: any) {
       console.error(`Error reading or validating file: ${error.message || error}`);
       return 1;
+    }
+  }
+
+  private async handleSync(ctx: CliContext): Promise<number> {
+    const config = loadConfig();
+    const specsDir = config.paths?.specs_dir || 'src';
+    const engine = new SandingEngine();
+
+    if (ctx.args.length > 0) {
+      const targetFile = path.resolve(ctx.args[0]);
+      if (!existsSync(targetFile)) {
+        console.error(`Error: File not found at "${targetFile}"`);
+        return 1;
+      }
+      console.log(`Synchronizing sidecar file: ${ctx.args[0]}...`);
+      const result = await engine.syncFile(targetFile);
+      this.printSyncResult(result);
+      return result.status === 'error' ? 1 : 0;
+    } else {
+      console.log(`Scanning and synchronizing workspace specifications under "${specsDir}"...`);
+      const results = await engine.syncWorkspace(specsDir);
+      let hasError = false;
+      for (const result of results) {
+        this.printSyncResult(result);
+        if (result.status === 'error') hasError = true;
+      }
+      return hasError ? 1 : 0;
+    }
+  }
+
+  private printSyncResult(result: SyncResult): void {
+    if (result.status === 'no_change') {
+      console.log(`  - ${result.filePath}: Already in sync.`);
+    } else if (result.status === 'synced') {
+      console.log(`  - ${result.filePath}: Synchronized [Direction: ${result.direction}]`);
+    } else if (result.status === 'healed') {
+      console.log(
+        `  - ${result.filePath}: Corrupted frontmatter was healed and synchronized [Direction: ${result.direction}]`,
+      );
+    } else if (result.status === 'conflict') {
+      console.warn(
+        `  - ${result.filePath}: [CONFLICT] Both sidecar and code were modified with AST differences. Marked as needs-human-review-resolution.`,
+      );
+    } else {
+      console.error(`  - ${result.filePath}: Error: ${result.error}`);
     }
   }
 }

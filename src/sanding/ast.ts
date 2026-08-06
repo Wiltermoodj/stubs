@@ -1,0 +1,153 @@
+import * as ts from 'typescript';
+import * as crypto from 'crypto';
+import * as fs from 'fs';
+import * as path from 'path';
+
+export interface TypeCheckResult {
+  success: boolean;
+  diagnostics: string[];
+}
+
+/**
+ * Computes an AST structural hash for TypeScript code, ignoring formatting, spacing, and comments.
+ */
+export function getAstStructuralHash(code: string): string {
+  // Parse code into TypeScript AST
+  const sourceFile = ts.createSourceFile('file.ts', code, ts.ScriptTarget.Latest, true);
+
+  const nodes: string[] = [];
+
+  function visit(node: ts.Node) {
+    let detail = '';
+    if (ts.isIdentifier(node)) {
+      detail = `:${node.text}`;
+    } else if (ts.isLiteralExpression(node)) {
+      detail = `:${node.text}`;
+    }
+    // Record node kind and identifier/literal detail
+    nodes.push(`${node.kind}${detail}`);
+    ts.forEachChild(node, visit);
+  }
+
+  visit(sourceFile);
+  const serialized = nodes.join(',');
+  return crypto.createHash('sha256').update(serialized).digest('hex');
+}
+
+/**
+ * Executes in-memory TypeScript compilation and semantic type-checking using TS Compiler API.
+ * Uses virtual files, resolves actual imports from disk, and loads options from tsconfig.json if available.
+ */
+export function typeCheckCode(filePath: string, code: string): TypeCheckResult {
+  const absoluteFilePath = path.resolve(filePath);
+
+  // Default compiler options
+  let compilerOptions: ts.CompilerOptions = {
+    noEmit: true,
+    target: ts.ScriptTarget.ES2022,
+    module: ts.ModuleKind.NodeNext,
+    moduleResolution: ts.ModuleResolutionKind.NodeNext,
+    strict: true,
+    esModuleInterop: true,
+    skipLibCheck: true,
+  };
+
+  // Attempt to load tsconfig.json if it exists in project root
+  const tsconfigPath = path.resolve('tsconfig.json');
+  if (fs.existsSync(tsconfigPath)) {
+    try {
+      const tsconfigContent = fs.readFileSync(tsconfigPath, 'utf8');
+      const parsed = ts.parseConfigFileTextToJson(tsconfigPath, tsconfigContent);
+      if (parsed.config) {
+        const parsedOptions = ts.parseJsonConfigFileContent(
+          parsed.config,
+          ts.sys,
+          path.dirname(tsconfigPath),
+        );
+        compilerOptions = {
+          ...parsedOptions.options,
+          ...compilerOptions, // Maintain override options for our typecheck needs
+          noEmit: true,
+        };
+        delete compilerOptions.rootDir;
+        delete compilerOptions.rootDirs;
+      }
+    } catch {
+      // Gracefully fall back to defaults if parsing fails
+    }
+  }
+
+  const sourceFile = ts.createSourceFile(absoluteFilePath, code, ts.ScriptTarget.Latest, true);
+
+  // In-memory compiler host
+  const compilerHost: ts.CompilerHost = {
+    getSourceFile: (fileName) => {
+      const resolved = path.resolve(fileName);
+      if (resolved === absoluteFilePath) {
+        return sourceFile;
+      }
+      if (fs.existsSync(resolved)) {
+        try {
+          const content = fs.readFileSync(resolved, 'utf8');
+          return ts.createSourceFile(resolved, content, ts.ScriptTarget.Latest, true);
+        } catch {
+          return undefined;
+        }
+      }
+      return undefined;
+    },
+    getDefaultLibFileName: (options) => ts.getDefaultLibFilePath(options),
+    writeFile: () => {},
+    getCurrentDirectory: () => process.cwd(),
+    getCanonicalFileName: (fileName) => fileName,
+    useCaseSensitiveFileNames: () => true,
+    getNewLine: () => '\n',
+    fileExists: (fileName) => {
+      const resolved = path.resolve(fileName);
+      if (resolved === absoluteFilePath) return true;
+      return fs.existsSync(resolved);
+    },
+    readFile: (fileName) => {
+      const resolved = path.resolve(fileName);
+      if (resolved === absoluteFilePath) return code;
+      if (fs.existsSync(resolved)) {
+        try {
+          return fs.readFileSync(resolved, 'utf8');
+        } catch {
+          return undefined;
+        }
+      }
+      return undefined;
+    },
+  };
+
+  try {
+    const program = ts.createProgram([absoluteFilePath], compilerOptions, compilerHost);
+    const emitResult = program.emit();
+    const allDiagnostics = ts.getPreEmitDiagnostics(program).concat(emitResult.diagnostics);
+
+    const diagnostics: string[] = [];
+    for (const diagnostic of allDiagnostics) {
+      if (diagnostic.file) {
+        const { line, character } = ts.getLineAndCharacterOfPosition(
+          diagnostic.file,
+          diagnostic.start!,
+        );
+        const message = ts.flattenDiagnosticMessageText(diagnostic.messageText, '\n');
+        diagnostics.push(`${diagnostic.file.fileName} (${line + 1},${character + 1}): ${message}`);
+      } else {
+        diagnostics.push(ts.flattenDiagnosticMessageText(diagnostic.messageText, '\n'));
+      }
+    }
+
+    return {
+      success: diagnostics.length === 0,
+      diagnostics,
+    };
+  } catch (err: any) {
+    return {
+      success: false,
+      diagnostics: [`Compilation failed: ${err.message || err}`],
+    };
+  }
+}
