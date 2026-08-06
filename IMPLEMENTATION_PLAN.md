@@ -40,9 +40,9 @@ This document outlines the sequential steps to implement the `stubs` framework a
 
 ## Phase 6: Interactive Grill Engine
 
-- [ ] Implement the Grill Engine state machine.
-- [ ] Define and implement the 3-level Grill Depth Matrix (Light Probe, Standard Drill, Deep Interrogation).
-- [ ] Create the interactive terminal prompts and response handlers.
+- [x] Implement the Grill Engine state machine.
+- [x] Define and implement the 3-level Grill Depth Matrix (Light Probe, Standard Drill, Deep Interrogation).
+- [x] Create the interactive terminal prompts and response handlers.
 
 ## Phase 7: Real-Time Web Portal & Event Bridge
 
