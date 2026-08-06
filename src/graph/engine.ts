@@ -166,7 +166,7 @@ export class GraphEngine {
       );
     `);
 
-    // 8. Create virtual FTS5 table with external content
+    // 8. Create virtual FTS5 table with external content and configure tokenizer
     await this.run(`
       CREATE VIRTUAL TABLE IF NOT EXISTS sidecar_fts USING fts5(
         file_path,
@@ -177,7 +177,8 @@ export class GraphEngine {
         interfaces_text,
         decisions_text,
         content='sidecars',
-        content_rowid='id'
+        content_rowid='id',
+        tokenize='unicode61 remove_diacritics 1'
       );
     `);
   }
