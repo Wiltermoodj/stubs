@@ -140449,9 +140449,9 @@ ${lanes.join("\n")}
             /*ignoreCase*/
             false
           )) {
-            const basename = getBaseFileName(a.fileName);
-            if (basename === "lib.d.ts" || basename === "lib.es6.d.ts") return 0;
-            const name = removeSuffix(removePrefix(basename, "lib."), ".d.ts");
+            const basename2 = getBaseFileName(a.fileName);
+            if (basename2 === "lib.d.ts" || basename2 === "lib.es6.d.ts") return 0;
+            const name = removeSuffix(removePrefix(basename2, "lib."), ".d.ts");
             const index = libs.indexOf(name);
             if (index !== -1) return index + 1;
           }
@@ -202043,8 +202043,8 @@ ${options.prefix}` : "\n" : options.prefix
             }
           };
           for (const file of files) {
-            const basename = getBaseFileName(file);
-            if (basename === "package.json" || basename === "bower.json") {
+            const basename2 = getBaseFileName(file);
+            if (basename2 === "package.json" || basename2 === "bower.json") {
               createProjectWatcher(
                 file,
                 "FileWatcher"
@@ -205569,8 +205569,8 @@ All files are: ${JSON.stringify(names)}`,
               var _a;
               const fileOrDirectoryPath = removeIgnoredPath(this.toPath(fileOrDirectory));
               if (!fileOrDirectoryPath) return;
-              const basename = getBaseFileName(fileOrDirectoryPath);
-              if (((_a = result.affectedModuleSpecifierCacheProjects) == null ? void 0 : _a.size) && (basename === "package.json" || basename === "node_modules")) {
+              const basename2 = getBaseFileName(fileOrDirectoryPath);
+              if (((_a = result.affectedModuleSpecifierCacheProjects) == null ? void 0 : _a.size) && (basename2 === "package.json" || basename2 === "node_modules")) {
                 result.affectedModuleSpecifierCacheProjects.forEach((project) => {
                   var _a2;
                   (_a2 = project.getModuleSpecifierCache()) == null ? void 0 : _a2.clear();
@@ -211996,185 +211996,6 @@ ${e.message}`;
   }
 });
 
-// src/grill/engine.ts
-var engine_exports = {};
-__export(engine_exports, {
-  GrillEngine: () => GrillEngine
-});
-var fs9, path10, readline, GrillEngine;
-var init_engine2 = __esm({
-  "src/grill/engine.ts"() {
-    "use strict";
-    fs9 = __toESM(require("fs"));
-    path10 = __toESM(require("path"));
-    readline = __toESM(require("readline"));
-    init_js_yaml();
-    init_schema();
-    init_okf();
-    init_engine();
-    GrillEngine = class {
-      state = "INIT";
-      onStateChange;
-      constructor() {
-      }
-      /**
-       * Retrieves the current state of the grill state machine.
-       */
-      getState() {
-        return this.state;
-      }
-      transition(newState) {
-        this.state = newState;
-        if (this.onStateChange) {
-          this.onStateChange(newState);
-        }
-      }
-      /**
-       * Executes the Interactive Grill Engine state machine.
-       * Conforms to the 3-level Grill Depth Matrix and handles sidecar file updates.
-       */
-      async grill(filePath, options = {}) {
-        this.onStateChange = options.onStateChange;
-        this.transition("INIT");
-        const resolvedPath = path10.resolve(filePath);
-        if (!fs9.existsSync(resolvedPath)) {
-          this.transition("ERROR");
-          throw new Error(`File not found: ${filePath}`);
-        }
-        const config = loadConfig(options.configPath);
-        const depth = options.depth || config.grill.default_depth || "standard_drill";
-        this.transition("PARSING");
-        const content = fs9.readFileSync(resolvedPath, "utf8");
-        const parseResult = parseOkfSpec(content);
-        if (!parseResult.isValid || !parseResult.frontmatter) {
-          this.transition("ERROR");
-          throw new Error(`Invalid OKF specification file: ${parseResult.errors.join(", ")}`);
-        }
-        const { frontmatter, body } = parseResult;
-        const originalStatus = frontmatter.status;
-        frontmatter.status = "grilling";
-        const intermediateContent = `---
-${dump(frontmatter).trim()}
----
-${body}`;
-        fs9.writeFileSync(resolvedPath, intermediateContent, "utf8");
-        this.transition("GENERATING_QUESTIONS");
-        const questions = this.generateQuestions(frontmatter, body, depth);
-        this.transition("GRILLING");
-        const answers = [];
-        if (options.nonInteractive) {
-          for (let i = 0; i < questions.length; i++) {
-            const providedAnswer = options.answers && options.answers[i];
-            const ans = providedAnswer || `[Automated reply to: ${questions[i].substring(0, 30)}...]`;
-            answers.push(ans);
-          }
-        } else {
-          const rl = readline.createInterface({
-            input: process.stdin,
-            output: process.stdout
-          });
-          const askQuestion = (query) => {
-            return new Promise((resolve12) => {
-              rl.question(`
-Question: ${query}
-> `, (answer) => {
-                resolve12(answer.trim() || "N/A");
-              });
-            });
-          };
-          console.log(`
-======================================================`);
-          console.log(`   STUBS INTERACTIVE GRILL ENGINE [Depth: ${depth}]`);
-          console.log(`   Targeting: ${frontmatter.title}`);
-          console.log(`======================================================`);
-          for (const q of questions) {
-            const ans = await askQuestion(q);
-            answers.push(ans);
-          }
-          rl.close();
-        }
-        this.transition("SAVING");
-        const timestamp = (/* @__PURE__ */ new Date()).toISOString();
-        const notes = frontmatter.user_notes || [];
-        questions.forEach((q, idx) => {
-          notes.push({
-            id: `NOTE-GRILL-${Date.now()}-${idx}`,
-            timestamp,
-            text: `Q: ${q} | A: ${answers[idx]}`,
-            status: "resolved"
-          });
-        });
-        frontmatter.user_notes = notes;
-        frontmatter.status = originalStatus === "grilling" ? "spec" : originalStatus;
-        let qaLog = `
-
-## Grilling & Discussion (${this.formatDepthName(depth)})
-
-`;
-        qaLog += `**Date:** ${(/* @__PURE__ */ new Date()).toLocaleDateString()}
-`;
-        qaLog += `**Depth:** ${depth}
-
-`;
-        questions.forEach((q, idx) => {
-          qaLog += `* **Q:** _${q}_
-  **A:** ${answers[idx]}
-
-`;
-        });
-        const updatedBody = body + qaLog;
-        const finalContent = `---
-${dump(frontmatter).trim()}
----
-${updatedBody}`;
-        fs9.writeFileSync(resolvedPath, finalContent, "utf8");
-        try {
-          const graphEngine = new GraphEngine(config.paths.db_path);
-          await graphEngine.initialize();
-          await graphEngine.upsertSidecar({
-            filePath: path10.relative(process.cwd(), resolvedPath).replace(/\\/g, "/"),
-            frontmatter,
-            body: updatedBody
-          });
-          await graphEngine.close();
-        } catch (dbErr) {
-          console.error(`Warning: Failed to re-index grilled sidecar: ${dbErr.message}`);
-        }
-        this.transition("DONE");
-        if (!options.nonInteractive) {
-          console.log(`
-\u2714 Grilling completed successfully! Sidecar updated & indexed.`);
-          console.log(`======================================================
-`);
-        }
-      }
-      generateQuestions(frontmatter, body, depth) {
-        const questions = [];
-        const exportsList = frontmatter.exports || [];
-        const exportsText = exportsList.length > 0 ? ` (${exportsList.join(", ")})` : "";
-        const q1 = `Regarding the module's public interface${exportsText}: what are the primary input parameters and expected happy-path output types/values?`;
-        const q2 = `What are the input validation rules and constraint boundaries (e.g., format, value ranges, size limits) for this interface?`;
-        const q3 = frontmatter.context_object ? `How does the context object \`${frontmatter.context_object}\` capture environment and security variables to prevent parameter cluttering?` : `Should a Context Object be introduced to group configuration, session, or security parameters instead of passing them individually?`;
-        const q4 = `How does this module "define errors out of existence" internally (e.g., favoring idempotent behaviors, explicit Result types, or null-objects over throwing exceptions)?`;
-        const q5 = frontmatter.decisions && frontmatter.decisions.length > 0 ? `Looking at your recorded decisions (${frontmatter.decisions.map((d) => d.id).join(", ")}): what are the critical architectural trade-offs of these choices?` : `No Architectural Decision Records (ADRs) are documented. What are the key architectural decisions and engineering trade-offs made in this design?`;
-        const q6 = `How does this module handle potential concurrent execution, race conditions, or state synchronization issues under heavy load?`;
-        const q7 = `What are the potential security boundaries (e.g., privilege checks, injection risks) and how does the implementation guard against them?`;
-        if (depth === "light_probe") {
-          questions.push(q1, q2);
-        } else if (depth === "standard_drill") {
-          questions.push(q1, q2, q3, q4);
-        } else {
-          questions.push(q1, q3, q4, q5, q6, q7);
-        }
-        return questions;
-      }
-      formatDepthName(depth) {
-        return depth.split("_").map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
-      }
-    };
-  }
-});
-
 // src/server/github.ts
 function resolveEnvPlaceholders(value) {
   if (typeof value !== "string") return value;
@@ -212205,9 +212026,9 @@ function resolveToken(configPath) {
   } catch {
   }
   try {
-    const credsPath = path11.join(os.homedir(), ".stubs", "credentials.json");
-    if (fs10.existsSync(credsPath)) {
-      const rawCreds = fs10.readFileSync(credsPath, "utf8");
+    const credsPath = path7.join(os.homedir(), ".stubs", "credentials.json");
+    if (fs7.existsSync(credsPath)) {
+      const rawCreds = fs7.readFileSync(credsPath, "utf8");
       const creds = JSON.parse(rawCreds);
       const token = creds["github.com"]?.token || creds.github_token;
       if (token) {
@@ -212218,12 +212039,32 @@ function resolveToken(configPath) {
   }
   return "";
 }
-var fs10, path11, os, GitHubClient;
+async function listAccessibleRepositories(token) {
+  const client = new GitHubClient(token);
+  return await client.listAccessibleRepositories();
+}
+async function fetchTree(owner, repo, branch, token) {
+  const client = new GitHubClient(token);
+  return await client.fetchTree(owner, repo, branch);
+}
+async function fetchFileContents(owner, repo, path14, branch, token) {
+  const client = new GitHubClient(token);
+  return await client.fetchFileContents(owner, repo, path14, branch);
+}
+async function listBranches(owner, repo, token) {
+  const client = new GitHubClient(token);
+  return await client.listBranches(owner, repo);
+}
+async function createOrUpdateFile(owner, repo, path14, content, message, branch, token) {
+  const client = new GitHubClient(token);
+  return await client.createOrUpdateFile(owner, repo, path14, content, message, branch);
+}
+var fs7, path7, os, GitHubClient;
 var init_github = __esm({
   "src/server/github.ts"() {
     "use strict";
-    fs10 = __toESM(require("fs"));
-    path11 = __toESM(require("path"));
+    fs7 = __toESM(require("fs"));
+    path7 = __toESM(require("path"));
     os = __toESM(require("os"));
     init_schema();
     GitHubClient = class {
@@ -212331,6 +212172,22 @@ var init_github = __esm({
         return data.tree || [];
       }
       /**
+       * Lists branches for a repository.
+       */
+      async listBranches(owner, repo) {
+        const response = await fetch(`${this.baseUrl}/repos/${owner}/${repo}/branches?per_page=100`, {
+          method: "GET",
+          headers: this.getHeaders()
+        });
+        if (!response.ok) {
+          const errorText = await response.text();
+          throw new Error(`Failed to list branches for ${owner}/${repo} (Status ${response.status}): ${errorText}`);
+        }
+        const branches = await response.json();
+        const branchesList = Array.isArray(branches) ? branches : [];
+        return branchesList.map((b) => b.name);
+      }
+      /**
        * Reads raw file contents.
        */
       async fetchFileContents(owner, repo, path14, branch) {
@@ -212403,6 +212260,185 @@ var init_github = __esm({
           );
         }
         return await response.json();
+      }
+    };
+  }
+});
+
+// src/grill/engine.ts
+var engine_exports = {};
+__export(engine_exports, {
+  GrillEngine: () => GrillEngine
+});
+var fs10, path11, readline, GrillEngine;
+var init_engine2 = __esm({
+  "src/grill/engine.ts"() {
+    "use strict";
+    fs10 = __toESM(require("fs"));
+    path11 = __toESM(require("path"));
+    readline = __toESM(require("readline"));
+    init_js_yaml();
+    init_schema();
+    init_okf();
+    init_engine();
+    GrillEngine = class {
+      state = "INIT";
+      onStateChange;
+      constructor() {
+      }
+      /**
+       * Retrieves the current state of the grill state machine.
+       */
+      getState() {
+        return this.state;
+      }
+      transition(newState) {
+        this.state = newState;
+        if (this.onStateChange) {
+          this.onStateChange(newState);
+        }
+      }
+      /**
+       * Executes the Interactive Grill Engine state machine.
+       * Conforms to the 3-level Grill Depth Matrix and handles sidecar file updates.
+       */
+      async grill(filePath, options = {}) {
+        this.onStateChange = options.onStateChange;
+        this.transition("INIT");
+        const resolvedPath = path11.resolve(filePath);
+        if (!fs10.existsSync(resolvedPath)) {
+          this.transition("ERROR");
+          throw new Error(`File not found: ${filePath}`);
+        }
+        const config = loadConfig(options.configPath);
+        const depth = options.depth || config.grill.default_depth || "standard_drill";
+        this.transition("PARSING");
+        const content = fs10.readFileSync(resolvedPath, "utf8");
+        const parseResult = parseOkfSpec(content);
+        if (!parseResult.isValid || !parseResult.frontmatter) {
+          this.transition("ERROR");
+          throw new Error(`Invalid OKF specification file: ${parseResult.errors.join(", ")}`);
+        }
+        const { frontmatter, body } = parseResult;
+        const originalStatus = frontmatter.status;
+        frontmatter.status = "grilling";
+        const intermediateContent = `---
+${dump(frontmatter).trim()}
+---
+${body}`;
+        fs10.writeFileSync(resolvedPath, intermediateContent, "utf8");
+        this.transition("GENERATING_QUESTIONS");
+        const questions = this.generateQuestions(frontmatter, body, depth);
+        this.transition("GRILLING");
+        const answers = [];
+        if (options.nonInteractive) {
+          for (let i = 0; i < questions.length; i++) {
+            const providedAnswer = options.answers && options.answers[i];
+            const ans = providedAnswer || `[Automated reply to: ${questions[i].substring(0, 30)}...]`;
+            answers.push(ans);
+          }
+        } else {
+          const rl = readline.createInterface({
+            input: process.stdin,
+            output: process.stdout
+          });
+          const askQuestion = (query) => {
+            return new Promise((resolve12) => {
+              rl.question(`
+Question: ${query}
+> `, (answer) => {
+                resolve12(answer.trim() || "N/A");
+              });
+            });
+          };
+          console.log(`
+======================================================`);
+          console.log(`   STUBS INTERACTIVE GRILL ENGINE [Depth: ${depth}]`);
+          console.log(`   Targeting: ${frontmatter.title}`);
+          console.log(`======================================================`);
+          for (const q of questions) {
+            const ans = await askQuestion(q);
+            answers.push(ans);
+          }
+          rl.close();
+        }
+        this.transition("SAVING");
+        const timestamp = (/* @__PURE__ */ new Date()).toISOString();
+        const notes = frontmatter.user_notes || [];
+        questions.forEach((q, idx) => {
+          notes.push({
+            id: `NOTE-GRILL-${Date.now()}-${idx}`,
+            timestamp,
+            text: `Q: ${q} | A: ${answers[idx]}`,
+            status: "resolved"
+          });
+        });
+        frontmatter.user_notes = notes;
+        frontmatter.status = originalStatus === "grilling" ? "spec" : originalStatus;
+        let qaLog = `
+
+## Grilling & Discussion (${this.formatDepthName(depth)})
+
+`;
+        qaLog += `**Date:** ${(/* @__PURE__ */ new Date()).toLocaleDateString()}
+`;
+        qaLog += `**Depth:** ${depth}
+
+`;
+        questions.forEach((q, idx) => {
+          qaLog += `* **Q:** _${q}_
+  **A:** ${answers[idx]}
+
+`;
+        });
+        const updatedBody = body + qaLog;
+        const finalContent = `---
+${dump(frontmatter).trim()}
+---
+${updatedBody}`;
+        fs10.writeFileSync(resolvedPath, finalContent, "utf8");
+        try {
+          const graphEngine = new GraphEngine(config.paths.db_path);
+          await graphEngine.initialize();
+          await graphEngine.upsertSidecar({
+            filePath: path11.relative(process.cwd(), resolvedPath).replace(/\\/g, "/"),
+            frontmatter,
+            body: updatedBody
+          });
+          await graphEngine.close();
+        } catch (dbErr) {
+          console.error(`Warning: Failed to re-index grilled sidecar: ${dbErr.message}`);
+        }
+        this.transition("DONE");
+        if (!options.nonInteractive) {
+          console.log(`
+\u2714 Grilling completed successfully! Sidecar updated & indexed.`);
+          console.log(`======================================================
+`);
+        }
+      }
+      generateQuestions(frontmatter, body, depth) {
+        const questions = [];
+        const exportsList = frontmatter.exports || [];
+        const exportsText = exportsList.length > 0 ? ` (${exportsList.join(", ")})` : "";
+        const q1 = `Regarding the module's public interface${exportsText}: what are the primary input parameters and expected happy-path output types/values?`;
+        const q2 = `What are the input validation rules and constraint boundaries (e.g., format, value ranges, size limits) for this interface?`;
+        const q3 = frontmatter.context_object ? `How does the context object \`${frontmatter.context_object}\` capture environment and security variables to prevent parameter cluttering?` : `Should a Context Object be introduced to group configuration, session, or security parameters instead of passing them individually?`;
+        const q4 = `How does this module "define errors out of existence" internally (e.g., favoring idempotent behaviors, explicit Result types, or null-objects over throwing exceptions)?`;
+        const q5 = frontmatter.decisions && frontmatter.decisions.length > 0 ? `Looking at your recorded decisions (${frontmatter.decisions.map((d) => d.id).join(", ")}): what are the critical architectural trade-offs of these choices?` : `No Architectural Decision Records (ADRs) are documented. What are the key architectural decisions and engineering trade-offs made in this design?`;
+        const q6 = `How does this module handle potential concurrent execution, race conditions, or state synchronization issues under heavy load?`;
+        const q7 = `What are the potential security boundaries (e.g., privilege checks, injection risks) and how does the implementation guard against them?`;
+        if (depth === "light_probe") {
+          questions.push(q1, q2);
+        } else if (depth === "standard_drill") {
+          questions.push(q1, q2, q3, q4);
+        } else {
+          questions.push(q1, q3, q4, q5, q6, q7);
+        }
+        return questions;
+      }
+      formatDepthName(depth) {
+        return depth.split("_").map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
       }
     };
   }
@@ -212916,9 +212952,10 @@ ${body}`;
 
 // src/server/portal.ts
 var http = __toESM(require("http"));
-var fs7 = __toESM(require("fs"));
-var path7 = __toESM(require("path"));
+var fs8 = __toESM(require("fs"));
+var path8 = __toESM(require("path"));
 var crypto4 = __toESM(require("crypto"));
+init_engine();
 init_schema();
 init_okf();
 
@@ -213289,6 +213326,7 @@ var MaterializerEngine = class {
 };
 
 // src/server/portal.ts
+init_github();
 var PortalServer = class {
   port;
   graphEngine;
@@ -213297,6 +213335,10 @@ var PortalServer = class {
   watcher = null;
   clients = [];
   debounceTimer = null;
+  // Cache remote GraphEngine instances keyed by "repo#branch"
+  remoteGraphs = /* @__PURE__ */ new Map();
+  // Store dynamic templates in remote mode
+  remoteTemplates = /* @__PURE__ */ new Map();
   constructor(graphEngine, port = 3e3, configPath) {
     this.graphEngine = graphEngine;
     this.port = port;
@@ -213313,15 +213355,15 @@ var PortalServer = class {
       console.error(`[PortalServer] Initial workspace indexing failed: ${err.message || err}`);
     }
     try {
-      const templatesDir = path7.resolve(this.config.paths.templates_dir);
-      if (!fs7.existsSync(templatesDir)) {
-        fs7.mkdirSync(templatesDir, { recursive: true });
+      const templatesDir = path8.resolve(this.config.paths.templates_dir);
+      if (!fs8.existsSync(templatesDir)) {
+        fs8.mkdirSync(templatesDir, { recursive: true });
       }
-      const files = fs7.readdirSync(templatesDir);
+      const files = fs8.readdirSync(templatesDir);
       const hasProvisional = files.some((f) => f.toLowerCase().includes("provisional"));
       if (!hasProvisional) {
-        fs7.writeFileSync(
-          path7.join(templatesDir, "controller-v1.0-provisional.ts.md.tpl"),
+        fs8.writeFileSync(
+          path8.join(templatesDir, "controller-v1.0-provisional.ts.md.tpl"),
           `# Controller Mold (Draft Proposal)
 Provisional template for human review.
 - Project: {{project_name}}
@@ -213331,8 +213373,8 @@ Provisional template for human review.
         );
       }
       if (!files.includes("service.ts.md.tpl")) {
-        fs7.writeFileSync(
-          path7.join(templatesDir, "service.ts.md.tpl"),
+        fs8.writeFileSync(
+          path8.join(templatesDir, "service.ts.md.tpl"),
           `# Service Mold (Active)
 Using EJS/Handlebars to render a standard service module.
 - Project: {{project_name}}
@@ -213407,6 +213449,79 @@ Using EJS/Handlebars to render a standard service module.
     });
   }
   /**
+   * Resolves appropriate GraphEngine based on parameters
+   */
+  async resolveGraphEngine(parsedUrl) {
+    const mode = parsedUrl.searchParams.get("mode") || (this.config.remote ? "remote" : "local");
+    if (mode === "remote") {
+      const repo = parsedUrl.searchParams.get("repo") || this.config.remote?.repo || "";
+      const branch = parsedUrl.searchParams.get("branch") || this.config.remote?.default_branch || "main";
+      if (!repo) {
+        return { engine: this.graphEngine, isRemote: false, repo: "", branch: "" };
+      }
+      const key = `${repo}#${branch}`;
+      if (this.remoteGraphs.has(key)) {
+        return { engine: this.remoteGraphs.get(key), isRemote: true, repo, branch };
+      }
+      const engine = new GraphEngine(":memory:");
+      await engine.initialize();
+      this.remoteGraphs.set(key, engine);
+      await this.ingestRemoteSpecs(engine, repo, branch);
+      return { engine, isRemote: true, repo, branch };
+    }
+    return { engine: this.graphEngine, isRemote: false, repo: "", branch: "" };
+  }
+  async ingestRemoteSpecs(engine, repo, branch) {
+    const [owner, name] = repo.split("/");
+    if (!owner || !name) return;
+    try {
+      const client = new GitHubClient();
+      const tree = await client.fetchTree(owner, name, branch);
+      const specFiles = tree.filter((entry) => entry.type === "blob" && (entry.path.endsWith(".ts.md") || entry.path.endsWith(".md")));
+      for (const spec of specFiles) {
+        try {
+          const content = await client.fetchFileContents(owner, name, spec.path, branch);
+          if (content.trim().startsWith("---")) {
+            const parsed = parseOkfSpec(content);
+            if (parsed.isValid && parsed.frontmatter) {
+              const fileHash = crypto4.createHash("sha256").update(content).digest("hex");
+              await engine.upsertSidecar({
+                filePath: spec.path,
+                frontmatter: parsed.frontmatter,
+                body: parsed.body,
+                fileHash
+              });
+            }
+          }
+        } catch (e) {
+          console.error(`[PortalServer] Error loading remote file ${spec.path}:`, e.message || e);
+        }
+      }
+      const templates = [];
+      const templateDir = this.config.paths.templates_dir || ".stubs/templates";
+      const templateFiles = tree.filter((entry) => entry.type === "blob" && entry.path.startsWith(templateDir) && entry.path.endsWith(".tpl"));
+      for (const tpl of templateFiles) {
+        try {
+          const content = await client.fetchFileContents(owner, name, tpl.path, branch);
+          const baseName = path8.basename(tpl.path);
+          const isDraft = baseName.toLowerCase().includes("provisional") || baseName.toLowerCase().includes("draft");
+          const version = isDraft ? "v1.0-provisional" : "v1.0";
+          templates.push({
+            name: baseName,
+            content,
+            isDraft,
+            version
+          });
+        } catch (e) {
+          console.error(`[PortalServer] Error loading remote template ${tpl.path}:`, e.message || e);
+        }
+      }
+      this.remoteTemplates.set(`${repo}#${branch}`, templates);
+    } catch (err) {
+      console.error(`[PortalServer] Failed to ingest remote specs/templates for ${repo}#${branch}:`, err.message || err);
+    }
+  }
+  /**
    * Handle incoming HTTP requests.
    */
   async handleRequest(req, res) {
@@ -213421,6 +213536,54 @@ Using EJS/Handlebars to render a standard service module.
       return;
     }
     try {
+      if (pathname === "/api/v1/github/repos" && req.method === "GET") {
+        try {
+          const repos = await listAccessibleRepositories();
+          const enrichedRepos = await Promise.all(
+            repos.map(async (repo) => {
+              let hasStubs = false;
+              try {
+                const [owner, name] = repo.fullName.split("/");
+                const tree = await fetchTree(owner, name, repo.defaultBranch);
+                hasStubs = tree.some(
+                  (item) => item.path.startsWith(".stubs/") || item.path.endsWith(".ts.md") || item.path.endsWith(".ts.md.tpl")
+                );
+              } catch {
+              }
+              return { ...repo, hasStubs };
+            })
+          );
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ repositories: enrichedRepos }));
+        } catch (err) {
+          res.writeHead(500, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: err.message || err }));
+        }
+        return;
+      }
+      if (pathname === "/api/v1/github/branches" && req.method === "GET") {
+        const repoParam = parsedUrl.searchParams.get("repo");
+        if (!repoParam) {
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: 'Missing "repo" parameter' }));
+          return;
+        }
+        const [owner, repoName] = repoParam.split("/");
+        if (!owner || !repoName) {
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: 'Invalid "repo" format, expected owner/repo' }));
+          return;
+        }
+        try {
+          const branches = await listBranches(owner, repoName);
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ branches }));
+        } catch (err) {
+          res.writeHead(500, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: err.message || err }));
+        }
+        return;
+      }
       if (pathname === "/" && req.method === "GET") {
         res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
         res.end(this.getDashboardHtml());
@@ -213431,19 +213594,21 @@ Using EJS/Handlebars to render a standard service module.
         return;
       }
       if (pathname === "/api/graph" && req.method === "GET") {
-        const files = await this.graphEngine.getFilesIndexed();
+        const { engine, isRemote, repo } = await this.resolveGraphEngine(parsedUrl);
+        const files = await engine.getFilesIndexed();
         const sidecars = [];
         for (const file of files) {
-          const sidecar = await this.graphEngine.getSidecar(file);
+          const sidecar = await engine.getSidecar(file);
           if (sidecar) {
             sidecars.push(sidecar);
           }
         }
         res.writeHead(200, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ sidecars, projectName: this.config.project_name }));
+        res.end(JSON.stringify({ sidecars, projectName: isRemote ? repo : this.config.project_name }));
         return;
       }
       if ((pathname === "/api/directives" || pathname === "/api/v1/directives") && req.method === "GET") {
+        const { engine } = await this.resolveGraphEngine(parsedUrl);
         const filterStatus = parsedUrl.searchParams.get("status") || "pending";
         let query = "SELECT file_path as filePath, note_id as id, timestamp, text, status FROM user_notes";
         const params = [];
@@ -213452,12 +213617,13 @@ Using EJS/Handlebars to render a standard service module.
           params.push(filterStatus);
         }
         query += " ORDER BY timestamp DESC;";
-        const rows = await this.graphEngine.all(query, params);
+        const rows = await engine.all(query, params);
         res.writeHead(200, { "Content-Type": "application/json" });
         res.end(JSON.stringify({ directives: rows }));
         return;
       }
       if (pathname === "/api/v1/directives" && req.method === "POST") {
+        const { engine, isRemote, repo, branch } = await this.resolveGraphEngine(parsedUrl);
         const body = await this.parseJsonBody(req);
         const { filePath, text, id } = body;
         if (!filePath || !text) {
@@ -213465,13 +213631,20 @@ Using EJS/Handlebars to render a standard service module.
           res.end(JSON.stringify({ error: 'Missing "filePath" or "text" parameter in body' }));
           return;
         }
-        const resolvedPath = path7.isAbsolute(filePath) ? filePath : path7.resolve(process.cwd(), filePath);
-        if (!fs7.existsSync(resolvedPath)) {
-          res.writeHead(404, { "Content-Type": "application/json" });
-          res.end(JSON.stringify({ error: `File not found at ${resolvedPath}` }));
-          return;
+        let content = "";
+        let resolvedPath = "";
+        if (isRemote) {
+          const [owner, repoName] = repo.split("/");
+          content = await fetchFileContents(owner, repoName, filePath, branch);
+        } else {
+          resolvedPath = path8.isAbsolute(filePath) ? filePath : path8.resolve(process.cwd(), filePath);
+          if (!fs8.existsSync(resolvedPath)) {
+            res.writeHead(404, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ error: `File not found at ${resolvedPath}` }));
+            return;
+          }
+          content = await fs8.promises.readFile(resolvedPath, "utf8");
         }
-        const content = await fs7.promises.readFile(resolvedPath, "utf8");
         const parsed = parseOkfSpec(content);
         if (!parsed.isValid || !parsed.frontmatter) {
           res.writeHead(400, { "Content-Type": "application/json" });
@@ -213494,21 +213667,33 @@ Using EJS/Handlebars to render a standard service module.
         notes.push(newNote);
         parsed.frontmatter.user_notes = notes;
         const newContent = stringifyOkfSpec(parsed.frontmatter, parsed.body);
-        await fs7.promises.writeFile(resolvedPath, newContent, "utf8");
         const fileHash = crypto4.createHash("sha256").update(newContent).digest("hex");
-        const relativePath = path7.relative(process.cwd(), resolvedPath).replace(/\\/g, "/");
-        await this.graphEngine.upsertSidecar({
-          filePath: relativePath,
-          frontmatter: parsed.frontmatter,
-          body: parsed.body,
-          fileHash
-        });
-        this.broadcast("directive:created", { filePath: relativePath, note: newNote });
+        if (isRemote) {
+          const [owner, repoName] = repo.split("/");
+          await createOrUpdateFile(owner, repoName, filePath, newContent, `Add user note ${noteId}`, branch);
+          await engine.upsertSidecar({
+            filePath,
+            frontmatter: parsed.frontmatter,
+            body: parsed.body,
+            fileHash
+          });
+        } else {
+          await fs8.promises.writeFile(resolvedPath, newContent, "utf8");
+          const relativePath = path8.relative(process.cwd(), resolvedPath).replace(/\\/g, "/");
+          await engine.upsertSidecar({
+            filePath: relativePath,
+            frontmatter: parsed.frontmatter,
+            body: parsed.body,
+            fileHash
+          });
+        }
+        this.broadcast("directive:created", { filePath: isRemote ? filePath : path8.relative(process.cwd(), resolvedPath).replace(/\\/g, "/"), note: newNote });
         res.writeHead(200, { "Content-Type": "application/json" });
         res.end(JSON.stringify({ success: true, note: newNote }));
         return;
       }
       if (pathname === "/api/v1/directives/resolve" && req.method === "POST") {
+        const { engine, isRemote, repo, branch } = await this.resolveGraphEngine(parsedUrl);
         const body = await this.parseJsonBody(req);
         const { filePath, id } = body;
         if (!filePath || !id) {
@@ -213516,13 +213701,20 @@ Using EJS/Handlebars to render a standard service module.
           res.end(JSON.stringify({ error: 'Missing "filePath" or "id" parameter in body' }));
           return;
         }
-        const resolvedPath = path7.isAbsolute(filePath) ? filePath : path7.resolve(process.cwd(), filePath);
-        if (!fs7.existsSync(resolvedPath)) {
-          res.writeHead(404, { "Content-Type": "application/json" });
-          res.end(JSON.stringify({ error: `File not found at ${resolvedPath}` }));
-          return;
+        let content = "";
+        let resolvedPath = "";
+        if (isRemote) {
+          const [owner, repoName] = repo.split("/");
+          content = await fetchFileContents(owner, repoName, filePath, branch);
+        } else {
+          resolvedPath = path8.isAbsolute(filePath) ? filePath : path8.resolve(process.cwd(), filePath);
+          if (!fs8.existsSync(resolvedPath)) {
+            res.writeHead(404, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ error: `File not found at ${resolvedPath}` }));
+            return;
+          }
+          content = await fs8.promises.readFile(resolvedPath, "utf8");
         }
-        const content = await fs7.promises.readFile(resolvedPath, "utf8");
         const parsed = parseOkfSpec(content);
         if (!parsed.isValid || !parsed.frontmatter) {
           res.writeHead(400, { "Content-Type": "application/json" });
@@ -213538,21 +213730,39 @@ Using EJS/Handlebars to render a standard service module.
         }
         note.status = "resolved";
         const newContent = stringifyOkfSpec(parsed.frontmatter, parsed.body);
-        await fs7.promises.writeFile(resolvedPath, newContent, "utf8");
         const fileHash = crypto4.createHash("sha256").update(newContent).digest("hex");
-        const relativePath = path7.relative(process.cwd(), resolvedPath).replace(/\\/g, "/");
-        await this.graphEngine.upsertSidecar({
-          filePath: relativePath,
-          frontmatter: parsed.frontmatter,
-          body: parsed.body,
-          fileHash
-        });
+        if (isRemote) {
+          const [owner, repoName] = repo.split("/");
+          await createOrUpdateFile(owner, repoName, filePath, newContent, `Resolve note ${id}`, branch);
+          await engine.upsertSidecar({
+            filePath,
+            frontmatter: parsed.frontmatter,
+            body: parsed.body,
+            fileHash
+          });
+        } else {
+          await fs8.promises.writeFile(resolvedPath, newContent, "utf8");
+          const relativePath = path8.relative(process.cwd(), resolvedPath).replace(/\\/g, "/");
+          await engine.upsertSidecar({
+            filePath: relativePath,
+            frontmatter: parsed.frontmatter,
+            body: parsed.body,
+            fileHash
+          });
+        }
         this.broadcast("graph:updated", { timestamp: (/* @__PURE__ */ new Date()).toISOString() });
         res.writeHead(200, { "Content-Type": "application/json" });
         res.end(JSON.stringify({ success: true, note }));
         return;
       }
       if ((pathname === "/api/templates" || pathname === "/api/v1/templates") && req.method === "GET") {
+        const { isRemote, repo, branch } = await this.resolveGraphEngine(parsedUrl);
+        if (isRemote) {
+          const cached = this.remoteTemplates.get(`${repo}#${branch}`) || [];
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ templates: cached }));
+          return;
+        }
         const templateEngine = new TemplateEngine(this.config.paths.templates_dir);
         const templatesList = await templateEngine.listTemplates();
         const resultTemplates = [];
@@ -213562,7 +213772,7 @@ Using EJS/Handlebars to render a standard service module.
           const templatePath = templateEngine.getTemplatePath(name);
           let content = "";
           try {
-            content = await fs7.promises.readFile(templatePath, "utf8");
+            content = await fs8.promises.readFile(templatePath, "utf8");
           } catch {
           }
           resultTemplates.push({ name, isDraft, version, content });
@@ -213572,6 +213782,7 @@ Using EJS/Handlebars to render a standard service module.
         return;
       }
       if (pathname === "/api/v1/templates/approve" && req.method === "POST") {
+        const { isRemote, repo, branch } = await this.resolveGraphEngine(parsedUrl);
         const body = await this.parseJsonBody(req);
         const { templateName, approved } = body;
         if (!templateName) {
@@ -213579,9 +213790,99 @@ Using EJS/Handlebars to render a standard service module.
           res.end(JSON.stringify({ error: 'Missing "templateName" parameter in body' }));
           return;
         }
-        const templatesDir = path7.resolve(this.config.paths.templates_dir);
-        const templatePath = path7.resolve(templatesDir, templateName);
-        if (!fs7.existsSync(templatePath)) {
+        if (isRemote) {
+          const [owner, repoName] = repo.split("/");
+          const templateDir = this.config.paths.templates_dir || ".stubs/templates";
+          const oldPath = `${templateDir}/${templateName}`;
+          const key = `${repo}#${branch}`;
+          const cached = this.remoteTemplates.get(key) || [];
+          const tplObj = cached.find((t) => t.name === templateName);
+          if (!tplObj) {
+            res.writeHead(404, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ error: `Template not found: ${templateName}` }));
+            return;
+          }
+          if (approved) {
+            let newName = templateName;
+            if (templateName.includes("-v1.0-provisional")) {
+              newName = templateName.replace("-v1.0-provisional", "");
+            } else if (templateName.includes("-provisional")) {
+              newName = templateName.replace("-provisional", "");
+            } else {
+              newName = templateName.replace(".tpl", "-approved.tpl");
+            }
+            const newPath = `${templateDir}/${newName}`;
+            await createOrUpdateFile(owner, repoName, newPath, tplObj.content, `Approve template ${templateName}`, branch);
+            try {
+              const client = new GitHubClient();
+              const metaUrl = `${client["baseUrl"]}/repos/${owner}/${repoName}/contents/${oldPath}?ref=${branch}`;
+              const metaRes = await fetch(metaUrl, {
+                method: "GET",
+                headers: client["getHeaders"]()
+              });
+              if (metaRes.ok) {
+                const metaData = await metaRes.json();
+                const delUrl = `${client["baseUrl"]}/repos/${owner}/${repoName}/contents/${oldPath}`;
+                await fetch(delUrl, {
+                  method: "DELETE",
+                  headers: client["getHeaders"]({ "Content-Type": "application/json" }),
+                  body: JSON.stringify({
+                    message: `Delete provisional draft ${templateName}`,
+                    sha: metaData.sha,
+                    branch
+                  })
+                });
+              }
+            } catch (err) {
+              console.error(`[PortalServer] Optional remote file delete failed:`, err.message || err);
+            }
+            tplObj.name = newName;
+            tplObj.isDraft = false;
+            tplObj.version = "v1.0";
+            this.broadcast("graph:updated", { type: "template_approved", templateName, newName });
+            res.writeHead(200, { "Content-Type": "application/json" });
+            res.end(
+              JSON.stringify({
+                success: true,
+                message: `Template approved and renamed to ${newName} on remote repository.`
+              })
+            );
+          } else {
+            try {
+              const client = new GitHubClient();
+              const metaUrl = `${client["baseUrl"]}/repos/${owner}/${repoName}/contents/${oldPath}?ref=${branch}`;
+              const metaRes = await fetch(metaUrl, {
+                method: "GET",
+                headers: client["getHeaders"]()
+              });
+              if (metaRes.ok) {
+                const metaData = await metaRes.json();
+                const delUrl = `${client["baseUrl"]}/repos/${owner}/${repoName}/contents/${oldPath}`;
+                await fetch(delUrl, {
+                  method: "DELETE",
+                  headers: client["getHeaders"]({ "Content-Type": "application/json" }),
+                  body: JSON.stringify({
+                    message: `Reject draft template ${templateName}`,
+                    sha: metaData.sha,
+                    branch
+                  })
+                });
+              }
+            } catch (err) {
+              console.error(`[PortalServer] Optional remote file delete failed:`, err.message || err);
+            }
+            this.remoteTemplates.set(key, cached.filter((t) => t.name !== templateName));
+            this.broadcast("graph:updated", { type: "template_rejected", templateName });
+            res.writeHead(200, { "Content-Type": "application/json" });
+            res.end(
+              JSON.stringify({ success: true, message: "Template draft rejected and deleted from remote repository." })
+            );
+          }
+          return;
+        }
+        const templatesDir = path8.resolve(this.config.paths.templates_dir);
+        const templatePath = path8.resolve(templatesDir, templateName);
+        if (!fs8.existsSync(templatePath)) {
           res.writeHead(404, { "Content-Type": "application/json" });
           res.end(JSON.stringify({ error: `Template file not found at ${templatePath}` }));
           return;
@@ -213595,8 +213896,8 @@ Using EJS/Handlebars to render a standard service module.
           } else {
             newName = templateName.replace(".tpl", "-approved.tpl");
           }
-          const newPath = path7.resolve(templatesDir, newName);
-          await fs7.promises.rename(templatePath, newPath);
+          const newPath = path8.resolve(templatesDir, newName);
+          await fs8.promises.rename(templatePath, newPath);
           this.broadcast("graph:updated", { type: "template_approved", templateName, newName });
           res.writeHead(200, { "Content-Type": "application/json" });
           res.end(
@@ -213606,7 +213907,7 @@ Using EJS/Handlebars to render a standard service module.
             })
           );
         } else {
-          await fs7.promises.unlink(templatePath);
+          await fs8.promises.unlink(templatePath);
           this.broadcast("graph:updated", { type: "template_rejected", templateName });
           res.writeHead(200, { "Content-Type": "application/json" });
           res.end(
@@ -213616,24 +213917,26 @@ Using EJS/Handlebars to render a standard service module.
         return;
       }
       if (pathname === "/api/search" && req.method === "GET") {
+        const { engine } = await this.resolveGraphEngine(parsedUrl);
         const q = parsedUrl.searchParams.get("q") || "";
         const tagsParam = parsedUrl.searchParams.get("tags");
         const tags = tagsParam ? tagsParam.split(",").filter(Boolean) : void 0;
         const boundsParam = parsedUrl.searchParams.get("bounds");
         const bounds = boundsParam ? boundsParam.split(",").filter(Boolean) : void 0;
-        const results = await this.graphEngine.search(q, { tags, bounds });
+        const results = await engine.search(q, { tags, bounds });
         res.writeHead(200, { "Content-Type": "application/json" });
         res.end(JSON.stringify({ results }));
         return;
       }
       if (pathname === "/api/sidecar" && req.method === "GET") {
+        const { engine } = await this.resolveGraphEngine(parsedUrl);
         const filePath = parsedUrl.searchParams.get("path");
         if (!filePath) {
           res.writeHead(400, { "Content-Type": "application/json" });
           res.end(JSON.stringify({ error: "Missing path parameter" }));
           return;
         }
-        const sidecar = await this.graphEngine.getSidecar(filePath);
+        const sidecar = await engine.getSidecar(filePath);
         if (!sidecar) {
           res.writeHead(404, { "Content-Type": "application/json" });
           res.end(JSON.stringify({ error: "Sidecar specification not found" }));
@@ -213690,14 +213993,14 @@ data: ${JSON.stringify(data)}
    * Starts watching filesystem changes under specs_dir.
    */
   startFileWatcher() {
-    const specsDir = path7.resolve(this.config.paths.specs_dir);
-    if (!fs7.existsSync(specsDir)) {
+    const specsDir = path8.resolve(this.config.paths.specs_dir);
+    if (!fs8.existsSync(specsDir)) {
       console.warn(`[Watcher] Warning: Watch directory "${specsDir}" does not exist.`);
       return;
     }
     console.log(`[Watcher] Starting OS-level filesystem watcher on "${specsDir}"...`);
     try {
-      this.watcher = fs7.watch(specsDir, { recursive: true }, (eventType, filename) => {
+      this.watcher = fs8.watch(specsDir, { recursive: true }, (eventType, filename) => {
         if (filename && (filename.endsWith(".ts.md") || filename.endsWith(".md"))) {
           this.reindexAndBroadcast();
         }
@@ -213707,7 +214010,7 @@ data: ${JSON.stringify(data)}
         `[Watcher] Recursive watch failed: ${err.message || err}. Falling back to standard watch.`
       );
       try {
-        this.watcher = fs7.watch(specsDir, (eventType, filename) => {
+        this.watcher = fs8.watch(specsDir, (eventType, filename) => {
           if (filename && (filename.endsWith(".ts.md") || filename.endsWith(".md"))) {
             this.reindexAndBroadcast();
           }
@@ -213814,8 +214117,36 @@ data: ${JSON.stringify(data)}
       </div>
     </div>
 
+    <!-- Repository & Branch Switcher -->
+    <div class="flex items-center space-x-3 bg-slate-950 border border-slate-800/80 p-1.5 rounded-lg">
+      <div class="flex items-center bg-slate-900 border border-slate-800 rounded px-2.5 py-1">
+        <label for="mode-toggle" class="text-[10px] font-bold text-slate-400 mr-1.5 uppercase">Mode</label>
+        <select id="mode-toggle" onchange="toggleMode()" class="bg-transparent text-xs text-white focus:outline-none font-semibold">
+          <option value="local" class="bg-slate-900">Local</option>
+          <option value="remote" class="bg-slate-900">Remote (GitHub)</option>
+        </select>
+      </div>
+
+      <div id="remote-switcher-controls" class="hidden flex items-center space-x-2">
+        <div class="flex items-center bg-slate-900 border border-slate-800 rounded px-2 py-1">
+          <label for="repo-select" class="text-[10px] font-bold text-slate-400 mr-1.5 uppercase">Repo</label>
+          <select id="repo-select" onchange="selectRepo()" class="bg-transparent text-xs text-white focus:outline-none max-w-[140px] font-semibold">
+            <option value="">-- Choose Repo --</option>
+          </select>
+          <input type="text" id="custom-repo-input" placeholder="or owner/repo" onkeydown="handleCustomRepoKey(event)" class="bg-transparent text-xs text-white placeholder-slate-600 focus:outline-none ml-2 border-l border-slate-800 pl-2 w-24 font-mono" />
+        </div>
+
+        <div class="flex items-center bg-slate-900 border border-slate-800 rounded px-2 py-1">
+          <label for="branch-select" class="text-[10px] font-bold text-slate-400 mr-1.5 uppercase">Branch</label>
+          <select id="branch-select" onchange="selectBranch()" class="bg-transparent text-xs text-white focus:outline-none max-w-[100px] font-mono">
+            <option value="main">main</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
     <!-- Live Search Bar -->
-    <div class="flex-1 max-w-lg mx-8 relative">
+    <div class="flex-1 max-w-sm mx-4 relative">
       <input
         type="text"
         id="search-input"
@@ -213975,6 +214306,91 @@ data: ${JSON.stringify(data)}
     let rightTab = 'directives';
     let toastQueue = [];
 
+    // Dual-Mode State
+    let currentMode = 'local';
+    let currentRepo = '';
+    let currentBranch = 'main';
+
+    function getQueryParams() {
+      if (currentMode === 'remote' && currentRepo) {
+        return \`?mode=remote&repo=\${encodeURIComponent(currentRepo)}&branch=\${encodeURIComponent(currentBranch)}\`;
+      }
+      return '';
+    }
+
+    async function toggleMode() {
+      const mode = document.getElementById('mode-toggle').value;
+      currentMode = mode;
+      const remoteControls = document.getElementById('remote-switcher-controls');
+      if (mode === 'remote') {
+        remoteControls.classList.remove('hidden');
+        await loadRemoteRepos();
+      } else {
+        remoteControls.classList.add('hidden');
+        currentRepo = '';
+        currentBranch = 'main';
+        await initWorkspace();
+      }
+    }
+
+    async function loadRemoteRepos() {
+      try {
+        const res = await fetch('/api/v1/github/repos');
+        const data = await res.json();
+        const repoSelect = document.getElementById('repo-select');
+
+        if (data.repositories && Array.isArray(data.repositories)) {
+          repoSelect.innerHTML = '<option value="">-- Choose Repo --</option>' +
+            data.repositories.map(r => {
+              const star = r.hasStubs ? '\u2B50 ' : '';
+              return \`<option value="\${r.fullName}">\${star}\${r.fullName}</option>\`;
+            }).join('');
+        }
+      } catch (err) {
+        showToast("Failed to load GitHub repositories", "error");
+      }
+    }
+
+    async function selectRepo() {
+      const repo = document.getElementById('repo-select').value;
+      if (repo) {
+        currentRepo = repo;
+        await loadBranches(repo);
+      }
+    }
+
+    async function handleCustomRepoKey(event) {
+      if (event.key === 'Enter') {
+        const custom = document.getElementById('custom-repo-input').value.trim();
+        if (custom) {
+          currentRepo = custom;
+          await loadBranches(custom);
+        }
+      }
+    }
+
+    async function loadBranches(repo) {
+      try {
+        const res = await fetch(\`/api/v1/github/branches?repo=\${encodeURIComponent(repo)}\`);
+        const data = await res.json();
+        const branchSelect = document.getElementById('branch-select');
+
+        if (data.branches && Array.isArray(data.branches)) {
+          branchSelect.innerHTML = data.branches.map(b => \`<option value="\${b}">\${b}</option>\`).join('');
+          currentBranch = data.branches.includes('main') ? 'main' : data.branches[0];
+          branchSelect.value = currentBranch;
+          await initWorkspace();
+        }
+      } catch (err) {
+        showToast("Failed to load branches for repository", "error");
+      }
+    }
+
+    async function selectBranch() {
+      currentBranch = document.getElementById('branch-select').value;
+      await initWorkspace();
+    }
+
     // Trigger Toast Notification
     function showToast(message, type = 'info') {
       const container = document.getElementById('toast-container');
@@ -214069,9 +214485,9 @@ data: ${JSON.stringify(data)}
     // Fetch initial workspace specifications
     async function initWorkspace() {
       try {
-        const res = await fetch('/api/graph');
+        const res = await fetch('/api/graph' + getQueryParams());
         const data = await res.json();
-        sidecars = data.sidecars;
+        sidecars = data.sidecars || [];
 
         document.getElementById('last-updated').textContent = new Date().toLocaleTimeString();
         document.getElementById('active-subsystem').textContent = data.projectName || 'src';
@@ -214088,9 +214504,9 @@ data: ${JSON.stringify(data)}
     // Fetch Directives from API
     async function fetchDirectives() {
       try {
-        const res = await fetch(\`/api/v1/directives?status=\${currentDirFilter}\`);
+        const res = await fetch(\`/api/v1/directives?status=\${currentDirFilter}\` + (getQueryParams() ? '&' + getQueryParams().substring(1) : ''));
         const data = await res.json();
-        directives = data.directives;
+        directives = data.directives || [];
         renderDirectivesList();
       } catch (err) {
         console.error("Error fetching directives:", err);
@@ -214100,9 +214516,9 @@ data: ${JSON.stringify(data)}
     // Fetch Templates from API
     async function fetchTemplates() {
       try {
-        const res = await fetch('/api/v1/templates');
+        const res = await fetch('/api/v1/templates' + getQueryParams());
         const data = await res.json();
-        templates = data.templates;
+        templates = data.templates || [];
         renderTemplatesList();
       } catch (err) {
         console.error("Error fetching templates:", err);
@@ -214244,7 +214660,7 @@ data: ${JSON.stringify(data)}
       showToast("Sending directive note to workspace...", "info");
 
       try {
-        const res = await fetch('/api/v1/directives', {
+        const res = await fetch('/api/v1/directives' + getQueryParams(), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ filePath, text })
@@ -214271,7 +214687,7 @@ data: ${JSON.stringify(data)}
       renderDirectivesList();
 
       try {
-        const res = await fetch('/api/v1/directives/resolve', {
+        const res = await fetch('/api/v1/directives/resolve' + getQueryParams(), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ filePath, id })
@@ -214381,7 +214797,7 @@ data: ${JSON.stringify(data)}
       showToast(approved ? "Approving template draft..." : "Rejecting template draft...", "info");
 
       try {
-        const res = await fetch('/api/v1/templates/approve', {
+        const res = await fetch('/api/v1/templates/approve' + getQueryParams(), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ templateName, approved })
@@ -214409,7 +214825,7 @@ data: ${JSON.stringify(data)}
     async function fetchAndShowSidecarDetail(filePath) {
       const container = document.getElementById('detail-pane');
       try {
-        const res = await fetch(\`/api/sidecar?path=\${encodeURIComponent(filePath)}\`);
+        const res = await fetch(\`/api/sidecar?path=\${encodeURIComponent(filePath)}\` + (getQueryParams() ? '&' + getQueryParams().substring(1) : ''));
         const data = await res.json();
 
         if (data.error) {
@@ -214651,7 +215067,7 @@ init_schema();
 
 // src/sanding/engine.ts
 var import_fs2 = require("fs");
-var path9 = __toESM(require("path"));
+var path10 = __toESM(require("path"));
 var crypto6 = __toESM(require("crypto"));
 init_js_yaml();
 init_okf();
@@ -214773,8 +215189,8 @@ ${newCode}
 // src/sanding/ast.ts
 var ts2 = __toESM(require_typescript());
 var crypto5 = __toESM(require("crypto"));
-var fs8 = __toESM(require("fs"));
-var path8 = __toESM(require("path"));
+var fs9 = __toESM(require("fs"));
+var path9 = __toESM(require("path"));
 function getAstStructuralHash(code) {
   const sourceFile = ts2.createSourceFile("file.ts", code, ts2.ScriptTarget.Latest, true);
   const nodes = [];
@@ -214793,7 +215209,7 @@ function getAstStructuralHash(code) {
   return crypto5.createHash("sha256").update(serialized).digest("hex");
 }
 function typeCheckCode(filePath, code) {
-  const absoluteFilePath = path8.resolve(filePath);
+  const absoluteFilePath = path9.resolve(filePath);
   let compilerOptions = {
     noEmit: true,
     target: ts2.ScriptTarget.ES2022,
@@ -214803,16 +215219,16 @@ function typeCheckCode(filePath, code) {
     esModuleInterop: true,
     skipLibCheck: true
   };
-  const tsconfigPath = path8.resolve("tsconfig.json");
-  if (fs8.existsSync(tsconfigPath)) {
+  const tsconfigPath = path9.resolve("tsconfig.json");
+  if (fs9.existsSync(tsconfigPath)) {
     try {
-      const tsconfigContent = fs8.readFileSync(tsconfigPath, "utf8");
+      const tsconfigContent = fs9.readFileSync(tsconfigPath, "utf8");
       const parsed = ts2.parseConfigFileTextToJson(tsconfigPath, tsconfigContent);
       if (parsed.config) {
         const parsedOptions = ts2.parseJsonConfigFileContent(
           parsed.config,
           ts2.sys,
-          path8.dirname(tsconfigPath)
+          path9.dirname(tsconfigPath)
         );
         compilerOptions = {
           ...parsedOptions.options,
@@ -214829,13 +215245,13 @@ function typeCheckCode(filePath, code) {
   const sourceFile = ts2.createSourceFile(absoluteFilePath, code, ts2.ScriptTarget.Latest, true);
   const compilerHost = {
     getSourceFile: (fileName) => {
-      const resolved = path8.resolve(fileName);
+      const resolved = path9.resolve(fileName);
       if (resolved === absoluteFilePath) {
         return sourceFile;
       }
-      if (fs8.existsSync(resolved)) {
+      if (fs9.existsSync(resolved)) {
         try {
-          const content = fs8.readFileSync(resolved, "utf8");
+          const content = fs9.readFileSync(resolved, "utf8");
           return ts2.createSourceFile(resolved, content, ts2.ScriptTarget.Latest, true);
         } catch {
           return void 0;
@@ -214851,16 +215267,16 @@ function typeCheckCode(filePath, code) {
     useCaseSensitiveFileNames: () => true,
     getNewLine: () => "\n",
     fileExists: (fileName) => {
-      const resolved = path8.resolve(fileName);
+      const resolved = path9.resolve(fileName);
       if (resolved === absoluteFilePath) return true;
-      return fs8.existsSync(resolved);
+      return fs9.existsSync(resolved);
     },
     readFile: (fileName) => {
-      const resolved = path8.resolve(fileName);
+      const resolved = path9.resolve(fileName);
       if (resolved === absoluteFilePath) return code;
-      if (fs8.existsSync(resolved)) {
+      if (fs9.existsSync(resolved)) {
         try {
-          return fs8.readFileSync(resolved, "utf8");
+          return fs9.readFileSync(resolved, "utf8");
         } catch {
           return void 0;
         }
@@ -215056,7 +215472,7 @@ var SandingEngine = class {
    * self-healing frontmatter, and bi-directional sanding.
    */
   async syncFile(sidecarPath) {
-    const resolvedSidecar = path9.resolve(sidecarPath);
+    const resolvedSidecar = path10.resolve(sidecarPath);
     if (!(0, import_fs2.existsSync)(resolvedSidecar)) {
       return {
         filePath: sidecarPath,
@@ -215118,7 +215534,7 @@ ${body}`;
         error: `Required property "target_code_file" is missing in frontmatter.`
       };
     }
-    const resolvedTarget = path9.resolve(path9.dirname(resolvedSidecar), targetCodeFile);
+    const resolvedTarget = path10.resolve(path10.dirname(resolvedSidecar), targetCodeFile);
     const cleanSidecarContent = stripSyncStateFromContent(content);
     const currentSidecarHash = sha256(cleanSidecarContent);
     const extractedCode = extractImplementationCode2(body);
@@ -215135,7 +215551,7 @@ ${body}`;
     const codeMtime = codeExists ? (0, import_fs2.statSync)(resolvedTarget).mtime : null;
     const sidecarHashRecorded = frontmatter.sync_state?.sidecar_hash || "";
     const codeHashRecorded = frontmatter.sync_state?.code_hash || "";
-    const relSidecarPath = path9.relative(path9.dirname(resolvedTarget), resolvedSidecar).replace(/\\/g, "/");
+    const relSidecarPath = path10.relative(path10.dirname(resolvedTarget), resolvedSidecar).replace(/\\/g, "/");
     const headerPrefix = `./`.startsWith(relSidecarPath) ? relSidecarPath : `./${relSidecarPath}`;
     const codeHeader = `// @sidecar ${headerPrefix}
 // This file is materialized from the sidecar specification.
@@ -215415,8 +215831,8 @@ ${body}`;
       if (!(0, import_fs2.existsSync)(currentDir)) return;
       const entries = await import_fs2.promises.readdir(currentDir, { withFileTypes: true });
       for (const entry of entries) {
-        const fullPath = path9.join(currentDir, entry.name);
-        const relativePath = path9.relative(process.cwd(), fullPath).replace(/\\/g, "/");
+        const fullPath = path10.join(currentDir, entry.name);
+        const relativePath = path10.relative(process.cwd(), fullPath).replace(/\\/g, "/");
         if (entry.isDirectory()) {
           if (entry.name === "node_modules" || entry.name === ".git" || entry.name === ".stubs" || entry.name === "dist" || entry.name === "build") {
             continue;
@@ -215436,7 +215852,7 @@ ${body}`;
    * Synchronizes the entire workspace by scanning and reconciling all specs in the specifications directory.
    */
   async syncWorkspace(specsDir) {
-    const specsPath = path9.resolve(specsDir);
+    const specsPath = path10.resolve(specsDir);
     if (!(0, import_fs2.existsSync)(specsPath)) {
       return [];
     }
@@ -215444,7 +215860,7 @@ ${body}`;
     const results = [];
     for (const file of files) {
       try {
-        const content = (0, import_fs2.readFileSync)(path9.resolve(file), "utf8");
+        const content = (0, import_fs2.readFileSync)(path10.resolve(file), "utf8");
         if (!content.trim().startsWith("---")) {
           continue;
         }

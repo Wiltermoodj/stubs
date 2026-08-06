@@ -213,6 +213,25 @@ export class GitHubClient {
   }
 
   /**
+   * Lists branches for a repository.
+   */
+  public async listBranches(owner: string, repo: string): Promise<string[]> {
+    const response = await fetch(`${this.baseUrl}/repos/${owner}/${repo}/branches?per_page=100`, {
+      method: 'GET',
+      headers: this.getHeaders(),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Failed to list branches for ${owner}/${repo} (Status ${response.status}): ${errorText}`);
+    }
+
+    const branches: any = await response.json();
+    const branchesList = Array.isArray(branches) ? branches : [];
+    return branchesList.map((b: any) => b.name);
+  }
+
+  /**
    * Reads raw file contents.
    */
   public async fetchFileContents(
@@ -347,6 +366,15 @@ export async function fetchFileContents(
 ): Promise<string> {
   const client = new GitHubClient(token);
   return await client.fetchFileContents(owner, repo, path, branch);
+}
+
+export async function listBranches(
+  owner: string,
+  repo: string,
+  token?: string,
+): Promise<string[]> {
+  const client = new GitHubClient(token);
+  return await client.listBranches(owner, repo);
 }
 
 export async function createOrUpdateFile(
