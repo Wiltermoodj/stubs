@@ -3,7 +3,9 @@
 This document outlines the sequential steps to implement the `stubs` framework as detailed in the Architecture & Design Specification.
 
 ## Phase 1: Project Initialization & Core Engine Scaffold
-- [ ] Initialize Node.js / TypeScript (ES2022+) project structure.
+- [ ] Initialize Node.js / TypeScript (ES2022+) project structure using `npm init`.
+- [ ] Install and configure testing framework (`jest`), linter (`eslint`), and formatter (`prettier`).
+- [ ] Define standardized `npm run` scripts for `build`, `test`, `lint`, `format`, and `start` in `package.json`.
 - [ ] Set up the basic CLI architecture and command router.
 - [ ] Define the core configuration schema (`.stubs/config.json`).
 - [ ] Implement the Open Knowledge Format (OKF) frontmatter parser and validator.
@@ -46,7 +48,8 @@ This document outlines the sequential steps to implement the `stubs` framework a
 - [ ] Build the Level 3 (Air-Gapped Local Vector Engine) search plugin using `sqlite-vec` and ONNX runtime.
 
 ## Phase 9: Testing, Refinement & Finalization
-- [ ] Write unit and integration tests targeting the public interfaces of deep modules.
+- [ ] Write unit and integration tests (using `jest`) targeting the public interfaces of deep modules.
 - [ ] Conduct end-to-end testing of the dual-file lifecycle state machine (Skeleton -> Specification -> Materialization -> Maintenance).
+- [ ] Execute `npm run lint` and `npm run format` to ensure adherence to style guidelines.
 - [ ] Perform performance testing and optimization (e.g., FTS5 search latency).
 - [ ] Finalize documentation and release the `stubs` CLI binary.
