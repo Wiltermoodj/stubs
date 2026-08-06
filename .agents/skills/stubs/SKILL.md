@@ -27,6 +27,17 @@ stubs <command> [options]
 
 ---
 
+## Sub-Skills Directory
+
+The `stubs` skill delegates to modular sub-skills located under `.agents/skills/stubs/sub-skills/`:
+
+1. **[Grilling](./sub-skills/grilling/SKILL.md):** Stress-test software designs using frontier-based dependency tree rounds.
+2. **[Sanding](./sub-skills/sanding/SKILL.md):** Reconcile code-to-spec or spec-to-code drift using AST structural hashes and bi-directional synchronization.
+3. **[Materialization](./sub-skills/materialization/SKILL.md):** Extract implementation blocks from sidecar specs into runnable TypeScript files using in-memory compilation.
+4. **[Auditing](./sub-skills/auditing/SKILL.md):** Perform static analysis, health checks, and graph validation across the workspace.
+
+---
+
 ## Core Commands Reference
 
 ### 1. `stubs init`
