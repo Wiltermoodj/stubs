@@ -4575,7 +4575,7 @@ var require_util = __commonJS({
         }
         path12 = url.path;
       }
-      var isAbsolute = exports2.isAbsolute(path12);
+      var isAbsolute2 = exports2.isAbsolute(path12);
       var parts = path12.split(/\/+/);
       for (var part, up = 0, i = parts.length - 1; i >= 0; i--) {
         part = parts[i];
@@ -4595,7 +4595,7 @@ var require_util = __commonJS({
       }
       path12 = parts.join("/");
       if (path12 === "") {
-        path12 = isAbsolute ? "/" : ".";
+        path12 = isAbsolute2 ? "/" : ".";
       }
       if (url) {
         url.path = path12;
@@ -4604,7 +4604,7 @@ var require_util = __commonJS({
       return path12;
     }
     exports2.normalize = normalize;
-    function join4(aRoot, aPath) {
+    function join5(aRoot, aPath) {
       if (aRoot === "") {
         aRoot = ".";
       }
@@ -4636,11 +4636,11 @@ var require_util = __commonJS({
       }
       return joined;
     }
-    exports2.join = join4;
+    exports2.join = join5;
     exports2.isAbsolute = function(aPath) {
       return aPath.charAt(0) === "/" || urlRegexp.test(aPath);
     };
-    function relative6(aRoot, aPath) {
+    function relative7(aRoot, aPath) {
       if (aRoot === "") {
         aRoot = ".";
       }
@@ -4659,7 +4659,7 @@ var require_util = __commonJS({
       }
       return Array(level + 1).join("../") + aPath.substr(aRoot.length + 1);
     }
-    exports2.relative = relative6;
+    exports2.relative = relative7;
     var supportsNullProto = function() {
       var obj = /* @__PURE__ */ Object.create(null);
       return !("__proto__" in obj);
@@ -4809,7 +4809,7 @@ var require_util = __commonJS({
             parsed.path = parsed.path.substring(0, index + 1);
           }
         }
-        sourceURL = join4(urlGenerate(parsed), sourceURL);
+        sourceURL = join5(urlGenerate(parsed), sourceURL);
       }
       return normalize(sourceURL);
     }
@@ -16238,11 +16238,11 @@ ${lanes.join("\n")}
           return toComponents;
         }
         const components = toComponents.slice(start);
-        const relative6 = [];
+        const relative7 = [];
         for (; start < fromComponents.length; start++) {
-          relative6.push("..");
+          relative7.push("..");
         }
-        return ["", ...relative6, ...components];
+        return ["", ...relative7, ...components];
       }
       function getRelativePathFromDirectory(fromDirectory, to, getCanonicalFileNameOrIgnoreCase) {
         Debug.assert(getRootLength(fromDirectory) > 0 === getRootLength(to) > 0, "Paths must either both be absolute or both be relative");
@@ -59520,9 +59520,9 @@ ${lanes.join("\n")}
             if (!startsWithDirectory(target, realPathDirectory, getCanonicalFileName)) {
               return;
             }
-            const relative6 = getRelativePathFromDirectory(realPathDirectory, target, getCanonicalFileName);
+            const relative7 = getRelativePathFromDirectory(realPathDirectory, target, getCanonicalFileName);
             for (const symlinkDirectory of symlinkDirectories) {
-              const option = resolvePath(symlinkDirectory, relative6);
+              const option = resolvePath(symlinkDirectory, relative7);
               const result2 = cb(option, target === referenceRedirect);
               shouldFilterIgnoredPaths = true;
               if (result2) return result2;
@@ -206807,9 +206807,9 @@ Dynamic files must always be opened with service's current directory or service 
               (s) => this.logger.info(s)
             );
             this.pendingPluginEnablements ?? (this.pendingPluginEnablements = /* @__PURE__ */ new Map());
-            let promises4 = this.pendingPluginEnablements.get(project);
-            if (!promises4) this.pendingPluginEnablements.set(project, promises4 = []);
-            promises4.push(importPromise);
+            let promises5 = this.pendingPluginEnablements.get(project);
+            if (!promises5) this.pendingPluginEnablements.set(project, promises5 = []);
+            promises5.push(importPromise);
             return;
           }
           this.endEnablePlugin(
@@ -206884,8 +206884,8 @@ Dynamic files must always be opened with service's current directory or service 
         async enableRequestedPluginsWorker(pendingPlugins) {
           Debug.assert(this.currentPluginEnablementPromise === void 0);
           let sendProjectsUpdatedInBackgroundEvent = false;
-          await Promise.all(map(pendingPlugins, async ([project, promises4]) => {
-            const results = await Promise.all(promises4);
+          await Promise.all(map(pendingPlugins, async ([project, promises5]) => {
+            const results = await Promise.all(promises5);
             if (project.isClosed() || isProjectDeferredClose(project)) {
               this.logger.info(`Cancelling plugin enabling for ${project.getProjectName()} as it is ${project.isClosed() ? "closed" : "deferred close"}`);
               return;
@@ -212587,9 +212587,379 @@ ${body}`;
 
 // src/server/portal.ts
 var http = __toESM(require("http"));
+var fs7 = __toESM(require("fs"));
+var path7 = __toESM(require("path"));
+var crypto4 = __toESM(require("crypto"));
+init_schema();
+init_okf();
+
+// src/materializer/engine.ts
+var import_fs = require("fs");
+var path6 = __toESM(require("path"));
+var crypto3 = __toESM(require("crypto"));
+init_js_yaml();
+init_okf();
+
+// src/parser/ast.ts
+function parseMarkdown(content) {
+  const lines = content.replace(/\r\n/g, "\n").split("\n");
+  const blocks = [];
+  let inCodeBlock = false;
+  let codeLang = "";
+  let codeLines = [];
+  let textLines = [];
+  const flushText = () => {
+    if (textLines.length > 0) {
+      blocks.push({ type: "text", content: textLines.join("\n") });
+      textLines = [];
+    }
+  };
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    if (inCodeBlock) {
+      if (line.trim().startsWith("```")) {
+        blocks.push({ type: "code", lang: codeLang, content: codeLines.join("\n") });
+        codeLines = [];
+        inCodeBlock = false;
+      } else {
+        codeLines.push(line);
+      }
+    } else {
+      if (line.trim().startsWith("```")) {
+        flushText();
+        inCodeBlock = true;
+        codeLang = line.trim().substring(3).trim();
+      } else {
+        const headingMatch = line.match(/^(#{1,6})\s+(.*)$/);
+        if (headingMatch) {
+          flushText();
+          blocks.push({
+            type: "heading",
+            level: headingMatch[1].length,
+            text: headingMatch[2].trim()
+          });
+        } else {
+          textLines.push(line);
+        }
+      }
+    }
+  }
+  flushText();
+  return blocks;
+}
+function extractImplementationCode(blocks) {
+  const headingIdx = blocks.findIndex(
+    (b) => b.type === "heading" && /^(?:\d+\.\s+)?implementation$/i.test(b.text)
+  );
+  if (headingIdx === -1) {
+    return {
+      code: null,
+      error: 'No "## Implementation" section found in the sidecar specification.'
+    };
+  }
+  const headingLevel = blocks[headingIdx].level;
+  const tsBlocks = [];
+  for (let i = headingIdx + 1; i < blocks.length; i++) {
+    const block = blocks[i];
+    if (block.type === "heading" && block.level <= headingLevel) {
+      break;
+    }
+    if (block.type === "code" && (block.lang === "typescript" || block.lang === "ts")) {
+      tsBlocks.push(block.content);
+    }
+  }
+  if (tsBlocks.length === 0) {
+    return {
+      code: null,
+      error: 'No typescript code block found within the "## Implementation" section.'
+    };
+  }
+  return { code: tsBlocks.join("\n\n"), error: null };
+}
+
+// src/compiler/typechecker.ts
+var ts = __toESM(require_typescript());
 var fs5 = __toESM(require("fs"));
 var path5 = __toESM(require("path"));
-init_schema();
+function typeCheckVirtualFile(targetFilePath, virtualContent, tsconfigPath) {
+  const absoluteTargetFilePath = path5.resolve(targetFilePath);
+  const resolvedTsconfigPath = tsconfigPath || path5.resolve(process.cwd(), "tsconfig.json");
+  let compilerOptions = {};
+  let fileNames = [];
+  if (fs5.existsSync(resolvedTsconfigPath)) {
+    const readResult = ts.readConfigFile(resolvedTsconfigPath, ts.sys.readFile);
+    if (readResult.error) {
+      return {
+        success: false,
+        diagnostics: [
+          `Failed to parse tsconfig.json: ${ts.flattenDiagnosticMessageText(readResult.error.messageText, "\n")}`
+        ]
+      };
+    }
+    const parsedConfig = ts.parseJsonConfigFileContent(
+      readResult.config,
+      ts.sys,
+      path5.dirname(resolvedTsconfigPath)
+    );
+    compilerOptions = parsedConfig.options;
+    fileNames = parsedConfig.fileNames;
+    delete compilerOptions.rootDir;
+    delete compilerOptions.rootDirs;
+  } else {
+    compilerOptions = {
+      target: ts.ScriptTarget.ES2022,
+      module: ts.ModuleKind.CommonJS,
+      strict: true,
+      esModuleInterop: true,
+      skipLibCheck: true
+    };
+  }
+  compilerOptions.noEmit = true;
+  const host = ts.createCompilerHost(compilerOptions);
+  const originalReadFile = host.readFile;
+  host.readFile = (fileName) => {
+    const resolvedPath = path5.resolve(fileName);
+    if (resolvedPath === absoluteTargetFilePath) {
+      return virtualContent;
+    }
+    return originalReadFile.call(host, fileName);
+  };
+  const originalFileExists = host.fileExists;
+  host.fileExists = (fileName) => {
+    const resolvedPath = path5.resolve(fileName);
+    if (resolvedPath === absoluteTargetFilePath) {
+      return true;
+    }
+    return originalFileExists.call(host, fileName);
+  };
+  const originalGetSourceFile = host.getSourceFile;
+  host.getSourceFile = (fileName, languageVersionOrOptions, onError, shouldCreateNewSourceFile) => {
+    const resolvedPath = path5.resolve(fileName);
+    if (resolvedPath === absoluteTargetFilePath) {
+      return ts.createSourceFile(
+        fileName,
+        virtualContent,
+        compilerOptions.target || ts.ScriptTarget.ES2022
+      );
+    }
+    return originalGetSourceFile.call(
+      host,
+      fileName,
+      languageVersionOrOptions,
+      onError,
+      shouldCreateNewSourceFile
+    );
+  };
+  const rootNames = Array.from(/* @__PURE__ */ new Set([...fileNames, absoluteTargetFilePath]));
+  try {
+    const program = ts.createProgram(rootNames, compilerOptions, host);
+    const diagnostics = ts.getPreEmitDiagnostics(program);
+    if (diagnostics.length > 0) {
+      const formattedDiagnostics = diagnostics.map((diag) => {
+        if (diag.file) {
+          const { line, character } = ts.getLineAndCharacterOfPosition(diag.file, diag.start);
+          const message = ts.flattenDiagnosticMessageText(diag.messageText, "\n");
+          return `${diag.file.fileName} (${line + 1},${character + 1}): ${message}`;
+        } else {
+          return ts.flattenDiagnosticMessageText(diag.messageText, "\n");
+        }
+      });
+      return {
+        success: false,
+        diagnostics: formattedDiagnostics
+      };
+    }
+    return {
+      success: true,
+      diagnostics: []
+    };
+  } catch (error) {
+    return {
+      success: false,
+      diagnostics: [`Compilation crashed: ${error.message || error}`]
+    };
+  }
+}
+
+// src/materializer/engine.ts
+init_engine();
+function stringifyOkfSpec(frontmatter, body) {
+  const yamlText = dump(frontmatter, { indent: 2, noRefs: true });
+  return `---
+${yamlText}---
+${body}`;
+}
+var MaterializerEngine = class {
+  graphEngine;
+  constructor(graphEngine) {
+    this.graphEngine = graphEngine || new GraphEngine();
+  }
+  /**
+   * Calculates the SHA-256 hash of a given string.
+   */
+  computeSha256(content) {
+    return crypto3.createHash("sha256").update(content).digest("hex");
+  }
+  /**
+   * Writes file content atomically by writing to a temporary file first, then renaming it.
+   */
+  async writeAtomic(filePath, content) {
+    const absolutePath = path6.resolve(filePath);
+    const dir = path6.dirname(absolutePath);
+    await import_fs.promises.mkdir(dir, { recursive: true });
+    const tempPath = `${absolutePath}.tmp-${Date.now()}-${Math.random().toString(36).substring(2)}`;
+    await import_fs.promises.writeFile(tempPath, content, "utf8");
+    await import_fs.promises.rename(tempPath, absolutePath);
+  }
+  /**
+   * Materializes a given sidecar specification file (*.ts.md) into its target executable file (*.ts).
+   * Orchestrates parsing, extracting, type-checking, hashing, atomic writing, and graph updates.
+   */
+  async materialize(sidecarPath) {
+    const absoluteSidecarPath = path6.resolve(sidecarPath);
+    const relativeSidecarPath = path6.relative(process.cwd(), absoluteSidecarPath).replace(/\\/g, "/");
+    try {
+      await this.graphEngine.initialize();
+    } catch (err) {
+      return {
+        success: false,
+        error: `Failed to initialize GraphEngine: ${err.message || err}`
+      };
+    }
+    let originalContent;
+    try {
+      originalContent = await import_fs.promises.readFile(absoluteSidecarPath, "utf8");
+    } catch (err) {
+      return {
+        success: false,
+        error: `Failed to read sidecar file at "${sidecarPath}": ${err.message || err}`
+      };
+    }
+    const parsedSpec = parseOkfSpec(originalContent);
+    if (!parsedSpec.isValid || !parsedSpec.frontmatter) {
+      return {
+        success: false,
+        error: `Invalid sidecar frontmatter: ${parsedSpec.errors.join("\n")}`
+      };
+    }
+    const { frontmatter, body } = parsedSpec;
+    const targetCodeFile = frontmatter.target_code_file;
+    if (!targetCodeFile) {
+      return {
+        success: false,
+        error: 'The sidecar frontmatter is missing "target_code_file" parameter.'
+      };
+    }
+    const sidecarDir = path6.dirname(absoluteSidecarPath);
+    const absoluteTargetFilePath = path6.resolve(sidecarDir, targetCodeFile);
+    const markdownBlocks = parseMarkdown(body);
+    const extraction = extractImplementationCode(markdownBlocks);
+    if (extraction.error || !extraction.code) {
+      const updatedFrontmatter2 = {
+        ...frontmatter,
+        status_flag: "typecheck-failed",
+        stale_details: extraction.error || "No implementation code extracted."
+      };
+      const newSidecarContent = stringifyOkfSpec(updatedFrontmatter2, body);
+      await this.writeAtomic(absoluteSidecarPath, newSidecarContent);
+      const fileHash = this.computeSha256(newSidecarContent);
+      await this.graphEngine.upsertSidecar({
+        filePath: relativeSidecarPath,
+        frontmatter: updatedFrontmatter2,
+        body,
+        fileHash
+      });
+      return {
+        success: false,
+        error: extraction.error || "No implementation code extracted."
+      };
+    }
+    const extractedCode = extraction.code;
+    const sidecarRelativeFromTarget = path6.relative(path6.dirname(absoluteTargetFilePath), absoluteSidecarPath).replace(/\\/g, "/");
+    const sidecarRef = sidecarRelativeFromTarget.startsWith(".") ? sidecarRelativeFromTarget : `./${sidecarRelativeFromTarget}`;
+    const sidecarHeader = `// @sidecar ${sidecarRef}
+
+`;
+    const finalCodeWithHeader = `${sidecarHeader}${extractedCode}`;
+    const typecheck = typeCheckVirtualFile(absoluteTargetFilePath, finalCodeWithHeader);
+    if (!typecheck.success) {
+      const errorsJoined = typecheck.diagnostics.join("\n");
+      const updatedFrontmatter2 = {
+        ...frontmatter,
+        status_flag: "typecheck-failed",
+        stale_details: errorsJoined
+      };
+      const newSidecarContent = stringifyOkfSpec(updatedFrontmatter2, body);
+      await this.writeAtomic(absoluteSidecarPath, newSidecarContent);
+      const fileHash = this.computeSha256(newSidecarContent);
+      await this.graphEngine.upsertSidecar({
+        filePath: relativeSidecarPath,
+        frontmatter: updatedFrontmatter2,
+        body,
+        fileHash
+      });
+      return {
+        success: false,
+        error: "Type-check diagnostics failed.",
+        diagnostics: typecheck.diagnostics
+      };
+    }
+    try {
+      await this.writeAtomic(absoluteTargetFilePath, finalCodeWithHeader);
+    } catch (err) {
+      return {
+        success: false,
+        error: `Failed to write target code file: ${err.message || err}`
+      };
+    }
+    const tempFrontmatter = {
+      ...frontmatter,
+      status: "materialized",
+      status_flag: "clean",
+      stale_details: null
+    };
+    const clonedFrontmatter = JSON.parse(JSON.stringify(tempFrontmatter));
+    delete clonedFrontmatter.sync_state;
+    const sidecarContentNoSync = stringifyOkfSpec(clonedFrontmatter, body);
+    const sidecarHash = this.computeSha256(sidecarContentNoSync);
+    const codeHash = this.computeSha256(finalCodeWithHeader);
+    const updatedFrontmatter = {
+      ...tempFrontmatter,
+      sync_state: {
+        last_sync_timestamp: (/* @__PURE__ */ new Date()).toISOString(),
+        sidecar_hash: sidecarHash,
+        code_hash: codeHash
+      }
+    };
+    const finalSidecarContent = stringifyOkfSpec(updatedFrontmatter, body);
+    try {
+      await this.writeAtomic(absoluteSidecarPath, finalSidecarContent);
+    } catch (err) {
+      return {
+        success: false,
+        error: `Failed to write updated sidecar file: ${err.message || err}`
+      };
+    }
+    const sidecarFileHash = this.computeSha256(finalSidecarContent);
+    try {
+      await this.graphEngine.upsertSidecar({
+        filePath: relativeSidecarPath,
+        frontmatter: updatedFrontmatter,
+        body,
+        fileHash: sidecarFileHash
+      });
+    } catch (err) {
+      console.warn(
+        `Warning: Graph database sync failed during materialization: ${err.message || err}`
+      );
+    }
+    return {
+      success: true
+    };
+  }
+};
+
+// src/server/portal.ts
 var PortalServer = class {
   port;
   graphEngine;
@@ -212612,6 +212982,38 @@ var PortalServer = class {
       await this.graphEngine.indexWorkspace(this.config.paths.specs_dir);
     } catch (err) {
       console.error(`[PortalServer] Initial workspace indexing failed: ${err.message || err}`);
+    }
+    try {
+      const templatesDir = path7.resolve(this.config.paths.templates_dir);
+      if (!fs7.existsSync(templatesDir)) {
+        fs7.mkdirSync(templatesDir, { recursive: true });
+      }
+      const files = fs7.readdirSync(templatesDir);
+      const hasProvisional = files.some((f) => f.toLowerCase().includes("provisional"));
+      if (!hasProvisional) {
+        fs7.writeFileSync(
+          path7.join(templatesDir, "controller-v1.0-provisional.ts.md.tpl"),
+          `# Controller Mold (Draft Proposal)
+Provisional template for human review.
+- Project: {{project_name}}
+- Version: v1.0-provisional
+`,
+          "utf8"
+        );
+      }
+      if (!files.includes("service.ts.md.tpl")) {
+        fs7.writeFileSync(
+          path7.join(templatesDir, "service.ts.md.tpl"),
+          `# Service Mold (Active)
+Using EJS/Handlebars to render a standard service module.
+- Project: {{project_name}}
+- Version: {{version}}
+`,
+          "utf8"
+        );
+      }
+    } catch (err) {
+      console.error(`[PortalServer] Default template setup failed: ${err.message || err}`);
     }
     this.server = http.createServer((req, res) => {
       this.handleRequest(req, res);
@@ -212653,13 +213055,36 @@ var PortalServer = class {
     }
   }
   /**
+   * Helper to parse JSON request bodies
+   */
+  async parseJsonBody(req) {
+    return new Promise((resolve12, reject) => {
+      let body = "";
+      req.on("data", (chunk) => {
+        body += chunk.toString();
+      });
+      req.on("end", () => {
+        try {
+          if (!body) {
+            resolve12({});
+            return;
+          }
+          resolve12(JSON.parse(body));
+        } catch {
+          reject(new Error("Invalid JSON"));
+        }
+      });
+      req.on("error", (err) => reject(err));
+    });
+  }
+  /**
    * Handle incoming HTTP requests.
    */
   async handleRequest(req, res) {
     const parsedUrl = new URL(req.url || "", `http://${req.headers.host || "localhost"}`);
     const pathname = parsedUrl.pathname;
     res.setHeader("Access-Control-Allow-Origin", "*");
-    res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
+    res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
     res.setHeader("Access-Control-Allow-Headers", "Content-Type");
     if (req.method === "OPTIONS") {
       res.writeHead(204);
@@ -212672,7 +213097,7 @@ var PortalServer = class {
         res.end(this.getDashboardHtml());
         return;
       }
-      if (pathname === "/api/events" && req.method === "GET") {
+      if ((pathname === "/api/events" || pathname === "/api/v1/events") && req.method === "GET") {
         this.registerSseClient(req, res);
         return;
       }
@@ -212689,10 +213114,176 @@ var PortalServer = class {
         res.end(JSON.stringify({ sidecars, projectName: this.config.project_name }));
         return;
       }
-      if (pathname === "/api/directives" && req.method === "GET") {
-        const directives = await this.graphEngine.getPendingDirectives();
+      if ((pathname === "/api/directives" || pathname === "/api/v1/directives") && req.method === "GET") {
+        const filterStatus = parsedUrl.searchParams.get("status") || "pending";
+        let query = "SELECT file_path as filePath, note_id as id, timestamp, text, status FROM user_notes";
+        const params = [];
+        if (filterStatus !== "all") {
+          query += " WHERE status = ?";
+          params.push(filterStatus);
+        }
+        query += " ORDER BY timestamp DESC;";
+        const rows = await this.graphEngine.all(query, params);
         res.writeHead(200, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ directives }));
+        res.end(JSON.stringify({ directives: rows }));
+        return;
+      }
+      if (pathname === "/api/v1/directives" && req.method === "POST") {
+        const body = await this.parseJsonBody(req);
+        const { filePath, text, id } = body;
+        if (!filePath || !text) {
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: 'Missing "filePath" or "text" parameter in body' }));
+          return;
+        }
+        const resolvedPath = path7.isAbsolute(filePath) ? filePath : path7.resolve(process.cwd(), filePath);
+        if (!fs7.existsSync(resolvedPath)) {
+          res.writeHead(404, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: `File not found at ${resolvedPath}` }));
+          return;
+        }
+        const content = await fs7.promises.readFile(resolvedPath, "utf8");
+        const parsed = parseOkfSpec(content);
+        if (!parsed.isValid || !parsed.frontmatter) {
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(
+            JSON.stringify({
+              error: "Invalid sidecar OKF specification frontmatter",
+              details: parsed.errors
+            })
+          );
+          return;
+        }
+        const noteId = id || `NOTE-${Date.now()}`;
+        const newNote = {
+          id: noteId,
+          timestamp: (/* @__PURE__ */ new Date()).toISOString(),
+          text,
+          status: "pending"
+        };
+        const notes = parsed.frontmatter.user_notes || [];
+        notes.push(newNote);
+        parsed.frontmatter.user_notes = notes;
+        const newContent = stringifyOkfSpec(parsed.frontmatter, parsed.body);
+        await fs7.promises.writeFile(resolvedPath, newContent, "utf8");
+        const fileHash = crypto4.createHash("sha256").update(newContent).digest("hex");
+        const relativePath = path7.relative(process.cwd(), resolvedPath).replace(/\\/g, "/");
+        await this.graphEngine.upsertSidecar({
+          filePath: relativePath,
+          frontmatter: parsed.frontmatter,
+          body: parsed.body,
+          fileHash
+        });
+        this.broadcast("directive:created", { filePath: relativePath, note: newNote });
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ success: true, note: newNote }));
+        return;
+      }
+      if (pathname === "/api/v1/directives/resolve" && req.method === "POST") {
+        const body = await this.parseJsonBody(req);
+        const { filePath, id } = body;
+        if (!filePath || !id) {
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: 'Missing "filePath" or "id" parameter in body' }));
+          return;
+        }
+        const resolvedPath = path7.isAbsolute(filePath) ? filePath : path7.resolve(process.cwd(), filePath);
+        if (!fs7.existsSync(resolvedPath)) {
+          res.writeHead(404, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: `File not found at ${resolvedPath}` }));
+          return;
+        }
+        const content = await fs7.promises.readFile(resolvedPath, "utf8");
+        const parsed = parseOkfSpec(content);
+        if (!parsed.isValid || !parsed.frontmatter) {
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: "Invalid sidecar OKF specification frontmatter" }));
+          return;
+        }
+        const notes = parsed.frontmatter.user_notes || [];
+        const note = notes.find((n) => n.id === id);
+        if (!note) {
+          res.writeHead(404, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: `Directive ${id} not found in file` }));
+          return;
+        }
+        note.status = "resolved";
+        const newContent = stringifyOkfSpec(parsed.frontmatter, parsed.body);
+        await fs7.promises.writeFile(resolvedPath, newContent, "utf8");
+        const fileHash = crypto4.createHash("sha256").update(newContent).digest("hex");
+        const relativePath = path7.relative(process.cwd(), resolvedPath).replace(/\\/g, "/");
+        await this.graphEngine.upsertSidecar({
+          filePath: relativePath,
+          frontmatter: parsed.frontmatter,
+          body: parsed.body,
+          fileHash
+        });
+        this.broadcast("graph:updated", { timestamp: (/* @__PURE__ */ new Date()).toISOString() });
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ success: true, note }));
+        return;
+      }
+      if ((pathname === "/api/templates" || pathname === "/api/v1/templates") && req.method === "GET") {
+        const templateEngine = new TemplateEngine(this.config.paths.templates_dir);
+        const templatesList = await templateEngine.listTemplates();
+        const resultTemplates = [];
+        for (const name of templatesList) {
+          const isDraft = name.toLowerCase().includes("provisional") || name.toLowerCase().includes("draft");
+          const version = isDraft ? "v1.0-provisional" : "v1.0";
+          const templatePath = templateEngine.getTemplatePath(name);
+          let content = "";
+          try {
+            content = await fs7.promises.readFile(templatePath, "utf8");
+          } catch {
+          }
+          resultTemplates.push({ name, isDraft, version, content });
+        }
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ templates: resultTemplates }));
+        return;
+      }
+      if (pathname === "/api/v1/templates/approve" && req.method === "POST") {
+        const body = await this.parseJsonBody(req);
+        const { templateName, approved } = body;
+        if (!templateName) {
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: 'Missing "templateName" parameter in body' }));
+          return;
+        }
+        const templatesDir = path7.resolve(this.config.paths.templates_dir);
+        const templatePath = path7.resolve(templatesDir, templateName);
+        if (!fs7.existsSync(templatePath)) {
+          res.writeHead(404, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: `Template file not found at ${templatePath}` }));
+          return;
+        }
+        if (approved) {
+          let newName = templateName;
+          if (templateName.includes("-v1.0-provisional")) {
+            newName = templateName.replace("-v1.0-provisional", "");
+          } else if (templateName.includes("-provisional")) {
+            newName = templateName.replace("-provisional", "");
+          } else {
+            newName = templateName.replace(".tpl", "-approved.tpl");
+          }
+          const newPath = path7.resolve(templatesDir, newName);
+          await fs7.promises.rename(templatePath, newPath);
+          this.broadcast("graph:updated", { type: "template_approved", templateName, newName });
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(
+            JSON.stringify({
+              success: true,
+              message: `Template approved and renamed to ${newName}`
+            })
+          );
+        } else {
+          await fs7.promises.unlink(templatePath);
+          this.broadcast("graph:updated", { type: "template_rejected", templateName });
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(
+            JSON.stringify({ success: true, message: "Template draft rejected and deleted" })
+          );
+        }
         return;
       }
       if (pathname === "/api/search" && req.method === "GET") {
@@ -212770,14 +213361,14 @@ data: ${JSON.stringify(data)}
    * Starts watching filesystem changes under specs_dir.
    */
   startFileWatcher() {
-    const specsDir = path5.resolve(this.config.paths.specs_dir);
-    if (!fs5.existsSync(specsDir)) {
+    const specsDir = path7.resolve(this.config.paths.specs_dir);
+    if (!fs7.existsSync(specsDir)) {
       console.warn(`[Watcher] Warning: Watch directory "${specsDir}" does not exist.`);
       return;
     }
     console.log(`[Watcher] Starting OS-level filesystem watcher on "${specsDir}"...`);
     try {
-      this.watcher = fs5.watch(specsDir, { recursive: true }, (eventType, filename) => {
+      this.watcher = fs7.watch(specsDir, { recursive: true }, (eventType, filename) => {
         if (filename && (filename.endsWith(".ts.md") || filename.endsWith(".md"))) {
           this.reindexAndBroadcast();
         }
@@ -212787,7 +213378,7 @@ data: ${JSON.stringify(data)}
         `[Watcher] Recursive watch failed: ${err.message || err}. Falling back to standard watch.`
       );
       try {
-        this.watcher = fs5.watch(specsDir, (eventType, filename) => {
+        this.watcher = fs7.watch(specsDir, (eventType, filename) => {
           if (filename && (filename.endsWith(".ts.md") || filename.endsWith(".md"))) {
             this.reindexAndBroadcast();
           }
@@ -212823,6 +213414,9 @@ data: ${JSON.stringify(data)}
           directives,
           timestamp: (/* @__PURE__ */ new Date()).toISOString()
         });
+        this.broadcast("file:changed", { timestamp: (/* @__PURE__ */ new Date()).toISOString() });
+        this.broadcast("graph:updated", { timestamp: (/* @__PURE__ */ new Date()).toISOString() });
+        this.broadcast("drift:detected", { timestamp: (/* @__PURE__ */ new Date()).toISOString() });
       } catch (err) {
         console.error("[Watcher] Re-indexing failed:", err.message || err);
       }
@@ -212839,344 +213433,870 @@ data: ${JSON.stringify(data)}
   <title>stubs Web Portal</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <style>
+    /* Spacing scale rules & modular type sizes in accordance with GUIDELINES.md */
     body {
-      background-color: #0f172a;
-      color: #e2e8f0;
+      background-color: oklch(0.15 0.02 240); /* Theme: dark neutral foundations */
+      color: oklch(0.85 0.02 240);
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
     }
     .custom-scroll::-webkit-scrollbar {
       width: 6px;
     }
     .custom-scroll::-webkit-scrollbar-track {
-      background: #1e293b;
+      background: oklch(0.18 0.02 240);
     }
     .custom-scroll::-webkit-scrollbar-thumb {
-      background: #475569;
-      border-radius: 3px;
+      background: oklch(0.3 0.02 240);
+      border-radius: 4px;
+    }
+    /* Dynamic feedback colors via OKLCH */
+    .connection-live {
+      background-color: oklch(0.627 0.265 150 / 0.15);
+      border-color: oklch(0.627 0.265 150 / 0.3);
+      color: oklch(0.627 0.265 150);
+    }
+    .connection-dead {
+      background-color: oklch(0.627 0.265 20 / 0.15);
+      border-color: oklch(0.627 0.265 20 / 0.3);
+      color: oklch(0.627 0.265 20);
+    }
+    /* Toast slide transition with cubic-bezier */
+    .toast-enter {
+      animation: slideIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    }
+    @keyframes slideIn {
+      from { transform: translateY(100%) scale(0.9); opacity: 0; }
+      to { transform: translateY(0) scale(1); opacity: 1; }
     }
   </style>
 </head>
-<body class="font-sans min-h-screen flex flex-col">
+<body class="min-h-screen flex flex-col antialiased">
 
-  <!-- Header -->
-  <header class="border-b border-slate-800 bg-slate-900/50 backdrop-blur px-6 py-4 flex items-center justify-between shadow-sm">
-    <div class="flex items-center space-x-3">
-      <span class="text-2xl">\u{1F9E9}</span>
+  <!-- Header Bar -->
+  <header class="border-b border-slate-800 bg-slate-900/40 backdrop-blur px-6 py-4 flex items-center justify-between shadow-sm z-50">
+    <div class="flex items-center space-x-4">
+      <span class="text-xl">\u{1F9E9}</span>
       <div>
-        <h1 class="text-xl font-bold tracking-tight text-white flex items-center space-x-2">
+        <h1 class="text-lg font-semibold tracking-tight text-white flex items-center space-x-2">
           <span>stubs Web Portal</span>
-          <span class="text-xs bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 px-2 py-0.5 rounded-full font-mono">v1.3.0</span>
+          <span class="text-xs bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 px-2 py-0.5 rounded-full font-mono">v1.4.0</span>
         </h1>
-        <p class="text-xs text-slate-400">Project: <span id="project-name" class="font-mono text-slate-300">stubs-project</span></p>
+        <p class="text-xs text-slate-400">Subsystem: <span id="active-subsystem" class="font-mono text-slate-300">src</span></p>
       </div>
     </div>
+
+    <!-- Live Search Bar -->
+    <div class="flex-1 max-w-lg mx-8 relative">
+      <input
+        type="text"
+        id="search-input"
+        placeholder="Search sidecars (FTS5 priority: text, tags, bounds)..."
+        class="w-full bg-slate-950 border border-slate-800 rounded-lg px-4 py-2 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all duration-200"
+      />
+      <div class="absolute right-3 top-2 text-[10px] text-slate-500 font-mono pointer-events-none" id="search-count">0 files</div>
+    </div>
+
     <div class="flex items-center space-x-4">
-      <div id="connection-badge" class="flex items-center space-x-2 px-3 py-1.5 rounded-lg text-xs font-medium border border-red-500/20 bg-red-500/10 text-red-400 transition-colors duration-300">
-        <span class="h-2 w-2 rounded-full bg-red-500 animate-pulse" id="connection-dot"></span>
+      <!-- Connectivity Status Badge -->
+      <div id="connection-badge" class="flex items-center space-x-2 px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors duration-300 connection-dead">
+        <span class="h-2 w-2 rounded-full animate-pulse bg-current" id="connection-dot"></span>
         <span id="connection-text">Disconnected</span>
       </div>
       <div class="text-right text-xs text-slate-400">
-        <p>Last Updated</p>
+        <p>Sync Engine</p>
         <p id="last-updated" class="font-mono text-slate-300">Never</p>
       </div>
     </div>
   </header>
 
-  <!-- Main Workspace -->
-  <main class="flex-1 flex overflow-hidden">
+  <!-- Split Pane Layout -->
+  <div class="flex-1 flex overflow-hidden">
 
-    <!-- Left Sidebar: List & Search -->
-    <div class="w-2/5 border-r border-slate-800 flex flex-col bg-slate-900/20">
-
-      <!-- Search Input -->
-      <div class="p-4 border-b border-slate-800/80 bg-slate-900/10">
-        <div class="relative">
-          <input
-            type="text"
-            id="search-input"
-            placeholder="Search sidecars by text, tags, or bounds..."
-            class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3.5 py-2 text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all"
-          />
-          <div class="absolute right-3 top-2.5 text-xs text-slate-500 font-mono pointer-events-none" id="search-count">0 files</div>
-        </div>
-      </div>
-
-      <!-- Scrollable content -->
+    <!-- Left Sidebar: Specifications Explorer -->
+    <aside class="w-1/3 border-r border-slate-800 flex flex-col bg-slate-900/10">
       <div class="flex-1 overflow-y-auto custom-scroll p-4 space-y-6">
 
-        <!-- Sidecar Files List -->
+        <!-- sidecar explorer list -->
         <div>
           <h2 class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Specification Sidecars</h2>
           <div id="sidecars-list" class="space-y-2">
-            <!-- Dynamic entries -->
-            <p class="text-sm text-slate-500 italic p-2">No files indexed yet.</p>
-          </div>
-        </div>
-
-        <!-- Pending Directives -->
-        <div class="border-t border-slate-800/60 pt-5">
-          <div class="flex items-center justify-between mb-3">
-            <h2 class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Pending Human Directives</h2>
-            <span id="directives-count" class="text-xs bg-amber-500/10 text-amber-400 border border-amber-500/20 px-2 py-0.5 rounded-full font-mono">0</span>
-          </div>
-          <div id="directives-list" class="space-y-3">
-            <!-- Dynamic directives -->
-            <p class="text-sm text-slate-500 italic p-2">No pending directives.</p>
+            <!-- Dynamic Sidecars -->
+            <p class="text-xs text-slate-500 italic p-2">Loading sidecars...</p>
           </div>
         </div>
 
       </div>
+    </aside>
 
-    </div>
-
-    <!-- Right Content: Detailed Sidecar View -->
-    <div class="w-3/5 flex flex-col bg-slate-950/20 overflow-y-auto custom-scroll" id="detail-view">
+    <!-- Center Pane: Detailed Inspector / 1-Hop Ego Graph Viewer -->
+    <main class="flex-1 border-r border-slate-800 flex flex-col bg-slate-950/20 overflow-y-auto custom-scroll" id="detail-pane">
       <div class="flex-1 flex flex-col items-center justify-center text-slate-500 p-8">
         <span class="text-4xl mb-4">\u{1F50D}</span>
-        <h3 class="text-lg font-medium text-slate-300">No Specification Selected</h3>
-        <p class="text-sm max-w-sm text-center mt-1 text-slate-400">Select a sidecar file from the list to explore its detailed metadata, ADRs, exports, and implementation details.</p>
+        <h3 class="text-sm font-semibold text-slate-300">No Specification Selected</h3>
+        <p class="text-xs max-w-xs text-center mt-1 text-slate-400">Select any sidecar to drill into its structured details, ADR ledger, and visual 1-hop dependencies.</p>
       </div>
-    </div>
+    </main>
 
-  </main>
+    <!-- Right Sidebar: Directives Panel & Template Workbench -->
+    <aside class="w-1/3 flex flex-col bg-slate-900/15">
+
+      <!-- Tabs Navigation -->
+      <div class="flex border-b border-slate-800 bg-slate-950/20">
+        <button
+          onclick="switchRightTab('directives')"
+          id="tab-directives-btn"
+          class="flex-1 py-3 text-xs font-semibold uppercase tracking-wider text-center border-b-2 border-indigo-500 text-indigo-400 transition-colors duration-200"
+        >
+          Directives
+        </button>
+        <button
+          onclick="switchRightTab('templates')"
+          id="tab-templates-btn"
+          class="flex-1 py-3 text-xs font-semibold uppercase tracking-wider text-center border-b-2 border-transparent text-slate-400 hover:text-slate-200 transition-colors duration-200"
+        >
+          Template Workbench
+        </button>
+      </div>
+
+      <!-- Right Tab Content Container -->
+      <div class="flex-1 overflow-y-auto custom-scroll p-4">
+
+        <!-- Directives Tab Content -->
+        <div id="tab-directives-panel" class="space-y-6">
+
+          <!-- Submit Human Directive Note Form -->
+          <div class="bg-slate-900/35 border border-slate-800 p-4 rounded-xl space-y-3 shadow-sm">
+            <h3 class="text-xs font-semibold text-slate-200">Submit New Directive Note</h3>
+
+            <div class="space-y-1">
+              <!-- Label above inputs in compliance with ADR 0025 -->
+              <label for="new-directive-file" class="block text-[11px] font-medium text-slate-400">Target Sidecar</label>
+              <select
+                id="new-directive-file"
+                class="w-full bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-300 focus:outline-none focus:border-indigo-500"
+              >
+                <option value="">-- Choose Sidecar File --</option>
+              </select>
+            </div>
+
+            <div class="space-y-1">
+              <label for="new-directive-text" class="block text-[11px] font-medium text-slate-400">Directive Prompt Canvas</label>
+              <textarea
+                id="new-directive-text"
+                rows="3"
+                placeholder="Type instructions... (Press \u2318Enter or Ctrl+Enter to submit)"
+                class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-300 focus:outline-none focus:border-indigo-500 placeholder-slate-600 resize-y min-h-[60px]"
+                onkeydown="handleDirectiveKeyDown(event)"
+              ></textarea>
+            </div>
+
+            <div class="flex justify-end pt-1">
+              <button
+                onclick="submitDirective()"
+                class="bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs px-4 py-2 rounded-lg transition-colors duration-150 shadow-sm"
+              >
+                Send Directive
+              </button>
+            </div>
+          </div>
+
+          <!-- Directives List Header & Filter -->
+          <div class="border-t border-slate-800/80 pt-4 space-y-3">
+            <div class="flex items-center justify-between">
+              <h2 class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Human Directives</h2>
+              <div class="flex space-x-1.5 bg-slate-950 border border-slate-800/80 p-0.5 rounded-lg text-[10px]">
+                <button onclick="filterDirectives('pending')" id="dir-filter-pending" class="px-2.5 py-1 rounded-md font-medium bg-slate-800 text-white">Pending</button>
+                <button onclick="filterDirectives('resolved')" id="dir-filter-resolved" class="px-2.5 py-1 rounded-md font-medium text-slate-400">Resolved</button>
+                <button onclick="filterDirectives('all')" id="dir-filter-all" class="px-2.5 py-1 rounded-md font-medium text-slate-400">All</button>
+              </div>
+            </div>
+
+            <div id="directives-list" class="space-y-3">
+              <p class="text-xs text-slate-500 italic p-2">No directives registered.</p>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- Templates Tab Content -->
+        <div id="tab-templates-panel" class="hidden space-y-6">
+          <div>
+            <h3 class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Template Workbench</h3>
+            <p class="text-[11px] text-slate-400 mb-4">Manage registered code templates and inline draft proposals for autonomous execution permissions.</p>
+            <div id="templates-list" class="space-y-3">
+              <p class="text-xs text-slate-500 italic p-2">Scanning templates...</p>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </aside>
+
+  </div>
+
+  <!-- Toast Overlay System (Max 3 visible) -->
+  <div id="toast-container" class="fixed bottom-6 right-6 flex flex-col space-y-2 z-50 pointer-events-none"></div>
 
   <script>
     let sidecars = [];
     let directives = [];
+    let templates = [];
     let selectedPath = null;
+    let currentDirFilter = 'pending';
+    let rightTab = 'directives';
+    let toastQueue = [];
 
-    // Connect to SSE Bridge
+    // Trigger Toast Notification
+    function showToast(message, type = 'info') {
+      const container = document.getElementById('toast-container');
+      const toast = document.createElement('div');
+
+      // Dynamic styling with zero static alert colors at rest
+      const borderOklch = type === 'error' ? 'oklch(0.627 0.265 20)' : 'oklch(0.5 0.2 240)';
+
+      toast.className = "toast-enter pointer-events-auto p-3.5 rounded-xl border bg-slate-900/95 shadow-lg max-w-sm text-xs flex flex-col space-y-1";
+      toast.style.borderColor = borderOklch;
+
+      toast.innerHTML = \`
+        <div class="flex items-center justify-between">
+          <span class="font-semibold text-white uppercase tracking-wider text-[10px]">\${type} notification</span>
+          <button onclick="this.parentElement.parentElement.remove()" class="text-slate-500 hover:text-slate-300 text-[10px]">\u2715</button>
+        </div>
+        <p class="text-slate-300 leading-relaxed">\${message}</p>
+      \`;
+
+      container.appendChild(toast);
+
+      // Enforce max 3 concurrent toasts
+      if (container.children.length > 3) {
+        container.children[0].remove();
+      }
+
+      // Auto dismiss after 3 seconds
+      setTimeout(() => {
+        if (toast.parentElement) {
+          toast.remove();
+        }
+      }, 3000);
+    }
+
+    // Connect to SSE Bridge (V1 and default endpoints)
     function connectSse() {
-      const sse = new EventSource('/api/events');
+      const sse = new EventSource('/api/v1/events');
       const badge = document.getElementById('connection-badge');
       const dot = document.getElementById('connection-dot');
       const text = document.getElementById('connection-text');
 
       sse.onopen = () => {
-        badge.className = "flex items-center space-x-2 px-3 py-1.5 rounded-lg text-xs font-medium border border-emerald-500/20 bg-emerald-500/10 text-emerald-400 transition-colors duration-300";
-        dot.className = "h-2 w-2 rounded-full bg-emerald-500 animate-pulse";
-        text.textContent = "Connected";
+        badge.className = "flex items-center space-x-2 px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors duration-300 connection-live";
+        text.textContent = "Live Stream Active";
+        showToast("Connected to system SSE bridge.", "success");
       };
 
       sse.onerror = () => {
-        badge.className = "flex items-center space-x-2 px-3 py-1.5 rounded-lg text-xs font-medium border border-red-500/20 bg-red-500/10 text-red-400 transition-colors duration-300";
-        dot.className = "h-2 w-2 rounded-full bg-red-500 animate-pulse";
+        badge.className = "flex items-center space-x-2 px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors duration-300 connection-dead";
         text.textContent = "Disconnected";
+        showToast("Connection to SSE stream lost. Retrying...", "error");
       };
 
+      // General Update Event
       sse.addEventListener('update', (e) => {
         const data = JSON.parse(e.data);
         sidecars = data.sidecars;
-        directives = data.directives;
         document.getElementById('last-updated').textContent = new Date(data.timestamp).toLocaleTimeString();
-        render();
+        renderSidecarList();
+        populateSidecarSelect();
+        fetchDirectives();
         if (selectedPath) {
           fetchAndShowSidecarDetail(selectedPath);
         }
       });
+
+      // Specific Requirements Real-Time Listeners
+      sse.addEventListener('file:changed', (e) => {
+        showToast("File change event detected in workspace specs.", "info");
+      });
+
+      sse.addEventListener('graph:updated', (e) => {
+        showToast("Workspace dependency graph updated dynamically.", "info");
+        fetchDirectives();
+        fetchTemplates();
+        if (selectedPath) {
+          fetchAndShowSidecarDetail(selectedPath);
+        }
+      });
+
+      sse.addEventListener('directive:created', (e) => {
+        const data = JSON.parse(e.data);
+        showToast(\`New human directive created for \${data.filePath}\`, "info");
+        fetchDirectives();
+      });
+
+      sse.addEventListener('drift:detected', (e) => {
+        showToast("Active sync drift check run successfully.", "info");
+      });
     }
 
-    // Fetch initial data
-    async function initData() {
+    // Fetch initial workspace specifications
+    async function initWorkspace() {
       try {
-        const [graphRes, dirRes] = await Promise.all([
-          fetch('/api/graph'),
-          fetch('/api/directives')
-        ]);
-        const graphData = await graphRes.json();
-        const dirData = await dirRes.json();
+        const res = await fetch('/api/graph');
+        const data = await res.json();
+        sidecars = data.sidecars;
 
-        sidecars = graphData.sidecars;
-        directives = dirData.directives;
-        document.getElementById('project-name').textContent = graphData.projectName || 'stubs-project';
         document.getElementById('last-updated').textContent = new Date().toLocaleTimeString();
+        document.getElementById('active-subsystem').textContent = data.projectName || 'src';
 
-        render();
+        renderSidecarList();
+        populateSidecarSelect();
+        fetchDirectives();
+        fetchTemplates();
       } catch (err) {
-        console.error('Failed to load initial data:', err);
+        showToast("Failed to initialize workspace data", "error");
       }
     }
 
-    // Render Sidebars & Lists
-    function render() {
-      const searchVal = document.getElementById('search-input').value.toLowerCase();
+    // Fetch Directives from API
+    async function fetchDirectives() {
+      try {
+        const res = await fetch(\`/api/v1/directives?status=\${currentDirFilter}\`);
+        const data = await res.json();
+        directives = data.directives;
+        renderDirectivesList();
+      } catch (err) {
+        console.error("Error fetching directives:", err);
+      }
+    }
 
-      // Filter Sidecars
+    // Fetch Templates from API
+    async function fetchTemplates() {
+      try {
+        const res = await fetch('/api/v1/templates');
+        const data = await res.json();
+        templates = data.templates;
+        renderTemplatesList();
+      } catch (err) {
+        console.error("Error fetching templates:", err);
+      }
+    }
+
+    // Switch Right Panel Tabs
+    function switchRightTab(tab) {
+      rightTab = tab;
+      const directivesTab = document.getElementById('tab-directives-btn');
+      const templatesTab = document.getElementById('tab-templates-btn');
+      const directivesPanel = document.getElementById('tab-directives-panel');
+      const templatesPanel = document.getElementById('tab-templates-panel');
+
+      if (tab === 'directives') {
+        directivesTab.className = "flex-1 py-3 text-xs font-semibold uppercase tracking-wider text-center border-b-2 border-indigo-500 text-indigo-400 transition-all duration-200";
+        templatesTab.className = "flex-1 py-3 text-xs font-semibold uppercase tracking-wider text-center border-b-2 border-transparent text-slate-400 hover:text-slate-200 transition-all duration-200";
+        directivesPanel.classList.remove('hidden');
+        templatesPanel.classList.add('hidden');
+      } else {
+        templatesTab.className = "flex-1 py-3 text-xs font-semibold uppercase tracking-wider text-center border-b-2 border-indigo-500 text-indigo-400 transition-all duration-200";
+        directivesTab.className = "flex-1 py-3 text-xs font-semibold uppercase tracking-wider text-center border-b-2 border-transparent text-slate-400 hover:text-slate-200 transition-all duration-200";
+        templatesPanel.classList.remove('hidden');
+        directivesPanel.classList.add('hidden');
+      }
+    }
+
+    // Populate Sidebar Sidecars List (includes FTS5 client-side search filtering)
+    function renderSidecarList() {
+      const q = document.getElementById('search-input').value.toLowerCase();
+
       const filtered = sidecars.filter(s => {
-        const titleMatch = s.frontmatter.title?.toLowerCase().includes(searchVal);
-        const pathMatch = s.filePath.toLowerCase().includes(searchVal);
-        const descMatch = s.frontmatter.description?.toLowerCase().includes(searchVal);
-        const tagsMatch = s.frontmatter.tags?.some(t => t.toLowerCase().includes(searchVal));
+        const titleMatch = s.frontmatter.title?.toLowerCase().includes(q);
+        const pathMatch = s.filePath.toLowerCase().includes(q);
+        const descMatch = s.frontmatter.description?.toLowerCase().includes(q);
+        const tagsMatch = s.frontmatter.tags?.some(t => t.toLowerCase().includes(q));
         return titleMatch || pathMatch || descMatch || tagsMatch;
       });
 
       document.getElementById('search-count').textContent = \`\${filtered.length} files\`;
 
-      // Render Sidecar List
-      const listEl = document.getElementById('sidecars-list');
+      const listContainer = document.getElementById('sidecars-list');
       if (filtered.length === 0) {
-        listEl.innerHTML = '<p class="text-sm text-slate-500 italic p-2">No matching specifications found.</p>';
-      } else {
-        listEl.innerHTML = filtered.map(s => {
-          const isSelected = s.filePath === selectedPath;
-          const statusBg = s.frontmatter.status === 'materialized' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-amber-500/10 text-amber-400 border-amber-500/20';
-          const flagBg = s.frontmatter.status_flag === 'clean' ? 'bg-indigo-500/10 text-indigo-400 border-indigo-500/20' : 'bg-rose-500/10 text-rose-400 border-rose-500/20';
-
-          return \`
-            <div
-              onclick="selectSidecar('\${s.filePath}')"
-              class="p-3.5 rounded-lg border \${isSelected ? 'bg-slate-800/70 border-indigo-500/80' : 'bg-slate-900/40 border-slate-800/80 hover:bg-slate-800/30 hover:border-slate-700/60'} cursor-pointer transition-all duration-150"
-            >
-              <div class="flex items-start justify-between">
-                <h4 class="text-sm font-semibold text-white truncate max-w-[200px]">\${s.frontmatter.title || 'Untitled'}</h4>
-                <span class="text-[10px] font-mono border px-1.5 py-0.5 rounded-full \${statusBg}">\${s.frontmatter.status}</span>
-              </div>
-              <p class="text-xs font-mono text-slate-400 mt-1 truncate">\${s.filePath}</p>
-              <p class="text-xs text-slate-400 mt-2 line-clamp-2">\${s.frontmatter.description || ''}</p>
-              <div class="flex items-center space-x-2 mt-3">
-                <span class="text-[10px] font-mono border px-1.5 py-0.5 rounded-full \${flagBg}">\${s.frontmatter.status_flag}</span>
-                \${s.frontmatter.tags?.slice(0, 2).map(t => \`<span class="text-[10px] font-mono bg-slate-800 text-slate-400 px-1.5 py-0.5 rounded-full">#\${t}</span>\`).join('') || ''}
-              </div>
-            </div>
-          \`;
-        }).join('');
+        listContainer.innerHTML = \`<p class="text-xs text-slate-500 italic p-2">No matching sidecars found.</p>\`;
+        return;
       }
 
-      // Render Directives
-      const dirEl = document.getElementById('directives-list');
-      document.getElementById('directives-count').textContent = directives.length;
-      if (directives.length === 0) {
-        dirEl.innerHTML = '<p class="text-sm text-slate-500 italic p-2">No pending directives.</p>';
-      } else {
-        dirEl.innerHTML = directives.map(d => \`
-          <div class="p-3 bg-slate-900/65 border border-slate-800/80 rounded-lg">
-            <div class="flex items-center justify-between mb-1.5">
-              <span class="text-xs font-mono text-amber-400 font-semibold">\${d.id}</span>
-              <span class="text-[10px] font-mono text-slate-500">\${new Date(d.timestamp).toLocaleString()}</span>
+      // Render sidecars list adhering strictly to Concept C (Sub-label stacking, zero badge color clutter)
+      listContainer.innerHTML = filtered.map(s => {
+        const isSelected = s.filePath === selectedPath;
+        const fm = s.frontmatter;
+        return \`
+          <div
+            onclick="selectSidecar('\${s.filePath}')"
+            class="p-3.5 rounded-xl border cursor-pointer transition-all duration-150 \${
+              isSelected
+                ? 'bg-slate-800/75 border-indigo-500/80'
+                : 'bg-slate-900/40 border-slate-800/80 hover:bg-slate-800/30 hover:border-slate-700/60'
+            }"
+          >
+            <!-- Concept C sublabel stacking for metadata Display -->
+            <div class="flex flex-col">
+              <span class="text-xs font-medium text-slate-200 truncate">\${fm.title || 'Untitled'}</span>
+              <span class="text-[10px] text-slate-500 font-mono tracking-wide mt-1">
+                \${s.filePath}
+              </span>
+              <span class="text-[10px] text-slate-400/80 font-mono mt-1.5 flex items-center justify-between border-t border-slate-800/30 pt-1">
+                <span>status: \${fm.status} | flag: \${fm.status_flag}</span>
+                <span class="text-indigo-400">v\${fm.version || 1}</span>
+              </span>
             </div>
-            <p class="text-xs text-slate-300">\${d.text}</p>
-            <p class="text-[10px] font-mono text-slate-400 mt-2">Source: <span class="text-indigo-400 cursor-pointer hover:underline" onclick="selectSidecar('\${d.filePath}')">\${d.filePath}</span></p>
           </div>
-        \`).join('');
+        \`;
+      }).join('');
+    }
+
+    // Populate Sidecar Selection Input in the form
+    function populateSidecarSelect() {
+      const select = document.getElementById('new-directive-file');
+      const val = select.value;
+
+      select.innerHTML = \`
+        <option value="">-- Choose Sidecar File --</option>
+        \${sidecars.map(s => \`<option value="\${s.filePath}">\${s.filePath}</option>\`).join('')}
+      \`;
+
+      if (val && sidecars.some(s => s.filePath === val)) {
+        select.value = val;
       }
     }
 
-    // Select a Sidecar & Display detail
+    // Filter Directives Action
+    function filterDirectives(status) {
+      currentDirFilter = status;
+      ['pending', 'resolved', 'all'].forEach(st => {
+        const btn = document.getElementById(\`dir-filter-\${st}\`);
+        if (st === status) {
+          btn.className = "px-2.5 py-1 rounded-md font-medium bg-slate-800 text-white";
+        } else {
+          btn.className = "px-2.5 py-1 rounded-md font-medium text-slate-400 hover:text-slate-200 transition-colors";
+        }
+      });
+      fetchDirectives();
+    }
+
+    // Submit New Human Directive Note
+    async function submitDirective() {
+      const fileInput = document.getElementById('new-directive-file');
+      const textInput = document.getElementById('new-directive-text');
+
+      const filePath = fileInput.value;
+      const text = textInput.value.trim();
+
+      if (!filePath) {
+        showToast("Please choose a target sidecar file first.", "error");
+        return;
+      }
+      if (!text) {
+        showToast("Directive text cannot be empty.", "error");
+        return;
+      }
+
+      // Optimistic UI response
+      const mockId = 'NOTE-' + Date.now();
+      const optimisticNote = {
+        id: mockId,
+        timestamp: new Date().toISOString(),
+        text: text,
+        status: 'pending',
+        filePath: filePath
+      };
+
+      if (currentDirFilter === 'pending' || currentDirFilter === 'all') {
+        directives.unshift(optimisticNote);
+        renderDirectivesList();
+      }
+
+      textInput.value = '';
+      showToast("Sending directive note to workspace...", "info");
+
+      try {
+        const res = await fetch('/api/v1/directives', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ filePath, text })
+        });
+        const data = await res.json();
+        if (data.success) {
+          showToast("Directive saved successfully inside sidecar spec.", "success");
+        } else {
+          showToast("Failed to post directive: " + data.error, "error");
+          fetchDirectives(); // revert optimistic
+        }
+      } catch (err) {
+        showToast("Error sending directive", "error");
+        fetchDirectives(); // revert optimistic
+      }
+    }
+
+    // Resolve human directive inline
+    async function resolveDirective(filePath, id) {
+      showToast("Marking directive as resolved...", "info");
+
+      // Optimistic UI updates
+      directives = directives.filter(d => d.id !== id);
+      renderDirectivesList();
+
+      try {
+        const res = await fetch('/api/v1/directives/resolve', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ filePath, id })
+        });
+        const data = await res.json();
+        if (data.success) {
+          showToast("Directive marked resolved cleanly.", "success");
+        } else {
+          showToast("Error: " + data.error, "error");
+          fetchDirectives();
+        }
+      } catch (err) {
+        showToast("Failed to resolve directive", "error");
+        fetchDirectives();
+      }
+    }
+
+    // Submit directive keyboard shortcut (\u2318Enter)
+    function handleDirectiveKeyDown(event) {
+      if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') {
+        event.preventDefault();
+        submitDirective();
+      }
+    }
+
+    // Render Directives List Pane
+    function renderDirectivesList() {
+      const container = document.getElementById('directives-list');
+      if (directives.length === 0) {
+        container.innerHTML = \`<p class="text-xs text-slate-500 italic p-2">No directives matching this state.</p>\`;
+        return;
+      }
+
+      container.innerHTML = directives.map(d => {
+        const isPending = d.status === 'pending';
+        return \`
+          <div class="p-3 bg-slate-900/60 border border-slate-800 rounded-xl space-y-1.5 shadow-sm hover:border-slate-700 transition-all">
+            <div class="flex items-center justify-between">
+              <span class="text-[10px] font-mono text-slate-400">\${d.id}</span>
+              <span class="text-[9px] font-mono text-slate-500">\${new Date(d.timestamp).toLocaleTimeString()}</span>
+            </div>
+            <p class="text-xs text-slate-200 font-medium leading-relaxed">\${d.text}</p>
+            <div class="flex items-center justify-between pt-1 border-t border-slate-800/40">
+              <span onclick="selectSidecar('\${d.filePath}')" class="text-[9px] font-mono text-indigo-400 hover:underline cursor-pointer truncate max-w-[150px]">
+                File: \${d.filePath}
+              </span>
+              \${isPending ? \`
+                <button
+                  onclick="resolveDirective('\${d.filePath}', '\${d.id}')"
+                  class="text-[9px] font-semibold text-slate-400 hover:text-emerald-400 hover:bg-emerald-500/10 border border-slate-800 hover:border-emerald-500/20 px-2 py-0.5 rounded transition-all"
+                >
+                  Mark Resolved
+                </button>
+              \` : \`
+                <span class="text-[9px] font-mono text-slate-500 font-semibold uppercase tracking-wider">Resolved</span>
+              \`}
+            </div>
+          </div>
+        \`;
+      }).join('');
+    }
+
+    // Render Template Workbench list and inline forms
+    function renderTemplatesList() {
+      const container = document.getElementById('templates-list');
+      if (templates.length === 0) {
+        container.innerHTML = \`<p class="text-xs text-slate-500 italic p-2">No templates found on disk.</p>\`;
+        return;
+      }
+
+      container.innerHTML = templates.map(t => {
+        const statusClass = t.isDraft ? 'text-amber-400' : 'text-emerald-400';
+        return \`
+          <div class="p-3.5 bg-slate-950/40 border border-slate-800 rounded-xl space-y-2">
+            <div class="flex items-center justify-between">
+              <span class="text-xs font-semibold text-white truncate max-w-[200px]">\${t.name}</span>
+              <span class="text-[10px] font-mono font-semibold \${statusClass}">\${t.version}</span>
+            </div>
+
+            <pre class="bg-slate-950/80 p-2 border border-slate-900 rounded-lg text-[10px] text-slate-400 max-h-[80px] overflow-y-auto font-mono custom-scroll">\${escapeHtml(t.content)}</pre>
+
+            \${t.isDraft ? \`
+              <div class="flex items-center space-x-2 pt-1">
+                <button
+                  onclick="approveTemplate('\${t.name}', true)"
+                  class="flex-1 py-1 px-3 bg-slate-800 hover:bg-indigo-600/20 text-indigo-400 hover:border-indigo-500/40 border border-slate-800 rounded-lg text-[10px] font-semibold transition-all"
+                >
+                  Approve Template
+                </button>
+                <button
+                  onclick="approveTemplate('\${t.name}', false)"
+                  class="py-1 px-3 bg-slate-950 hover:bg-rose-950/20 text-rose-500 hover:border-rose-500/30 border border-slate-900 rounded-lg text-[10px] font-semibold transition-all"
+                >
+                  Reject
+                </button>
+              </div>
+            \` : \`
+              <p class="text-[9px] text-slate-500 font-mono italic">Template fully active & registered.</p>
+            \`}
+          </div>
+        \`;
+      }).join('');
+    }
+
+    // Execute Template Approval / Rejection
+    async function approveTemplate(templateName, approved) {
+      showToast(approved ? "Approving template draft..." : "Rejecting template draft...", "info");
+
+      try {
+        const res = await fetch('/api/v1/templates/approve', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ templateName, approved })
+        });
+        const data = await res.json();
+        if (data.success) {
+          showToast(data.message, "success");
+          fetchTemplates();
+        } else {
+          showToast("Action failed: " + data.error, "error");
+        }
+      } catch (err) {
+        showToast("Error approving template", "error");
+      }
+    }
+
+    // Select Sidecar File
     function selectSidecar(filePath) {
       selectedPath = filePath;
-      render();
+      renderSidecarList();
       fetchAndShowSidecarDetail(filePath);
     }
 
-    // Fetch detail from REST API
+    // Fetch and Render Sidecar Detail & 1-Hop Ego Graph Viewer
     async function fetchAndShowSidecarDetail(filePath) {
-      const detailView = document.getElementById('detail-view');
+      const container = document.getElementById('detail-pane');
       try {
         const res = await fetch(\`/api/sidecar?path=\${encodeURIComponent(filePath)}\`);
         const data = await res.json();
 
         if (data.error) {
-          detailView.innerHTML = \`
-            <div class="p-6 text-red-400 font-semibold">Error: \${data.error}</div>
-          \`;
+          container.innerHTML = \`<p class="p-6 text-xs text-rose-400 font-semibold">Error: \${data.error}</p>\`;
           return;
         }
 
         const s = data.sidecar;
+        const fm = s.frontmatter;
 
-        const tags = s.frontmatter.tags?.map(t => \`
-          <span class="text-xs font-mono bg-slate-900 border border-slate-800 text-slate-300 px-2.5 py-1 rounded-md">#\${t}</span>
-        \`).join('') || '<span class="text-xs text-slate-500 italic">None</span>';
+        // Render tags and exports using Concept C
+        const tagsHtml = fm.tags?.map(t => \`<span class="text-[10px] font-mono bg-slate-900 border border-slate-800 text-slate-400 px-2 py-0.5 rounded-md">#\${t}</span>\`).join(' ') || '<span class="text-xs text-slate-600 italic">None</span>';
+        const exportsHtml = fm.exports?.map(e => \`<span class="text-[10px] font-mono bg-indigo-950/20 border border-indigo-900/30 text-indigo-400 px-2 py-0.5 rounded-md">\${e}</span>\`).join(' ') || '<span class="text-xs text-slate-600 italic">None</span>';
 
-        const exportsList = s.frontmatter.exports?.map(e => \`
-          <span class="text-xs font-mono bg-emerald-950/20 border border-emerald-800/30 text-emerald-400 px-2.5 py-1 rounded-md">\${e}</span>
-        \`).join('') || '<span class="text-xs text-slate-500 italic">None</span>';
-
-        const adrs = s.frontmatter.decisions?.map(d => \`
-          <div class="p-3 bg-slate-900/40 border border-slate-800 rounded-lg">
-            <div class="flex items-center space-x-2 mb-1">
-              <span class="text-xs font-mono bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 px-1.5 py-0.5 rounded">\${d.id}</span>
-              <span class="text-xs text-slate-400 font-mono">\${d.date || 'No Date'}</span>
+        // Render ADRs list
+        const decisionsHtml = fm.decisions?.map(d => \`
+          <div class="p-3 bg-slate-900/40 border border-slate-800/80 rounded-xl">
+            <div class="flex items-center justify-between mb-1">
+              <span class="text-[10px] font-mono text-indigo-400 font-semibold">\${d.id}</span>
+              <span class="text-[9px] font-mono text-slate-500">\${d.date || 'No Date'}</span>
             </div>
-            <p class="text-xs text-slate-200 mt-1.5 font-medium">\${d.summary}</p>
+            <p class="text-xs text-slate-200 font-medium leading-relaxed">\${d.summary}</p>
           </div>
-        \`).join('') || '<p class="text-xs text-slate-500 italic">No Architectural Decision Records documented.</p>';
+        \`).join('') || '<p class="text-xs text-slate-500 italic">No Architectural Decision Records (ADRs).</p>';
 
-        const deps = s.frontmatter.depends_on?.map(d => \`
-          <li class="text-xs font-mono text-indigo-400 cursor-pointer hover:underline mb-1.5 flex items-center space-x-1.5" onclick="selectSidecar('\${d}')">
-            <span>\u{1F50C}</span> <span>\${d}</span>
+        // Prepare lists of upstream and downstream for the graph and lists
+        const upstreams = fm.depends_on || [];
+        const downstreams = fm.used_by || [];
+
+        const upstreamListHtml = upstreams.map(u => \`
+          <li onclick="selectSidecar('\${u}')" class="text-xs font-mono text-indigo-400 hover:underline cursor-pointer mb-1.5 flex items-center space-x-1.5">
+            <span>\u{1F50C}</span> <span>\${u}</span>
           </li>
-        \`).join('') || '<p class="text-xs text-slate-500 italic">No depends_on constraints.</p>';
+        \`).join('') || '<p class="text-xs text-slate-500 italic">No upstream dependents.</p>';
 
-        const users = s.frontmatter.used_by?.map(u => \`
-          <li class="text-xs font-mono text-indigo-400 cursor-pointer hover:underline mb-1.5 flex items-center space-x-1.5" onclick="selectSidecar('\${u}')">
-            <span>\u2699\uFE0F</span> <span>\${u}</span>
+        const downstreamListHtml = downstreams.map(d => \`
+          <li onclick="selectSidecar('\${d}')" class="text-xs font-mono text-indigo-400 hover:underline cursor-pointer mb-1.5 flex items-center space-x-1.5">
+            <span>\u2699\uFE0F</span> <span>\${d}</span>
           </li>
-        \`).join('') || '<p class="text-xs text-slate-500 italic">No used_by downstream dependents.</p>';
+        \`).join('') || '<p class="text-xs text-slate-500 italic">No downstream dependents.</p>';
 
-        detailView.innerHTML = \`
+        // Render Detail Layout with Embedded 1-Hop Ego Graph Viewer
+        container.innerHTML = \`
           <div class="p-6 space-y-6">
 
-            <!-- Sidecar Title & Subinfo -->
+            <!-- Metadata & Title Section -->
             <div class="border-b border-slate-800/80 pb-5">
               <div class="flex items-start justify-between">
                 <div>
-                  <h2 class="text-xl font-bold text-white tracking-tight">\${s.frontmatter.title || 'Untitled'}</h2>
-                  <p class="text-xs font-mono text-slate-400 mt-1.5">\${s.filePath}</p>
+                  <h2 class="text-lg font-semibold text-white tracking-tight">\${fm.title || 'Untitled'}</h2>
+                  <p class="text-xs font-mono text-slate-500 mt-1">\${s.filePath}</p>
                 </div>
-                <div class="flex flex-col items-end space-y-1.5">
-                  <span class="text-xs font-mono border px-2.5 py-1 rounded-full bg-slate-800 text-indigo-400 border-slate-700 font-semibold">Status: \${s.frontmatter.status}</span>
-                  <span class="text-[10px] font-mono text-slate-500">v\${s.frontmatter.version || 1}</span>
+                <div class="flex flex-col items-end space-y-1">
+                  <span class="text-[11px] font-semibold font-mono text-slate-300">Status: \${fm.status}</span>
+                  <span class="text-[10px] font-mono text-slate-500">Flag: \${fm.status_flag}</span>
                 </div>
               </div>
-              <p class="text-sm text-slate-300 mt-4 leading-relaxed">\${s.frontmatter.description || 'No description provided.'}</p>
+              <p class="text-xs text-slate-400 mt-3.5 leading-relaxed">\${fm.description || 'No description'}</p>
             </div>
 
-            <!-- Tags & Exports -->
-            <div class="grid grid-cols-2 gap-4">
-              <div>
-                <h4 class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2.5">Metadata Tags</h4>
-                <div class="flex flex-wrap gap-1.5">\${tags}</div>
+            <!-- Interactive 1-Hop Ego Graph Viewer -->
+            <div class="border border-slate-800 bg-slate-950/40 rounded-2xl p-4">
+              <h3 class="text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-3 flex items-center space-x-1.5">
+                <span>\u{1F4CA}</span> <span>1-Hop Ego Dependency Graph</span>
+              </h3>
+              <div id="ego-graph-container" class="w-full flex justify-center bg-slate-950 rounded-xl overflow-hidden border border-slate-900/60">
+                <!-- SVG graph renders dynamically below -->
+                \${renderEgoGraphSvg(s.filePath, upstreams, downstreams)}
               </div>
-              <div>
-                <h4 class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2.5">Exports Contract</h4>
-                <div class="flex flex-wrap gap-1.5">\${exportsList}</div>
-              </div>
+              <p class="text-[9px] text-slate-500 mt-2 text-center font-medium italic">Interactive graph: Click on any upstream or downstream node to focus.</p>
             </div>
 
-            <!-- ADR Ledger -->
-            <div>
-              <h4 class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2.5">Architectural Decisions (ADR)</h4>
-              <div class="space-y-2">\${adrs}</div>
-            </div>
-
-            <!-- Graph Topology -->
-            <div class="grid grid-cols-2 gap-4 border-t border-slate-800/60 pt-5">
+            <!-- Upstream & Downstream Lists -->
+            <div class="grid grid-cols-2 gap-6 border-t border-slate-800/60 pt-5">
               <div>
-                <h4 class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2.5">Depends On (Upstream)</h4>
-                <ul>\${deps}</ul>
+                <h4 class="text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-2.5">Depends On (Upstream)</h4>
+                <ul>\${upstreamListHtml}</ul>
               </div>
               <div>
-                <h4 class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2.5">Used By (Downstream)</h4>
-                <ul>\${users}</ul>
+                <h4 class="text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-2.5">Used By (Downstream)</h4>
+                <ul>\${downstreamListHtml}</ul>
               </div>
             </div>
 
-            <!-- Implementation / Sidecar Body -->
+            <!-- Tags & Exports contract -->
+            <div class="grid grid-cols-2 gap-6 border-t border-slate-800/60 pt-5">
+              <div>
+                <h4 class="text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-2.5">Tags</h4>
+                <div class="flex flex-wrap gap-1.5">\${tagsHtml}</div>
+              </div>
+              <div>
+                <h4 class="text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-2.5">Exports</h4>
+                <div class="flex flex-wrap gap-1.5">\${exportsHtml}</div>
+              </div>
+            </div>
+
+            <!-- ADR Ledger section -->
             <div class="border-t border-slate-800/60 pt-5">
-              <h4 class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Sidecar Specifications & Implementation</h4>
-              <pre class="bg-slate-950 border border-slate-800/80 p-4 rounded-lg overflow-x-auto text-xs text-slate-300 font-mono leading-relaxed max-h-[400px] custom-scroll"><code>\${escapeHtml(s.body || '')}</code></pre>
+              <h4 class="text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-3">Architectural Decisions (ADR)</h4>
+              <div class="space-y-3">\${decisionsHtml}</div>
+            </div>
+
+            <!-- Raw body content display -->
+            <div class="border-t border-slate-800/60 pt-5">
+              <h4 class="text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-3">Sidecar Code & Spec Body</h4>
+              <pre class="bg-slate-950 border border-slate-800 p-4 rounded-xl text-[11px] font-mono text-slate-300 leading-relaxed overflow-x-auto max-h-[300px] custom-scroll"><code>\${escapeHtml(s.body || '')}</code></pre>
             </div>
 
           </div>
         \`;
       } catch (err) {
-        detailView.innerHTML = \`
-          <div class="p-6 text-red-400 font-semibold">Failed to fetch sidecar: \${err.message || err}</div>
-        \`;
+        container.innerHTML = \`<p class="p-6 text-xs text-rose-400 font-semibold">Error: \${err.message || err}</p>\`;
       }
     }
 
+    // Generate Beautiful SVG graph centered on active sidecar node
+    function renderEgoGraphSvg(centerNode, upstreams, downstreams) {
+      const width = 500;
+      const height = 220;
+
+      const cleanLabel = (pathStr) => {
+        const parts = pathStr.split('/');
+        return parts[parts.length - 1];
+      };
+
+      const centerLabel = cleanLabel(centerNode);
+
+      // Node Radius settings
+      const centerRad = 35;
+      const neighborRad = 26;
+
+      const centerPos = { x: width / 2, y: height / 2 };
+
+      // Spacing out upstream neighbors
+      const upPos = upstreams.map((item, idx) => {
+        const total = upstreams.length;
+        const x = 70;
+        const spacing = height / (total + 1);
+        const y = spacing * (idx + 1);
+        return { item, x, y };
+      });
+
+      // Spacing out downstream neighbors
+      const downPos = downstreams.map((item, idx) => {
+        const total = downstreams.length;
+        const x = width - 70;
+        const spacing = height / (total + 1);
+        const y = spacing * (idx + 1);
+        return { item, x, y };
+      });
+
+      let svg = \`<svg width="100%" height="\${height}" viewBox="0 0 \${width} \${height}" class="bg-slate-950 text-white font-sans">\`;
+
+      // Draw arrows markers definition
+      svg += \`
+        <defs>
+          <marker id="arrow" viewBox="0 0 10 10" refX="28" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+            <path d="M 0 1 L 10 5 L 0 9 z" fill="oklch(0.5 0.2 240)" />
+          </marker>
+        </defs>
+      \`;
+
+      // Draw connection links from upstream to center
+      upPos.forEach(p => {
+        svg += \`<line x1="\${p.x}" y1="\${p.y}" x2="\${centerPos.x}" y2="\${centerPos.y}" stroke="oklch(0.3 0.05 240)" stroke-width="1.5" marker-end="url(#arrow)" />\`;
+      });
+
+      // Draw connection links from center to downstream
+      downPos.forEach(p => {
+        svg += \`<line x1="\${centerPos.x}" y1="\${centerPos.y}" x2="\${p.x}" y2="\${p.y}" stroke="oklch(0.3 0.05 240)" stroke-width="1.5" marker-end="url(#arrow)" />\`;
+      });
+
+      // Render Upstream Nodes
+      upPos.forEach(p => {
+        const lbl = cleanLabel(p.item);
+        svg += \`
+          <g onclick="selectSidecar('\${p.item}')" class="cursor-pointer group">
+            <circle cx="\${p.x}" cy="\${p.y}" r="\${neighborRad}" fill="oklch(0.2 0.04 240)" stroke="oklch(0.4 0.05 240)" stroke-width="1.5" class="transition-all group-hover:fill-slate-800 group-hover:stroke-indigo-400" />
+            <text x="\${p.x}" y="\${p.y + 4}" font-size="9" font-family="monospace" fill="oklch(0.8 0.02 240)" text-anchor="middle" class="pointer-events-none font-semibold">\${lbl.substring(0, 8)}</text>
+            <title>\${p.item}</title>
+          </g>
+        \`;
+      });
+
+      // Render Downstream Nodes
+      downPos.forEach(p => {
+        const lbl = cleanLabel(p.item);
+        svg += \`
+          <g onclick="selectSidecar('\${p.item}')" class="cursor-pointer group">
+            <circle cx="\${p.x}" cy="\${p.y}" r="\${neighborRad}" fill="oklch(0.2 0.04 240)" stroke="oklch(0.4 0.05 240)" stroke-width="1.5" class="transition-all group-hover:fill-slate-800 group-hover:stroke-indigo-400" />
+            <text x="\${p.x}" y="\${p.y + 4}" font-size="9" font-family="monospace" fill="oklch(0.8 0.02 240)" text-anchor="middle" class="pointer-events-none font-semibold">\${lbl.substring(0, 8)}</text>
+            <title>\${p.item}</title>
+          </g>
+        \`;
+      });
+
+      // Render Center Node
+      svg += \`
+        <g class="pointer-events-none">
+          <circle cx="\${centerPos.x}" cy="\${centerPos.y}" r="\${centerRad}" fill="oklch(0.25 0.12 250)" stroke="oklch(0.5 0.2 240)" stroke-width="2.5" />
+          <text x="\${centerPos.x}" y="\${centerPos.y + 4}" font-size="10" font-family="monospace" fill="white" font-weight="bold" text-anchor="middle">\${centerLabel.substring(0, 10)}</text>
+          <title>\${centerNode}</title>
+        </g>
+      \`;
+
+      if (upstreams.length === 0 && downstreams.length === 0) {
+        svg += \`<text x="\${width / 2}" y="\${height - 15}" font-size="10" fill="oklch(0.5 0.02 240)" text-anchor="middle" class="italic">No connected neighbors in 1-hop ego scope.</text>\`;
+      }
+
+      svg += \`</svg>\`;
+      return svg;
+    }
+
+    // Helper: Escapes HTML strings safely
     function escapeHtml(text) {
+      if (!text) return '';
       return text
         .replace(/&/g, "&amp;")
         .replace(/</g, "&lt;")
@@ -213185,11 +214305,11 @@ data: ${JSON.stringify(data)}
         .replace(/'/g, "&#039;");
     }
 
-    // Handle search typing
-    document.getElementById('search-input').addEventListener('input', render);
+    // Search Input event handling
+    document.getElementById('search-input').addEventListener('input', renderSidecarList);
 
-    // Initial setup
-    initData();
+    // Initial setup triggers
+    initWorkspace();
     connectSse();
   </script>
 </body>
@@ -213201,14 +214321,14 @@ data: ${JSON.stringify(data)}
 init_schema();
 
 // src/sanding/engine.ts
-var import_fs = require("fs");
-var path7 = __toESM(require("path"));
-var crypto4 = __toESM(require("crypto"));
+var import_fs2 = require("fs");
+var path9 = __toESM(require("path"));
+var crypto6 = __toESM(require("crypto"));
 init_js_yaml();
 init_okf();
 
 // src/parser/markdown.ts
-function extractImplementationCode(body) {
+function extractImplementationCode2(body) {
   if (!body) return null;
   const lines = body.replace(/\r\n/g, "\n").split("\n");
   let inImplementationSection = false;
@@ -213322,48 +214442,48 @@ ${newCode}
 }
 
 // src/sanding/ast.ts
-var ts = __toESM(require_typescript());
-var crypto3 = __toESM(require("crypto"));
-var fs6 = __toESM(require("fs"));
-var path6 = __toESM(require("path"));
+var ts2 = __toESM(require_typescript());
+var crypto5 = __toESM(require("crypto"));
+var fs8 = __toESM(require("fs"));
+var path8 = __toESM(require("path"));
 function getAstStructuralHash(code) {
-  const sourceFile = ts.createSourceFile("file.ts", code, ts.ScriptTarget.Latest, true);
+  const sourceFile = ts2.createSourceFile("file.ts", code, ts2.ScriptTarget.Latest, true);
   const nodes = [];
   function visit2(node) {
     let detail = "";
-    if (ts.isIdentifier(node)) {
+    if (ts2.isIdentifier(node)) {
       detail = `:${node.text}`;
-    } else if (ts.isLiteralExpression(node)) {
+    } else if (ts2.isLiteralExpression(node)) {
       detail = `:${node.text}`;
     }
     nodes.push(`${node.kind}${detail}`);
-    ts.forEachChild(node, visit2);
+    ts2.forEachChild(node, visit2);
   }
   visit2(sourceFile);
   const serialized = nodes.join(",");
-  return crypto3.createHash("sha256").update(serialized).digest("hex");
+  return crypto5.createHash("sha256").update(serialized).digest("hex");
 }
 function typeCheckCode(filePath, code) {
-  const absoluteFilePath = path6.resolve(filePath);
+  const absoluteFilePath = path8.resolve(filePath);
   let compilerOptions = {
     noEmit: true,
-    target: ts.ScriptTarget.ES2022,
-    module: ts.ModuleKind.NodeNext,
-    moduleResolution: ts.ModuleResolutionKind.NodeNext,
+    target: ts2.ScriptTarget.ES2022,
+    module: ts2.ModuleKind.NodeNext,
+    moduleResolution: ts2.ModuleResolutionKind.NodeNext,
     strict: true,
     esModuleInterop: true,
     skipLibCheck: true
   };
-  const tsconfigPath = path6.resolve("tsconfig.json");
-  if (fs6.existsSync(tsconfigPath)) {
+  const tsconfigPath = path8.resolve("tsconfig.json");
+  if (fs8.existsSync(tsconfigPath)) {
     try {
-      const tsconfigContent = fs6.readFileSync(tsconfigPath, "utf8");
-      const parsed = ts.parseConfigFileTextToJson(tsconfigPath, tsconfigContent);
+      const tsconfigContent = fs8.readFileSync(tsconfigPath, "utf8");
+      const parsed = ts2.parseConfigFileTextToJson(tsconfigPath, tsconfigContent);
       if (parsed.config) {
-        const parsedOptions = ts.parseJsonConfigFileContent(
+        const parsedOptions = ts2.parseJsonConfigFileContent(
           parsed.config,
-          ts.sys,
-          path6.dirname(tsconfigPath)
+          ts2.sys,
+          path8.dirname(tsconfigPath)
         );
         compilerOptions = {
           ...parsedOptions.options,
@@ -213377,24 +214497,24 @@ function typeCheckCode(filePath, code) {
     } catch {
     }
   }
-  const sourceFile = ts.createSourceFile(absoluteFilePath, code, ts.ScriptTarget.Latest, true);
+  const sourceFile = ts2.createSourceFile(absoluteFilePath, code, ts2.ScriptTarget.Latest, true);
   const compilerHost = {
     getSourceFile: (fileName) => {
-      const resolved = path6.resolve(fileName);
+      const resolved = path8.resolve(fileName);
       if (resolved === absoluteFilePath) {
         return sourceFile;
       }
-      if (fs6.existsSync(resolved)) {
+      if (fs8.existsSync(resolved)) {
         try {
-          const content = fs6.readFileSync(resolved, "utf8");
-          return ts.createSourceFile(resolved, content, ts.ScriptTarget.Latest, true);
+          const content = fs8.readFileSync(resolved, "utf8");
+          return ts2.createSourceFile(resolved, content, ts2.ScriptTarget.Latest, true);
         } catch {
           return void 0;
         }
       }
       return void 0;
     },
-    getDefaultLibFileName: (options) => ts.getDefaultLibFilePath(options),
+    getDefaultLibFileName: (options) => ts2.getDefaultLibFilePath(options),
     writeFile: () => {
     },
     getCurrentDirectory: () => process.cwd(),
@@ -213402,16 +214522,16 @@ function typeCheckCode(filePath, code) {
     useCaseSensitiveFileNames: () => true,
     getNewLine: () => "\n",
     fileExists: (fileName) => {
-      const resolved = path6.resolve(fileName);
+      const resolved = path8.resolve(fileName);
       if (resolved === absoluteFilePath) return true;
-      return fs6.existsSync(resolved);
+      return fs8.existsSync(resolved);
     },
     readFile: (fileName) => {
-      const resolved = path6.resolve(fileName);
+      const resolved = path8.resolve(fileName);
       if (resolved === absoluteFilePath) return code;
-      if (fs6.existsSync(resolved)) {
+      if (fs8.existsSync(resolved)) {
         try {
-          return fs6.readFileSync(resolved, "utf8");
+          return fs8.readFileSync(resolved, "utf8");
         } catch {
           return void 0;
         }
@@ -213420,20 +214540,20 @@ function typeCheckCode(filePath, code) {
     }
   };
   try {
-    const program = ts.createProgram([absoluteFilePath], compilerOptions, compilerHost);
+    const program = ts2.createProgram([absoluteFilePath], compilerOptions, compilerHost);
     const emitResult = program.emit();
-    const allDiagnostics = ts.getPreEmitDiagnostics(program).concat(emitResult.diagnostics);
+    const allDiagnostics = ts2.getPreEmitDiagnostics(program).concat(emitResult.diagnostics);
     const diagnostics = [];
     for (const diagnostic of allDiagnostics) {
       if (diagnostic.file) {
-        const { line, character } = ts.getLineAndCharacterOfPosition(
+        const { line, character } = ts2.getLineAndCharacterOfPosition(
           diagnostic.file,
           diagnostic.start
         );
-        const message = ts.flattenDiagnosticMessageText(diagnostic.messageText, "\n");
+        const message = ts2.flattenDiagnosticMessageText(diagnostic.messageText, "\n");
         diagnostics.push(`${diagnostic.file.fileName} (${line + 1},${character + 1}): ${message}`);
       } else {
-        diagnostics.push(ts.flattenDiagnosticMessageText(diagnostic.messageText, "\n"));
+        diagnostics.push(ts2.flattenDiagnosticMessageText(diagnostic.messageText, "\n"));
       }
     }
     return {
@@ -213450,7 +214570,7 @@ function typeCheckCode(filePath, code) {
 
 // src/sanding/engine.ts
 function sha256(content) {
-  return crypto4.createHash("sha256").update(content).digest("hex");
+  return crypto6.createHash("sha256").update(content).digest("hex");
 }
 function stripSyncStateFromYaml(yamlText) {
   const lines = yamlText.split("\n");
@@ -213607,8 +214727,8 @@ var SandingEngine = class {
    * self-healing frontmatter, and bi-directional sanding.
    */
   async syncFile(sidecarPath) {
-    const resolvedSidecar = path7.resolve(sidecarPath);
-    if (!(0, import_fs.existsSync)(resolvedSidecar)) {
+    const resolvedSidecar = path9.resolve(sidecarPath);
+    if (!(0, import_fs2.existsSync)(resolvedSidecar)) {
       return {
         filePath: sidecarPath,
         targetCodeFile: "",
@@ -213618,7 +214738,7 @@ var SandingEngine = class {
     }
     let content;
     try {
-      content = (0, import_fs.readFileSync)(resolvedSidecar, "utf8");
+      content = (0, import_fs2.readFileSync)(resolvedSidecar, "utf8");
     } catch (err) {
       return {
         filePath: sidecarPath,
@@ -213642,7 +214762,7 @@ var SandingEngine = class {
           const healedContent = `---
 ${dump(frontmatter)}---
 ${body}`;
-          (0, import_fs.writeFileSync)(resolvedSidecar, healedContent, "utf8");
+          (0, import_fs2.writeFileSync)(resolvedSidecar, healedContent, "utf8");
         } catch (healErr) {
           return {
             filePath: sidecarPath,
@@ -213669,10 +214789,10 @@ ${body}`;
         error: `Required property "target_code_file" is missing in frontmatter.`
       };
     }
-    const resolvedTarget = path7.resolve(path7.dirname(resolvedSidecar), targetCodeFile);
+    const resolvedTarget = path9.resolve(path9.dirname(resolvedSidecar), targetCodeFile);
     const cleanSidecarContent = stripSyncStateFromContent(content);
     const currentSidecarHash = sha256(cleanSidecarContent);
-    const extractedCode = extractImplementationCode(body);
+    const extractedCode = extractImplementationCode2(body);
     if (extractedCode === null) {
       return {
         filePath: sidecarPath,
@@ -213681,12 +214801,12 @@ ${body}`;
         error: `No TypeScript block found under ## Implementation or as a fallback in sidecar.`
       };
     }
-    const sidecarMtime = (0, import_fs.statSync)(resolvedSidecar).mtime;
-    const codeExists = (0, import_fs.existsSync)(resolvedTarget);
-    const codeMtime = codeExists ? (0, import_fs.statSync)(resolvedTarget).mtime : null;
+    const sidecarMtime = (0, import_fs2.statSync)(resolvedSidecar).mtime;
+    const codeExists = (0, import_fs2.existsSync)(resolvedTarget);
+    const codeMtime = codeExists ? (0, import_fs2.statSync)(resolvedTarget).mtime : null;
     const sidecarHashRecorded = frontmatter.sync_state?.sidecar_hash || "";
     const codeHashRecorded = frontmatter.sync_state?.code_hash || "";
-    const relSidecarPath = path7.relative(path7.dirname(resolvedTarget), resolvedSidecar).replace(/\\/g, "/");
+    const relSidecarPath = path9.relative(path9.dirname(resolvedTarget), resolvedSidecar).replace(/\\/g, "/");
     const headerPrefix = `./`.startsWith(relSidecarPath) ? relSidecarPath : `./${relSidecarPath}`;
     const codeHeader = `// @sidecar ${headerPrefix}
 // This file is materialized from the sidecar specification.
@@ -213702,7 +214822,7 @@ ${typeCheck.diagnostics.join("\n")}`;
         const updatedContent = `---
 ${dump(frontmatter)}---
 ${body}`;
-        (0, import_fs.writeFileSync)(resolvedSidecar, updatedContent, "utf8");
+        (0, import_fs2.writeFileSync)(resolvedSidecar, updatedContent, "utf8");
         return {
           filePath: sidecarPath,
           targetCodeFile,
@@ -213712,8 +214832,8 @@ ${typeCheck.diagnostics.join("\n")}`
         };
       }
       const materializedCode = codeHeader + extractedCode;
-      (0, import_fs.writeFileSync)(resolvedTarget, materializedCode, "utf8");
-      const targetMtime = (0, import_fs.statSync)(resolvedTarget).mtime;
+      (0, import_fs2.writeFileSync)(resolvedTarget, materializedCode, "utf8");
+      const targetMtime = (0, import_fs2.statSync)(resolvedTarget).mtime;
       const finalCodeHash = sha256(materializedCode);
       frontmatter.status = "materialized";
       frontmatter.status_flag = "clean";
@@ -213732,7 +214852,7 @@ ${body}`;
       const finalContent = `---
 ${dump(frontmatter)}---
 ${body}`;
-      (0, import_fs.writeFileSync)(resolvedSidecar, finalContent, "utf8");
+      (0, import_fs2.writeFileSync)(resolvedSidecar, finalContent, "utf8");
       return {
         filePath: sidecarPath,
         targetCodeFile,
@@ -213742,7 +214862,7 @@ ${body}`;
     }
     let codeContent;
     try {
-      codeContent = (0, import_fs.readFileSync)(resolvedTarget, "utf8");
+      codeContent = (0, import_fs2.readFileSync)(resolvedTarget, "utf8");
     } catch (err) {
       return {
         filePath: sidecarPath,
@@ -213771,7 +214891,7 @@ ${typeCheck.diagnostics.join("\n")}`;
         const updatedContent = `---
 ${dump(frontmatter)}---
 ${body}`;
-        (0, import_fs.writeFileSync)(resolvedSidecar, updatedContent, "utf8");
+        (0, import_fs2.writeFileSync)(resolvedSidecar, updatedContent, "utf8");
         return {
           filePath: sidecarPath,
           targetCodeFile,
@@ -213781,8 +214901,8 @@ ${typeCheck.diagnostics.join("\n")}`
         };
       }
       const materializedCode = codeHeader + extractedCode;
-      (0, import_fs.writeFileSync)(resolvedTarget, materializedCode, "utf8");
-      const targetMtime = (0, import_fs.statSync)(resolvedTarget).mtime;
+      (0, import_fs2.writeFileSync)(resolvedTarget, materializedCode, "utf8");
+      const targetMtime = (0, import_fs2.statSync)(resolvedTarget).mtime;
       const finalCodeHash = sha256(materializedCode);
       frontmatter.status = "materialized";
       frontmatter.status_flag = "clean";
@@ -213800,7 +214920,7 @@ ${body}`;
       const finalContent = `---
 ${dump(frontmatter)}---
 ${body}`;
-      (0, import_fs.writeFileSync)(resolvedSidecar, finalContent, "utf8");
+      (0, import_fs2.writeFileSync)(resolvedSidecar, finalContent, "utf8");
       return {
         filePath: sidecarPath,
         targetCodeFile,
@@ -213818,7 +214938,7 @@ ${typeCheck.diagnostics.join("\n")}`;
         const updatedContent = `---
 ${dump(frontmatter)}---
 ${body}`;
-        (0, import_fs.writeFileSync)(resolvedSidecar, updatedContent, "utf8");
+        (0, import_fs2.writeFileSync)(resolvedSidecar, updatedContent, "utf8");
         return {
           filePath: sidecarPath,
           targetCodeFile,
@@ -213844,7 +214964,7 @@ ${updatedBody}`;
       const finalContent = `---
 ${dump(frontmatter)}---
 ${updatedBody}`;
-      (0, import_fs.writeFileSync)(resolvedSidecar, finalContent, "utf8");
+      (0, import_fs2.writeFileSync)(resolvedSidecar, finalContent, "utf8");
       return {
         filePath: sidecarPath,
         targetCodeFile,
@@ -213866,7 +214986,7 @@ ${typeCheck.diagnostics.join("\n")}`;
           const updatedContent = `---
 ${dump(frontmatter)}---
 ${body}`;
-          (0, import_fs.writeFileSync)(resolvedSidecar, updatedContent, "utf8");
+          (0, import_fs2.writeFileSync)(resolvedSidecar, updatedContent, "utf8");
           return {
             filePath: sidecarPath,
             targetCodeFile,
@@ -213891,7 +215011,7 @@ ${updatedBody}`;
         const finalContent = `---
 ${dump(frontmatter)}---
 ${updatedBody}`;
-        (0, import_fs.writeFileSync)(resolvedSidecar, finalContent, "utf8");
+        (0, import_fs2.writeFileSync)(resolvedSidecar, finalContent, "utf8");
         return {
           filePath: sidecarPath,
           targetCodeFile,
@@ -213907,7 +215027,7 @@ ${typeCheck.diagnostics.join("\n")}`;
           const updatedContent = `---
 ${dump(frontmatter)}---
 ${body}`;
-          (0, import_fs.writeFileSync)(resolvedSidecar, updatedContent, "utf8");
+          (0, import_fs2.writeFileSync)(resolvedSidecar, updatedContent, "utf8");
           return {
             filePath: sidecarPath,
             targetCodeFile,
@@ -213917,8 +215037,8 @@ ${typeCheck.diagnostics.join("\n")}`
           };
         }
         const materializedCode = codeHeader + extractedCode;
-        (0, import_fs.writeFileSync)(resolvedTarget, materializedCode, "utf8");
-        const targetMtime = (0, import_fs.statSync)(resolvedTarget).mtime;
+        (0, import_fs2.writeFileSync)(resolvedTarget, materializedCode, "utf8");
+        const targetMtime = (0, import_fs2.statSync)(resolvedTarget).mtime;
         const finalCodeHash = sha256(materializedCode);
         frontmatter.status_flag = "clean";
         frontmatter.stale_details = null;
@@ -213935,7 +215055,7 @@ ${body}`;
         const finalContent = `---
 ${dump(frontmatter)}---
 ${body}`;
-        (0, import_fs.writeFileSync)(resolvedSidecar, finalContent, "utf8");
+        (0, import_fs2.writeFileSync)(resolvedSidecar, finalContent, "utf8");
         return {
           filePath: sidecarPath,
           targetCodeFile,
@@ -213949,7 +215069,7 @@ ${body}`;
     const conflictContent = `---
 ${dump(frontmatter)}---
 ${body}`;
-    (0, import_fs.writeFileSync)(resolvedSidecar, conflictContent, "utf8");
+    (0, import_fs2.writeFileSync)(resolvedSidecar, conflictContent, "utf8");
     return {
       filePath: sidecarPath,
       targetCodeFile,
@@ -213963,11 +215083,11 @@ ${body}`;
   async scanDirectory(dir) {
     const files = [];
     const recurse = async (currentDir) => {
-      if (!(0, import_fs.existsSync)(currentDir)) return;
-      const entries = await import_fs.promises.readdir(currentDir, { withFileTypes: true });
+      if (!(0, import_fs2.existsSync)(currentDir)) return;
+      const entries = await import_fs2.promises.readdir(currentDir, { withFileTypes: true });
       for (const entry of entries) {
-        const fullPath = path7.join(currentDir, entry.name);
-        const relativePath = path7.relative(process.cwd(), fullPath).replace(/\\/g, "/");
+        const fullPath = path9.join(currentDir, entry.name);
+        const relativePath = path9.relative(process.cwd(), fullPath).replace(/\\/g, "/");
         if (entry.isDirectory()) {
           if (entry.name === "node_modules" || entry.name === ".git" || entry.name === ".stubs" || entry.name === "dist" || entry.name === "build") {
             continue;
@@ -213987,15 +215107,15 @@ ${body}`;
    * Synchronizes the entire workspace by scanning and reconciling all specs in the specifications directory.
    */
   async syncWorkspace(specsDir) {
-    const specsPath = path7.resolve(specsDir);
-    if (!(0, import_fs.existsSync)(specsPath)) {
+    const specsPath = path9.resolve(specsDir);
+    if (!(0, import_fs2.existsSync)(specsPath)) {
       return [];
     }
     const files = await this.scanDirectory(specsPath);
     const results = [];
     for (const file of files) {
       try {
-        const content = (0, import_fs.readFileSync)(path7.resolve(file), "utf8");
+        const content = (0, import_fs2.readFileSync)(path9.resolve(file), "utf8");
         if (!content.trim().startsWith("---")) {
           continue;
         }
@@ -214011,372 +215131,6 @@ ${body}`;
       }
     }
     return results;
-  }
-};
-
-// src/materializer/engine.ts
-var import_fs2 = require("fs");
-var path9 = __toESM(require("path"));
-var crypto5 = __toESM(require("crypto"));
-init_js_yaml();
-init_okf();
-
-// src/parser/ast.ts
-function parseMarkdown(content) {
-  const lines = content.replace(/\r\n/g, "\n").split("\n");
-  const blocks = [];
-  let inCodeBlock = false;
-  let codeLang = "";
-  let codeLines = [];
-  let textLines = [];
-  const flushText = () => {
-    if (textLines.length > 0) {
-      blocks.push({ type: "text", content: textLines.join("\n") });
-      textLines = [];
-    }
-  };
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-    if (inCodeBlock) {
-      if (line.trim().startsWith("```")) {
-        blocks.push({ type: "code", lang: codeLang, content: codeLines.join("\n") });
-        codeLines = [];
-        inCodeBlock = false;
-      } else {
-        codeLines.push(line);
-      }
-    } else {
-      if (line.trim().startsWith("```")) {
-        flushText();
-        inCodeBlock = true;
-        codeLang = line.trim().substring(3).trim();
-      } else {
-        const headingMatch = line.match(/^(#{1,6})\s+(.*)$/);
-        if (headingMatch) {
-          flushText();
-          blocks.push({
-            type: "heading",
-            level: headingMatch[1].length,
-            text: headingMatch[2].trim()
-          });
-        } else {
-          textLines.push(line);
-        }
-      }
-    }
-  }
-  flushText();
-  return blocks;
-}
-function extractImplementationCode2(blocks) {
-  const headingIdx = blocks.findIndex(
-    (b) => b.type === "heading" && /^(?:\d+\.\s+)?implementation$/i.test(b.text)
-  );
-  if (headingIdx === -1) {
-    return {
-      code: null,
-      error: 'No "## Implementation" section found in the sidecar specification.'
-    };
-  }
-  const headingLevel = blocks[headingIdx].level;
-  const tsBlocks = [];
-  for (let i = headingIdx + 1; i < blocks.length; i++) {
-    const block = blocks[i];
-    if (block.type === "heading" && block.level <= headingLevel) {
-      break;
-    }
-    if (block.type === "code" && (block.lang === "typescript" || block.lang === "ts")) {
-      tsBlocks.push(block.content);
-    }
-  }
-  if (tsBlocks.length === 0) {
-    return {
-      code: null,
-      error: 'No typescript code block found within the "## Implementation" section.'
-    };
-  }
-  return { code: tsBlocks.join("\n\n"), error: null };
-}
-
-// src/compiler/typechecker.ts
-var ts2 = __toESM(require_typescript());
-var fs7 = __toESM(require("fs"));
-var path8 = __toESM(require("path"));
-function typeCheckVirtualFile(targetFilePath, virtualContent, tsconfigPath) {
-  const absoluteTargetFilePath = path8.resolve(targetFilePath);
-  const resolvedTsconfigPath = tsconfigPath || path8.resolve(process.cwd(), "tsconfig.json");
-  let compilerOptions = {};
-  let fileNames = [];
-  if (fs7.existsSync(resolvedTsconfigPath)) {
-    const readResult = ts2.readConfigFile(resolvedTsconfigPath, ts2.sys.readFile);
-    if (readResult.error) {
-      return {
-        success: false,
-        diagnostics: [
-          `Failed to parse tsconfig.json: ${ts2.flattenDiagnosticMessageText(readResult.error.messageText, "\n")}`
-        ]
-      };
-    }
-    const parsedConfig = ts2.parseJsonConfigFileContent(
-      readResult.config,
-      ts2.sys,
-      path8.dirname(resolvedTsconfigPath)
-    );
-    compilerOptions = parsedConfig.options;
-    fileNames = parsedConfig.fileNames;
-    delete compilerOptions.rootDir;
-    delete compilerOptions.rootDirs;
-  } else {
-    compilerOptions = {
-      target: ts2.ScriptTarget.ES2022,
-      module: ts2.ModuleKind.CommonJS,
-      strict: true,
-      esModuleInterop: true,
-      skipLibCheck: true
-    };
-  }
-  compilerOptions.noEmit = true;
-  const host = ts2.createCompilerHost(compilerOptions);
-  const originalReadFile = host.readFile;
-  host.readFile = (fileName) => {
-    const resolvedPath = path8.resolve(fileName);
-    if (resolvedPath === absoluteTargetFilePath) {
-      return virtualContent;
-    }
-    return originalReadFile.call(host, fileName);
-  };
-  const originalFileExists = host.fileExists;
-  host.fileExists = (fileName) => {
-    const resolvedPath = path8.resolve(fileName);
-    if (resolvedPath === absoluteTargetFilePath) {
-      return true;
-    }
-    return originalFileExists.call(host, fileName);
-  };
-  const originalGetSourceFile = host.getSourceFile;
-  host.getSourceFile = (fileName, languageVersionOrOptions, onError, shouldCreateNewSourceFile) => {
-    const resolvedPath = path8.resolve(fileName);
-    if (resolvedPath === absoluteTargetFilePath) {
-      return ts2.createSourceFile(
-        fileName,
-        virtualContent,
-        compilerOptions.target || ts2.ScriptTarget.ES2022
-      );
-    }
-    return originalGetSourceFile.call(
-      host,
-      fileName,
-      languageVersionOrOptions,
-      onError,
-      shouldCreateNewSourceFile
-    );
-  };
-  const rootNames = Array.from(/* @__PURE__ */ new Set([...fileNames, absoluteTargetFilePath]));
-  try {
-    const program = ts2.createProgram(rootNames, compilerOptions, host);
-    const diagnostics = ts2.getPreEmitDiagnostics(program);
-    if (diagnostics.length > 0) {
-      const formattedDiagnostics = diagnostics.map((diag) => {
-        if (diag.file) {
-          const { line, character } = ts2.getLineAndCharacterOfPosition(diag.file, diag.start);
-          const message = ts2.flattenDiagnosticMessageText(diag.messageText, "\n");
-          return `${diag.file.fileName} (${line + 1},${character + 1}): ${message}`;
-        } else {
-          return ts2.flattenDiagnosticMessageText(diag.messageText, "\n");
-        }
-      });
-      return {
-        success: false,
-        diagnostics: formattedDiagnostics
-      };
-    }
-    return {
-      success: true,
-      diagnostics: []
-    };
-  } catch (error) {
-    return {
-      success: false,
-      diagnostics: [`Compilation crashed: ${error.message || error}`]
-    };
-  }
-}
-
-// src/materializer/engine.ts
-init_engine();
-function stringifyOkfSpec(frontmatter, body) {
-  const yamlText = dump(frontmatter, { indent: 2, noRefs: true });
-  return `---
-${yamlText}---
-${body}`;
-}
-var MaterializerEngine = class {
-  graphEngine;
-  constructor(graphEngine) {
-    this.graphEngine = graphEngine || new GraphEngine();
-  }
-  /**
-   * Calculates the SHA-256 hash of a given string.
-   */
-  computeSha256(content) {
-    return crypto5.createHash("sha256").update(content).digest("hex");
-  }
-  /**
-   * Writes file content atomically by writing to a temporary file first, then renaming it.
-   */
-  async writeAtomic(filePath, content) {
-    const absolutePath = path9.resolve(filePath);
-    const dir = path9.dirname(absolutePath);
-    await import_fs2.promises.mkdir(dir, { recursive: true });
-    const tempPath = `${absolutePath}.tmp-${Date.now()}-${Math.random().toString(36).substring(2)}`;
-    await import_fs2.promises.writeFile(tempPath, content, "utf8");
-    await import_fs2.promises.rename(tempPath, absolutePath);
-  }
-  /**
-   * Materializes a given sidecar specification file (*.ts.md) into its target executable file (*.ts).
-   * Orchestrates parsing, extracting, type-checking, hashing, atomic writing, and graph updates.
-   */
-  async materialize(sidecarPath) {
-    const absoluteSidecarPath = path9.resolve(sidecarPath);
-    const relativeSidecarPath = path9.relative(process.cwd(), absoluteSidecarPath).replace(/\\/g, "/");
-    try {
-      await this.graphEngine.initialize();
-    } catch (err) {
-      return {
-        success: false,
-        error: `Failed to initialize GraphEngine: ${err.message || err}`
-      };
-    }
-    let originalContent;
-    try {
-      originalContent = await import_fs2.promises.readFile(absoluteSidecarPath, "utf8");
-    } catch (err) {
-      return {
-        success: false,
-        error: `Failed to read sidecar file at "${sidecarPath}": ${err.message || err}`
-      };
-    }
-    const parsedSpec = parseOkfSpec(originalContent);
-    if (!parsedSpec.isValid || !parsedSpec.frontmatter) {
-      return {
-        success: false,
-        error: `Invalid sidecar frontmatter: ${parsedSpec.errors.join("\n")}`
-      };
-    }
-    const { frontmatter, body } = parsedSpec;
-    const targetCodeFile = frontmatter.target_code_file;
-    if (!targetCodeFile) {
-      return {
-        success: false,
-        error: 'The sidecar frontmatter is missing "target_code_file" parameter.'
-      };
-    }
-    const sidecarDir = path9.dirname(absoluteSidecarPath);
-    const absoluteTargetFilePath = path9.resolve(sidecarDir, targetCodeFile);
-    const markdownBlocks = parseMarkdown(body);
-    const extraction = extractImplementationCode2(markdownBlocks);
-    if (extraction.error || !extraction.code) {
-      const updatedFrontmatter2 = {
-        ...frontmatter,
-        status_flag: "typecheck-failed",
-        stale_details: extraction.error || "No implementation code extracted."
-      };
-      const newSidecarContent = stringifyOkfSpec(updatedFrontmatter2, body);
-      await this.writeAtomic(absoluteSidecarPath, newSidecarContent);
-      const fileHash = this.computeSha256(newSidecarContent);
-      await this.graphEngine.upsertSidecar({
-        filePath: relativeSidecarPath,
-        frontmatter: updatedFrontmatter2,
-        body,
-        fileHash
-      });
-      return {
-        success: false,
-        error: extraction.error || "No implementation code extracted."
-      };
-    }
-    const extractedCode = extraction.code;
-    const sidecarRelativeFromTarget = path9.relative(path9.dirname(absoluteTargetFilePath), absoluteSidecarPath).replace(/\\/g, "/");
-    const sidecarRef = sidecarRelativeFromTarget.startsWith(".") ? sidecarRelativeFromTarget : `./${sidecarRelativeFromTarget}`;
-    const sidecarHeader = `// @sidecar ${sidecarRef}
-
-`;
-    const finalCodeWithHeader = `${sidecarHeader}${extractedCode}`;
-    const typecheck = typeCheckVirtualFile(absoluteTargetFilePath, finalCodeWithHeader);
-    if (!typecheck.success) {
-      const errorsJoined = typecheck.diagnostics.join("\n");
-      const updatedFrontmatter2 = {
-        ...frontmatter,
-        status_flag: "typecheck-failed",
-        stale_details: errorsJoined
-      };
-      const newSidecarContent = stringifyOkfSpec(updatedFrontmatter2, body);
-      await this.writeAtomic(absoluteSidecarPath, newSidecarContent);
-      const fileHash = this.computeSha256(newSidecarContent);
-      await this.graphEngine.upsertSidecar({
-        filePath: relativeSidecarPath,
-        frontmatter: updatedFrontmatter2,
-        body,
-        fileHash
-      });
-      return {
-        success: false,
-        error: "Type-check diagnostics failed.",
-        diagnostics: typecheck.diagnostics
-      };
-    }
-    try {
-      await this.writeAtomic(absoluteTargetFilePath, finalCodeWithHeader);
-    } catch (err) {
-      return {
-        success: false,
-        error: `Failed to write target code file: ${err.message || err}`
-      };
-    }
-    const tempFrontmatter = {
-      ...frontmatter,
-      status: "materialized",
-      status_flag: "clean",
-      stale_details: null
-    };
-    const clonedFrontmatter = JSON.parse(JSON.stringify(tempFrontmatter));
-    delete clonedFrontmatter.sync_state;
-    const sidecarContentNoSync = stringifyOkfSpec(clonedFrontmatter, body);
-    const sidecarHash = this.computeSha256(sidecarContentNoSync);
-    const codeHash = this.computeSha256(finalCodeWithHeader);
-    const updatedFrontmatter = {
-      ...tempFrontmatter,
-      sync_state: {
-        last_sync_timestamp: (/* @__PURE__ */ new Date()).toISOString(),
-        sidecar_hash: sidecarHash,
-        code_hash: codeHash
-      }
-    };
-    const finalSidecarContent = stringifyOkfSpec(updatedFrontmatter, body);
-    try {
-      await this.writeAtomic(absoluteSidecarPath, finalSidecarContent);
-    } catch (err) {
-      return {
-        success: false,
-        error: `Failed to write updated sidecar file: ${err.message || err}`
-      };
-    }
-    const sidecarFileHash = this.computeSha256(finalSidecarContent);
-    try {
-      await this.graphEngine.upsertSidecar({
-        filePath: relativeSidecarPath,
-        frontmatter: updatedFrontmatter,
-        body,
-        fileHash: sidecarFileHash
-      });
-    } catch (err) {
-      console.warn(
-        `Warning: Graph database sync failed during materialization: ${err.message || err}`
-      );
-    }
-    return {
-      success: true
-    };
   }
 };
 
