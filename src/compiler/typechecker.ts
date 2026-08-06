@@ -39,6 +39,8 @@ export function typeCheckVirtualFile(
     );
     compilerOptions = parsedConfig.options;
     fileNames = parsedConfig.fileNames;
+    delete compilerOptions.rootDir;
+    delete compilerOptions.rootDirs;
   } else {
     // Default fallback options if no tsconfig.json is found
     compilerOptions = {

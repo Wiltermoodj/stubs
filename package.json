@@ -3,6 +3,9 @@
   "version": "1.0.0",
   "description": "stubs AI Agent Skill",
   "main": "dist/cli.js",
+  "bin": {
+    "stubs": "./dist/cli.js"
+  },
   "scripts": {
     "build": "tsc",
     "test": "jest",

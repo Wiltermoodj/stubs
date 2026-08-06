@@ -189,8 +189,16 @@ export class MaterializerEngine {
       };
     }
 
+    // Update frontmatter values first (except sync_state)
+    const tempFrontmatter = {
+      ...frontmatter,
+      status: 'materialized' as const,
+      status_flag: 'clean' as const,
+      stale_details: null,
+    };
+
     // Calculate sidecar hash (excluding sync_state)
-    const clonedFrontmatter = JSON.parse(JSON.stringify(frontmatter));
+    const clonedFrontmatter = JSON.parse(JSON.stringify(tempFrontmatter));
     delete clonedFrontmatter.sync_state;
     const sidecarContentNoSync = stringifyOkfSpec(clonedFrontmatter, body);
     const sidecarHash = this.computeSha256(sidecarContentNoSync);
@@ -198,12 +206,9 @@ export class MaterializerEngine {
     // Calculate code hash
     const codeHash = this.computeSha256(finalCodeWithHeader);
 
-    // Update frontmatter values
+    // Reconstruct updated frontmatter with sync_state
     const updatedFrontmatter: OkfFrontmatter = {
-      ...frontmatter,
-      status: 'materialized',
-      status_flag: 'clean',
-      stale_details: null,
+      ...tempFrontmatter,
       sync_state: {
         last_sync_timestamp: new Date().toISOString(),
         sidecar_hash: sidecarHash,

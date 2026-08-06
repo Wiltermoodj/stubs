@@ -57,8 +57,8 @@ This document outlines the sequential steps to implement the `stubs` framework a
 
 ## Phase 9: Testing, Refinement & Finalization
 
-- [ ] Write unit and integration tests (using `jest`) targeting the public interfaces of deep modules.
-- [ ] Conduct end-to-end testing of the dual-file lifecycle state machine (Skeleton -> Specification -> Materialization -> Maintenance).
-- [ ] Execute `npm run lint` and `npm run format` to ensure adherence to style guidelines.
-- [ ] Perform performance testing and optimization (e.g., FTS5 search latency).
-- [ ] Finalize documentation and release the `stubs` CLI binary.
+- [x] Write unit and integration tests (using `jest`) targeting the public interfaces of deep modules.
+- [x] Conduct end-to-end testing of the dual-file lifecycle state machine (Skeleton -> Specification -> Materialization -> Maintenance).
+- [x] Execute `npm run lint` and `npm run format` to ensure adherence to style guidelines.
+- [x] Perform performance testing and optimization (e.g., FTS5 search latency).
+- [x] Finalize documentation and release the `stubs` CLI binary.
