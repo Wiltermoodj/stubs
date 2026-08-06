@@ -60,6 +60,8 @@ export class CliRouter {
           return await this.handleSync(context);
         case 'materialize':
           return await this.handleMaterialize(context);
+        case 'auth':
+          return await this.handleAuth(context);
         default:
           console.error(`Error: Unknown command "${context.command}". Use --help for usage.`);
           return 1;
@@ -101,6 +103,7 @@ Usage:
 
 Commands:
   init                Initialize workspace configuration (.stubs/config.json).
+  auth login          Authenticate via Personal Access Tokens (PATs) and store globally.
   grill <file>       Execute the Interactive Grill Engine on a sidecar specification.
   materialize <file>  Parse, extract, typecheck, and write executable code from sidecar.
   audit <file>        Audit sidecar specifications and run retroactive reconciliation.
@@ -118,6 +121,8 @@ Options:
   -c, --config <path>  Specify path to stubs configuration file (default: .stubs/config.json)
   --depth <depth>      Specify grill depth (light_probe | standard_drill | deep_interrogation)
   --non-interactive    Run the grill engine in non-interactive (automated) mode
+  --token <pat>        Provide a GitHub Personal Access Token directly (auth login)
+  --provider <name>    Specify auth provider (default: github) (auth login)
   -h, --help           Display help message.
   -v, --version        Display version info.
 `);
@@ -501,6 +506,59 @@ Options:
       }
       return hasError ? 1 : 0;
     }
+  }
+
+  private async handleAuth(ctx: CliContext): Promise<number> {
+    if (ctx.args.length === 0) {
+      console.error('Error: "auth" command requires a subcommand (login).');
+      console.error('Usage: stubs auth login [options]');
+      return 1;
+    }
+
+    const subCommand = ctx.args[0];
+    if (subCommand !== 'login') {
+      console.error(
+        `Error: Unknown auth subcommand "${subCommand}". Currently only "login" is supported.`,
+      );
+      return 1;
+    }
+
+    let token: string | undefined = undefined;
+    let provider = 'github';
+    let nonInteractive = false;
+
+    // Parse options for auth login command
+    let i = 1;
+    while (i < ctx.args.length) {
+      const arg = ctx.args[i];
+      if (arg === '--non-interactive') {
+        nonInteractive = true;
+        i++;
+      } else if (arg === '--token') {
+        token = ctx.args[i + 1];
+        i += 2;
+      } else if (arg.startsWith('--token=')) {
+        token = arg.split('=')[1];
+        i++;
+      } else if (arg === '--provider') {
+        provider = ctx.args[i + 1];
+        i += 2;
+      } else if (arg.startsWith('--provider=')) {
+        provider = arg.split('=')[1];
+        i++;
+      } else {
+        console.error(`Error: Unknown auth option "${arg}".`);
+        return 1;
+      }
+    }
+
+    if (provider !== 'github') {
+      console.error(`Error: Provider "${provider}" is not supported. Only "github" is supported.`);
+      return 1;
+    }
+
+    const { handleLogin } = await import('./auth');
+    return await handleLogin({ token, nonInteractive });
   }
 
   private printSyncResult(result: SyncResult): void {

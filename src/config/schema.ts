@@ -16,6 +16,12 @@ export interface StubsConfig {
   grill: {
     default_depth: 'light_probe' | 'standard_drill' | 'deep_interrogation';
   };
+  github_token?: string;
+  remote?: {
+    provider: 'github' | string;
+    repo: string;
+    default_branch: string;
+  };
 }
 
 export const DEFAULT_CONFIG: StubsConfig = {
@@ -99,11 +105,25 @@ function sanitizeConfig(raw: any): StubsConfig {
   }
   const grill = { default_depth };
 
+  const github_token = typeof raw.github_token === 'string' ? raw.github_token : undefined;
+
+  let remote: StubsConfig['remote'] = undefined;
+  if (raw.remote && typeof raw.remote === 'object') {
+    remote = {
+      provider: typeof raw.remote.provider === 'string' ? raw.remote.provider : 'github',
+      repo: typeof raw.remote.repo === 'string' ? raw.remote.repo : '',
+      default_branch:
+        typeof raw.remote.default_branch === 'string' ? raw.remote.default_branch : 'main',
+    };
+  }
+
   return {
     project_name,
     autonomy_level,
     paths,
     search,
     grill,
+    github_token,
+    remote,
   };
 }
