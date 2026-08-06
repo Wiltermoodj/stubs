@@ -1,0 +1,16 @@
+{
+  "project_name": "stubs-project",
+  "autonomy_level": "strict_gate",
+  "paths": {
+    "specs_dir": "src",
+    "templates_dir": ".stubs/templates",
+    "db_path": ".stubs/graph.sqlite"
+  },
+  "search": {
+    "engine": "sqlite-fts5",
+    "vector_plugin": null
+  },
+  "grill": {
+    "default_depth": "standard_drill"
+  }
+}

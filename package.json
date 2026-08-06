@@ -21,5 +21,22 @@
   "bugs": {
     "url": "https://github.com/Wiltermoodj/stubs/issues"
   },
-  "homepage": "https://github.com/Wiltermoodj/stubs#readme"
+  "homepage": "https://github.com/Wiltermoodj/stubs#readme",
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/jest": "^30.0.0",
+    "@types/js-yaml": "^4.0.9",
+    "@types/node": "^26.1.2",
+    "@typescript-eslint/eslint-plugin": "^8.66.0",
+    "@typescript-eslint/parser": "^8.66.0",
+    "eslint": "^10.8.0",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-prettier": "^5.5.6",
+    "jest": "^30.4.2",
+    "js-yaml": "^5.2.3",
+    "prettier": "^3.9.6",
+    "ts-jest": "^29.4.12",
+    "typescript": "^5.5.4",
+    "typescript-eslint": "^8.66.0"
+  }
 }
