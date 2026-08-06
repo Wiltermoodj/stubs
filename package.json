@@ -1,0 +1,25 @@
+{
+  "name": "stubs",
+  "version": "1.0.0",
+  "description": "stubs AI Agent Skill",
+  "main": "dist/cli.js",
+  "scripts": {
+    "build": "tsc",
+    "test": "jest",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "start": "node dist/cli.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Wiltermoodj/stubs.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/Wiltermoodj/stubs/issues"
+  },
+  "homepage": "https://github.com/Wiltermoodj/stubs#readme"
+}
