@@ -7,6 +7,14 @@ import { loadConfig, StubsConfig } from '../config/schema';
 import { parseOkfSpec } from '../parser/okf';
 import { stringifyOkfSpec } from '../materializer/engine';
 import { TemplateEngine } from '../templates/engine';
+import {
+  GitHubClient,
+  listAccessibleRepositories,
+  listBranches,
+  fetchTree,
+  fetchFileContents,
+  createOrUpdateFile,
+} from './github';
 
 export class PortalServer {
   private port: number;
@@ -16,6 +24,11 @@ export class PortalServer {
   private watcher: fs.FSWatcher | null = null;
   private clients: http.ServerResponse[] = [];
   private debounceTimer: NodeJS.Timeout | null = null;
+
+  // Cache remote GraphEngine instances keyed by "repo#branch"
+  private remoteGraphs: Map<string, GraphEngine> = new Map();
+  // Store dynamic templates in remote mode
+  private remoteTemplates: Map<string, { name: string; content: string; isDraft: boolean; version: string }[]> = new Map();
 
   constructor(graphEngine: GraphEngine, port = 3000, configPath?: string) {
     this.graphEngine = graphEngine;
@@ -146,6 +159,93 @@ Using EJS/Handlebars to render a standard service module.
   }
 
   /**
+   * Resolves appropriate GraphEngine based on parameters
+   */
+  private async resolveGraphEngine(parsedUrl: URL): Promise<{ engine: GraphEngine; isRemote: boolean; repo: string; branch: string }> {
+    const mode = parsedUrl.searchParams.get('mode') || (this.config.remote ? 'remote' : 'local');
+    if (mode === 'remote') {
+      const repo = parsedUrl.searchParams.get('repo') || this.config.remote?.repo || '';
+      const branch = parsedUrl.searchParams.get('branch') || this.config.remote?.default_branch || 'main';
+      if (!repo) {
+        return { engine: this.graphEngine, isRemote: false, repo: '', branch: '' };
+      }
+      const key = `${repo}#${branch}`;
+      if (this.remoteGraphs.has(key)) {
+        return { engine: this.remoteGraphs.get(key)!, isRemote: true, repo, branch };
+      }
+      // Create and initialize new in-memory SQLite database
+      const engine = new GraphEngine(':memory:');
+      await engine.initialize();
+      this.remoteGraphs.set(key, engine);
+
+      // Fetch and ingest remote specs
+      await this.ingestRemoteSpecs(engine, repo, branch);
+
+      return { engine, isRemote: true, repo, branch };
+    }
+    return { engine: this.graphEngine, isRemote: false, repo: '', branch: '' };
+  }
+
+  private async ingestRemoteSpecs(engine: GraphEngine, repo: string, branch: string): Promise<void> {
+    const [owner, name] = repo.split('/');
+    if (!owner || !name) return;
+
+    try {
+      const client = new GitHubClient();
+      const tree = await client.fetchTree(owner, name, branch);
+
+      // Filter specs ending in .ts.md or .md and having Frontmatter
+      const specFiles = tree.filter((entry) => entry.type === 'blob' && (entry.path.endsWith('.ts.md') || entry.path.endsWith('.md')));
+
+      for (const spec of specFiles) {
+        try {
+          const content = await client.fetchFileContents(owner, name, spec.path, branch);
+          if (content.trim().startsWith('---')) {
+            const parsed = parseOkfSpec(content);
+            if (parsed.isValid && parsed.frontmatter) {
+              const fileHash = crypto.createHash('sha256').update(content).digest('hex');
+              await engine.upsertSidecar({
+                filePath: spec.path,
+                frontmatter: parsed.frontmatter,
+                body: parsed.body,
+                fileHash,
+              });
+            }
+          }
+        } catch (e: any) {
+          console.error(`[PortalServer] Error loading remote file ${spec.path}:`, e.message || e);
+        }
+      }
+
+      // Also ingest remote templates for listTemplates
+      const templates: { name: string; content: string; isDraft: boolean; version: string }[] = [];
+      const templateDir = this.config.paths.templates_dir || '.stubs/templates';
+      const templateFiles = tree.filter((entry) => entry.type === 'blob' && entry.path.startsWith(templateDir) && entry.path.endsWith('.tpl'));
+
+      for (const tpl of templateFiles) {
+        try {
+          const content = await client.fetchFileContents(owner, name, tpl.path, branch);
+          const baseName = path.basename(tpl.path);
+          const isDraft = baseName.toLowerCase().includes('provisional') || baseName.toLowerCase().includes('draft');
+          const version = isDraft ? 'v1.0-provisional' : 'v1.0';
+          templates.push({
+            name: baseName,
+            content,
+            isDraft,
+            version,
+          });
+        } catch (e: any) {
+          console.error(`[PortalServer] Error loading remote template ${tpl.path}:`, e.message || e);
+        }
+      }
+      this.remoteTemplates.set(`${repo}#${branch}`, templates);
+
+    } catch (err: any) {
+      console.error(`[PortalServer] Failed to ingest remote specs/templates for ${repo}#${branch}:`, err.message || err);
+    }
+  }
+
+  /**
    * Handle incoming HTTP requests.
    */
   private async handleRequest(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
@@ -164,6 +264,64 @@ Using EJS/Handlebars to render a standard service module.
     }
 
     try {
+      // 0. GitHub API endpoints
+      if (pathname === '/api/v1/github/repos' && req.method === 'GET') {
+        try {
+          const repos = await listAccessibleRepositories();
+
+          // Let's flag repositories containing `.stubs/` or `*.ts.md` sidecar specifications
+          const enrichedRepos = await Promise.all(
+            repos.map(async (repo) => {
+              let hasStubs = false;
+              try {
+                const [owner, name] = repo.fullName.split('/');
+                const tree = await fetchTree(owner, name, repo.defaultBranch);
+                hasStubs = tree.some(
+                  (item) =>
+                    item.path.startsWith('.stubs/') ||
+                    item.path.endsWith('.ts.md') ||
+                    item.path.endsWith('.ts.md.tpl'),
+                );
+              } catch {
+                // Ignore errors
+              }
+              return { ...repo, hasStubs };
+            })
+          );
+
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ repositories: enrichedRepos }));
+        } catch (err: any) {
+          res.writeHead(500, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: err.message || err }));
+        }
+        return;
+      }
+
+      if (pathname === '/api/v1/github/branches' && req.method === 'GET') {
+        const repoParam = parsedUrl.searchParams.get('repo');
+        if (!repoParam) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Missing "repo" parameter' }));
+          return;
+        }
+        const [owner, repoName] = repoParam.split('/');
+        if (!owner || !repoName) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Invalid "repo" format, expected owner/repo' }));
+          return;
+        }
+        try {
+          const branches = await listBranches(owner, repoName);
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ branches }));
+        } catch (err: any) {
+          res.writeHead(500, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: err.message || err }));
+        }
+        return;
+      }
+
       // 1. Dashboard UI Root
       if (pathname === '/' && req.method === 'GET') {
         res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
@@ -179,16 +337,17 @@ Using EJS/Handlebars to render a standard service module.
 
       // 3. API endpoints
       if (pathname === '/api/graph' && req.method === 'GET') {
-        const files = await this.graphEngine.getFilesIndexed();
+        const { engine, isRemote, repo } = await this.resolveGraphEngine(parsedUrl);
+        const files = await engine.getFilesIndexed();
         const sidecars = [];
         for (const file of files) {
-          const sidecar = await this.graphEngine.getSidecar(file);
+          const sidecar = await engine.getSidecar(file);
           if (sidecar) {
             sidecars.push(sidecar);
           }
         }
         res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ sidecars, projectName: this.config.project_name }));
+        res.end(JSON.stringify({ sidecars, projectName: isRemote ? repo : this.config.project_name }));
         return;
       }
 
@@ -197,6 +356,7 @@ Using EJS/Handlebars to render a standard service module.
         (pathname === '/api/directives' || pathname === '/api/v1/directives') &&
         req.method === 'GET'
       ) {
+        const { engine } = await this.resolveGraphEngine(parsedUrl);
         const filterStatus = parsedUrl.searchParams.get('status') || 'pending';
         let query =
           'SELECT file_path as filePath, note_id as id, timestamp, text, status FROM user_notes';
@@ -207,7 +367,7 @@ Using EJS/Handlebars to render a standard service module.
         }
         query += ' ORDER BY timestamp DESC;';
 
-        const rows = await this.graphEngine.all(query, params);
+        const rows = await engine.all(query, params);
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ directives: rows }));
         return;
@@ -215,6 +375,7 @@ Using EJS/Handlebars to render a standard service module.
 
       // POST directives: add a new pending note to the sidecar file's frontmatter
       if (pathname === '/api/v1/directives' && req.method === 'POST') {
+        const { engine, isRemote, repo, branch } = await this.resolveGraphEngine(parsedUrl);
         const body = await this.parseJsonBody(req);
         const { filePath, text, id } = body;
 
@@ -224,17 +385,24 @@ Using EJS/Handlebars to render a standard service module.
           return;
         }
 
-        const resolvedPath = path.isAbsolute(filePath)
-          ? filePath
-          : path.resolve(process.cwd(), filePath);
+        let content = '';
+        let resolvedPath = '';
+        if (isRemote) {
+          const [owner, repoName] = repo.split('/');
+          content = await fetchFileContents(owner, repoName, filePath, branch);
+        } else {
+          resolvedPath = path.isAbsolute(filePath)
+            ? filePath
+            : path.resolve(process.cwd(), filePath);
 
-        if (!fs.existsSync(resolvedPath)) {
-          res.writeHead(404, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ error: `File not found at ${resolvedPath}` }));
-          return;
+          if (!fs.existsSync(resolvedPath)) {
+            res.writeHead(404, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: `File not found at ${resolvedPath}` }));
+            return;
+          }
+          content = await fs.promises.readFile(resolvedPath, 'utf8');
         }
 
-        const content = await fs.promises.readFile(resolvedPath, 'utf8');
         const parsed = parseOkfSpec(content);
         if (!parsed.isValid || !parsed.frontmatter) {
           res.writeHead(400, { 'Content-Type': 'application/json' });
@@ -260,20 +428,30 @@ Using EJS/Handlebars to render a standard service module.
         parsed.frontmatter.user_notes = notes;
 
         const newContent = stringifyOkfSpec(parsed.frontmatter, parsed.body);
-        await fs.promises.writeFile(resolvedPath, newContent, 'utf8');
-
-        // Force DB Index Update
         const fileHash = crypto.createHash('sha256').update(newContent).digest('hex');
-        const relativePath = path.relative(process.cwd(), resolvedPath).replace(/\\/g, '/');
-        await this.graphEngine.upsertSidecar({
-          filePath: relativePath,
-          frontmatter: parsed.frontmatter,
-          body: parsed.body,
-          fileHash,
-        });
+
+        if (isRemote) {
+          const [owner, repoName] = repo.split('/');
+          await createOrUpdateFile(owner, repoName, filePath, newContent, `Add user note ${noteId}`, branch);
+          await engine.upsertSidecar({
+            filePath,
+            frontmatter: parsed.frontmatter,
+            body: parsed.body,
+            fileHash,
+          });
+        } else {
+          await fs.promises.writeFile(resolvedPath, newContent, 'utf8');
+          const relativePath = path.relative(process.cwd(), resolvedPath).replace(/\\/g, '/');
+          await engine.upsertSidecar({
+            filePath: relativePath,
+            frontmatter: parsed.frontmatter,
+            body: parsed.body,
+            fileHash,
+          });
+        }
 
         // Broadcast SSE
-        this.broadcast('directive:created', { filePath: relativePath, note: newNote });
+        this.broadcast('directive:created', { filePath: isRemote ? filePath : path.relative(process.cwd(), resolvedPath).replace(/\\/g, '/'), note: newNote });
 
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ success: true, note: newNote }));
@@ -282,6 +460,7 @@ Using EJS/Handlebars to render a standard service module.
 
       // POST directives/resolve: resolve an existing pending note inside the sidecar
       if (pathname === '/api/v1/directives/resolve' && req.method === 'POST') {
+        const { engine, isRemote, repo, branch } = await this.resolveGraphEngine(parsedUrl);
         const body = await this.parseJsonBody(req);
         const { filePath, id } = body;
 
@@ -291,17 +470,24 @@ Using EJS/Handlebars to render a standard service module.
           return;
         }
 
-        const resolvedPath = path.isAbsolute(filePath)
-          ? filePath
-          : path.resolve(process.cwd(), filePath);
+        let content = '';
+        let resolvedPath = '';
+        if (isRemote) {
+          const [owner, repoName] = repo.split('/');
+          content = await fetchFileContents(owner, repoName, filePath, branch);
+        } else {
+          resolvedPath = path.isAbsolute(filePath)
+            ? filePath
+            : path.resolve(process.cwd(), filePath);
 
-        if (!fs.existsSync(resolvedPath)) {
-          res.writeHead(404, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ error: `File not found at ${resolvedPath}` }));
-          return;
+          if (!fs.existsSync(resolvedPath)) {
+            res.writeHead(404, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: `File not found at ${resolvedPath}` }));
+            return;
+          }
+          content = await fs.promises.readFile(resolvedPath, 'utf8');
         }
 
-        const content = await fs.promises.readFile(resolvedPath, 'utf8');
         const parsed = parseOkfSpec(content);
         if (!parsed.isValid || !parsed.frontmatter) {
           res.writeHead(400, { 'Content-Type': 'application/json' });
@@ -320,17 +506,27 @@ Using EJS/Handlebars to render a standard service module.
         note.status = 'resolved';
 
         const newContent = stringifyOkfSpec(parsed.frontmatter, parsed.body);
-        await fs.promises.writeFile(resolvedPath, newContent, 'utf8');
-
-        // Force DB Index Update
         const fileHash = crypto.createHash('sha256').update(newContent).digest('hex');
-        const relativePath = path.relative(process.cwd(), resolvedPath).replace(/\\/g, '/');
-        await this.graphEngine.upsertSidecar({
-          filePath: relativePath,
-          frontmatter: parsed.frontmatter,
-          body: parsed.body,
-          fileHash,
-        });
+
+        if (isRemote) {
+          const [owner, repoName] = repo.split('/');
+          await createOrUpdateFile(owner, repoName, filePath, newContent, `Resolve note ${id}`, branch);
+          await engine.upsertSidecar({
+            filePath,
+            frontmatter: parsed.frontmatter,
+            body: parsed.body,
+            fileHash,
+          });
+        } else {
+          await fs.promises.writeFile(resolvedPath, newContent, 'utf8');
+          const relativePath = path.relative(process.cwd(), resolvedPath).replace(/\\/g, '/');
+          await engine.upsertSidecar({
+            filePath: relativePath,
+            frontmatter: parsed.frontmatter,
+            body: parsed.body,
+            fileHash,
+          });
+        }
 
         this.broadcast('graph:updated', { timestamp: new Date().toISOString() });
 
@@ -344,6 +540,14 @@ Using EJS/Handlebars to render a standard service module.
         (pathname === '/api/templates' || pathname === '/api/v1/templates') &&
         req.method === 'GET'
       ) {
+        const { isRemote, repo, branch } = await this.resolveGraphEngine(parsedUrl);
+        if (isRemote) {
+          const cached = this.remoteTemplates.get(`${repo}#${branch}`) || [];
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ templates: cached }));
+          return;
+        }
+
         const templateEngine = new TemplateEngine(this.config.paths.templates_dir);
         const templatesList = await templateEngine.listTemplates();
         const resultTemplates = [];
@@ -369,12 +573,121 @@ Using EJS/Handlebars to render a standard service module.
 
       // POST templates/approve: inline approval/rejection forms of pending drafts
       if (pathname === '/api/v1/templates/approve' && req.method === 'POST') {
+        const { isRemote, repo, branch } = await this.resolveGraphEngine(parsedUrl);
         const body = await this.parseJsonBody(req);
         const { templateName, approved } = body;
 
         if (!templateName) {
           res.writeHead(400, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ error: 'Missing "templateName" parameter in body' }));
+          return;
+        }
+
+        if (isRemote) {
+          const [owner, repoName] = repo.split('/');
+          const templateDir = this.config.paths.templates_dir || '.stubs/templates';
+          const oldPath = `${templateDir}/${templateName}`;
+
+          const key = `${repo}#${branch}`;
+          const cached = this.remoteTemplates.get(key) || [];
+          const tplObj = cached.find((t) => t.name === templateName);
+          if (!tplObj) {
+            res.writeHead(404, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: `Template not found: ${templateName}` }));
+            return;
+          }
+
+          if (approved) {
+            let newName = templateName;
+            if (templateName.includes('-v1.0-provisional')) {
+              newName = templateName.replace('-v1.0-provisional', '');
+            } else if (templateName.includes('-provisional')) {
+              newName = templateName.replace('-provisional', '');
+            } else {
+              newName = templateName.replace('.tpl', '-approved.tpl');
+            }
+            const newPath = `${templateDir}/${newName}`;
+
+            // Create new template at new path with the same content
+            await createOrUpdateFile(owner, repoName, newPath, tplObj.content, `Approve template ${templateName}`, branch);
+
+            // Delete old provisional draft (by committing empty or mock delete via createOrUpdateFile/GitHub APIs as needed,
+            // or simply updating the file contents of the template to be active - in typical GitHub we commit the file name change).
+            // For simplicty & robustness on standard GitHub API contents PUT, writing the approved and leaving provisional is fine or deleting it.
+            // Let's delete it if possible, or commit with deletion if GitHub API supports. In GitHub REST API we can delete a file using DELETE /repos/{owner}/{repo}/contents/{path}.
+            // Let's trigger a DELETE or just create approved and remove provisional from cache.
+            try {
+              const client = new GitHubClient();
+              const metaUrl = `${client['baseUrl']}/repos/${owner}/${repoName}/contents/${oldPath}?ref=${branch}`;
+              const metaRes = await fetch(metaUrl, {
+                method: 'GET',
+                headers: client['getHeaders'](),
+              });
+              if (metaRes.ok) {
+                const metaData: any = await metaRes.json();
+                const delUrl = `${client['baseUrl']}/repos/${owner}/${repoName}/contents/${oldPath}`;
+                await fetch(delUrl, {
+                  method: 'DELETE',
+                  headers: client['getHeaders']({ 'Content-Type': 'application/json' }),
+                  body: JSON.stringify({
+                    message: `Delete provisional draft ${templateName}`,
+                    sha: metaData.sha,
+                    branch,
+                  }),
+                });
+              }
+            } catch (err: any) {
+              console.error(`[PortalServer] Optional remote file delete failed:`, err.message || err);
+            }
+
+            // Update cache
+            tplObj.name = newName;
+            tplObj.isDraft = false;
+            tplObj.version = 'v1.0';
+
+            this.broadcast('graph:updated', { type: 'template_approved', templateName, newName });
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(
+              JSON.stringify({
+                success: true,
+                message: `Template approved and renamed to ${newName} on remote repository.`,
+              }),
+            );
+          } else {
+            // Delete provisional draft
+            try {
+              const client = new GitHubClient();
+              const metaUrl = `${client['baseUrl']}/repos/${owner}/${repoName}/contents/${oldPath}?ref=${branch}`;
+              const metaRes = await fetch(metaUrl, {
+                method: 'GET',
+                headers: client['getHeaders'](),
+              });
+              if (metaRes.ok) {
+                const metaData: any = await metaRes.json();
+                const delUrl = `${client['baseUrl']}/repos/${owner}/${repoName}/contents/${oldPath}`;
+                await fetch(delUrl, {
+                  method: 'DELETE',
+                  headers: client['getHeaders']({ 'Content-Type': 'application/json' }),
+                  body: JSON.stringify({
+                    message: `Reject draft template ${templateName}`,
+                    sha: metaData.sha,
+                    branch,
+                  }),
+                });
+              }
+            } catch (err: any) {
+              console.error(`[PortalServer] Optional remote file delete failed:`, err.message || err);
+            }
+
+            // Update cache
+            this.remoteTemplates.set(key, cached.filter((t) => t.name !== templateName));
+
+            this.broadcast('graph:updated', { type: 'template_rejected', templateName });
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(
+              JSON.stringify({ success: true, message: 'Template draft rejected and deleted from remote repository.' }),
+            );
+          }
           return;
         }
 
@@ -422,19 +735,21 @@ Using EJS/Handlebars to render a standard service module.
       }
 
       if (pathname === '/api/search' && req.method === 'GET') {
+        const { engine } = await this.resolveGraphEngine(parsedUrl);
         const q = parsedUrl.searchParams.get('q') || '';
         const tagsParam = parsedUrl.searchParams.get('tags');
         const tags = tagsParam ? tagsParam.split(',').filter(Boolean) : undefined;
         const boundsParam = parsedUrl.searchParams.get('bounds');
         const bounds = boundsParam ? boundsParam.split(',').filter(Boolean) : undefined;
 
-        const results = await this.graphEngine.search(q, { tags, bounds });
+        const results = await engine.search(q, { tags, bounds });
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ results }));
         return;
       }
 
       if (pathname === '/api/sidecar' && req.method === 'GET') {
+        const { engine } = await this.resolveGraphEngine(parsedUrl);
         const filePath = parsedUrl.searchParams.get('path');
         if (!filePath) {
           res.writeHead(400, { 'Content-Type': 'application/json' });
@@ -442,7 +757,7 @@ Using EJS/Handlebars to render a standard service module.
           return;
         }
 
-        const sidecar = await this.graphEngine.getSidecar(filePath);
+        const sidecar = await engine.getSidecar(filePath);
         if (!sidecar) {
           res.writeHead(404, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ error: 'Sidecar specification not found' }));
@@ -640,8 +955,36 @@ Using EJS/Handlebars to render a standard service module.
       </div>
     </div>
 
+    <!-- Repository & Branch Switcher -->
+    <div class="flex items-center space-x-3 bg-slate-950 border border-slate-800/80 p-1.5 rounded-lg">
+      <div class="flex items-center bg-slate-900 border border-slate-800 rounded px-2.5 py-1">
+        <label for="mode-toggle" class="text-[10px] font-bold text-slate-400 mr-1.5 uppercase">Mode</label>
+        <select id="mode-toggle" onchange="toggleMode()" class="bg-transparent text-xs text-white focus:outline-none font-semibold">
+          <option value="local" class="bg-slate-900">Local</option>
+          <option value="remote" class="bg-slate-900">Remote (GitHub)</option>
+        </select>
+      </div>
+
+      <div id="remote-switcher-controls" class="hidden flex items-center space-x-2">
+        <div class="flex items-center bg-slate-900 border border-slate-800 rounded px-2 py-1">
+          <label for="repo-select" class="text-[10px] font-bold text-slate-400 mr-1.5 uppercase">Repo</label>
+          <select id="repo-select" onchange="selectRepo()" class="bg-transparent text-xs text-white focus:outline-none max-w-[140px] font-semibold">
+            <option value="">-- Choose Repo --</option>
+          </select>
+          <input type="text" id="custom-repo-input" placeholder="or owner/repo" onkeydown="handleCustomRepoKey(event)" class="bg-transparent text-xs text-white placeholder-slate-600 focus:outline-none ml-2 border-l border-slate-800 pl-2 w-24 font-mono" />
+        </div>
+
+        <div class="flex items-center bg-slate-900 border border-slate-800 rounded px-2 py-1">
+          <label for="branch-select" class="text-[10px] font-bold text-slate-400 mr-1.5 uppercase">Branch</label>
+          <select id="branch-select" onchange="selectBranch()" class="bg-transparent text-xs text-white focus:outline-none max-w-[100px] font-mono">
+            <option value="main">main</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
     <!-- Live Search Bar -->
-    <div class="flex-1 max-w-lg mx-8 relative">
+    <div class="flex-1 max-w-sm mx-4 relative">
       <input
         type="text"
         id="search-input"
@@ -801,6 +1144,91 @@ Using EJS/Handlebars to render a standard service module.
     let rightTab = 'directives';
     let toastQueue = [];
 
+    // Dual-Mode State
+    let currentMode = 'local';
+    let currentRepo = '';
+    let currentBranch = 'main';
+
+    function getQueryParams() {
+      if (currentMode === 'remote' && currentRepo) {
+        return \`?mode=remote&repo=\${encodeURIComponent(currentRepo)}&branch=\${encodeURIComponent(currentBranch)}\`;
+      }
+      return '';
+    }
+
+    async function toggleMode() {
+      const mode = document.getElementById('mode-toggle').value;
+      currentMode = mode;
+      const remoteControls = document.getElementById('remote-switcher-controls');
+      if (mode === 'remote') {
+        remoteControls.classList.remove('hidden');
+        await loadRemoteRepos();
+      } else {
+        remoteControls.classList.add('hidden');
+        currentRepo = '';
+        currentBranch = 'main';
+        await initWorkspace();
+      }
+    }
+
+    async function loadRemoteRepos() {
+      try {
+        const res = await fetch('/api/v1/github/repos');
+        const data = await res.json();
+        const repoSelect = document.getElementById('repo-select');
+
+        if (data.repositories && Array.isArray(data.repositories)) {
+          repoSelect.innerHTML = '<option value="">-- Choose Repo --</option>' +
+            data.repositories.map(r => {
+              const star = r.hasStubs ? '⭐ ' : '';
+              return \`<option value="\${r.fullName}">\${star}\${r.fullName}</option>\`;
+            }).join('');
+        }
+      } catch (err) {
+        showToast("Failed to load GitHub repositories", "error");
+      }
+    }
+
+    async function selectRepo() {
+      const repo = document.getElementById('repo-select').value;
+      if (repo) {
+        currentRepo = repo;
+        await loadBranches(repo);
+      }
+    }
+
+    async function handleCustomRepoKey(event) {
+      if (event.key === 'Enter') {
+        const custom = document.getElementById('custom-repo-input').value.trim();
+        if (custom) {
+          currentRepo = custom;
+          await loadBranches(custom);
+        }
+      }
+    }
+
+    async function loadBranches(repo) {
+      try {
+        const res = await fetch(\`/api/v1/github/branches?repo=\${encodeURIComponent(repo)}\`);
+        const data = await res.json();
+        const branchSelect = document.getElementById('branch-select');
+
+        if (data.branches && Array.isArray(data.branches)) {
+          branchSelect.innerHTML = data.branches.map(b => \`<option value="\${b}">\${b}</option>\`).join('');
+          currentBranch = data.branches.includes('main') ? 'main' : data.branches[0];
+          branchSelect.value = currentBranch;
+          await initWorkspace();
+        }
+      } catch (err) {
+        showToast("Failed to load branches for repository", "error");
+      }
+    }
+
+    async function selectBranch() {
+      currentBranch = document.getElementById('branch-select').value;
+      await initWorkspace();
+    }
+
     // Trigger Toast Notification
     function showToast(message, type = 'info') {
       const container = document.getElementById('toast-container');
@@ -895,9 +1323,9 @@ Using EJS/Handlebars to render a standard service module.
     // Fetch initial workspace specifications
     async function initWorkspace() {
       try {
-        const res = await fetch('/api/graph');
+        const res = await fetch('/api/graph' + getQueryParams());
         const data = await res.json();
-        sidecars = data.sidecars;
+        sidecars = data.sidecars || [];
 
         document.getElementById('last-updated').textContent = new Date().toLocaleTimeString();
         document.getElementById('active-subsystem').textContent = data.projectName || 'src';
@@ -914,9 +1342,9 @@ Using EJS/Handlebars to render a standard service module.
     // Fetch Directives from API
     async function fetchDirectives() {
       try {
-        const res = await fetch(\`/api/v1/directives?status=\${currentDirFilter}\`);
+        const res = await fetch(\`/api/v1/directives?status=\${currentDirFilter}\` + (getQueryParams() ? '&' + getQueryParams().substring(1) : ''));
         const data = await res.json();
-        directives = data.directives;
+        directives = data.directives || [];
         renderDirectivesList();
       } catch (err) {
         console.error("Error fetching directives:", err);
@@ -926,9 +1354,9 @@ Using EJS/Handlebars to render a standard service module.
     // Fetch Templates from API
     async function fetchTemplates() {
       try {
-        const res = await fetch('/api/v1/templates');
+        const res = await fetch('/api/v1/templates' + getQueryParams());
         const data = await res.json();
-        templates = data.templates;
+        templates = data.templates || [];
         renderTemplatesList();
       } catch (err) {
         console.error("Error fetching templates:", err);
@@ -1070,7 +1498,7 @@ Using EJS/Handlebars to render a standard service module.
       showToast("Sending directive note to workspace...", "info");
 
       try {
-        const res = await fetch('/api/v1/directives', {
+        const res = await fetch('/api/v1/directives' + getQueryParams(), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ filePath, text })
@@ -1097,7 +1525,7 @@ Using EJS/Handlebars to render a standard service module.
       renderDirectivesList();
 
       try {
-        const res = await fetch('/api/v1/directives/resolve', {
+        const res = await fetch('/api/v1/directives/resolve' + getQueryParams(), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ filePath, id })
@@ -1207,7 +1635,7 @@ Using EJS/Handlebars to render a standard service module.
       showToast(approved ? "Approving template draft..." : "Rejecting template draft...", "info");
 
       try {
-        const res = await fetch('/api/v1/templates/approve', {
+        const res = await fetch('/api/v1/templates/approve' + getQueryParams(), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ templateName, approved })
@@ -1235,7 +1663,7 @@ Using EJS/Handlebars to render a standard service module.
     async function fetchAndShowSidecarDetail(filePath) {
       const container = document.getElementById('detail-pane');
       try {
-        const res = await fetch(\`/api/sidecar?path=\${encodeURIComponent(filePath)}\`);
+        const res = await fetch(\`/api/sidecar?path=\${encodeURIComponent(filePath)}\` + (getQueryParams() ? '&' + getQueryParams().substring(1) : ''));
         const data = await res.json();
 
         if (data.error) {
