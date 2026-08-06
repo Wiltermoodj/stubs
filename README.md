@@ -3,7 +3,7 @@ Document Status: Master Architecture & System Design Specification
 Version: 1.3.0
 Target Engine Runtime: Node.js / TypeScript (ES2022+)
 Knowledge Representation Standard: Google Open Knowledge Format (OKF)
-Software Design Standard: John Ousterhout's Deep Module Philosophy
+Software Design Standard: DESIGN_PHILOSOPHY.md
 Persistence & Search Engine: SQLite3 + FTS5 Full-Text Search + Graph Adjacency Engine (Zero-Model Default)
 1. Executive Summary & Core Architectural Tenets
 The stubs framework provides an architecture, execution engine, and AI agent instruction protocol for building, maintaining, and evolving complex software codebases.
@@ -24,7 +24,7 @@ Key Architectural Tenets
  * Zero-Model Core Engine: Drop-in skill installation requires zero external API keys, zero mandatory local ML models, and no environment setup. The host AI agent provides reasoning, while the local CLI binary handles mechanical tasks at 0 LLM token cost.
  * Pluggable Search Architecture: Graph traversal, OKF tag matching, and native SQLite FTS5 (Full-Text Search) serve as the core search layer by default. Vector search engines (Host API or Local ONNX) exist strictly as optional, opt-in plugins.
  * Open Knowledge Format (OKF): Every sidecar forms a node in a traversable, graph-structured knowledge network linked via YAML frontmatter (depends_on, used_by, exports, tags).
- * John Ousterhout Deep Module Enforcement: Code generation and interface design strictly enforce deep module boundaries, information hiding, error elimination, and context aggregation.
+ * Deep Module Enforcement: Code generation and interface design strictly enforce deep module boundaries, information hiding, error elimination, and context aggregation.
  * Continuous Re-Grilling & Non-Destructive Refinement: System design is iterative. Re-grilling passes (refine, pivot, delta) propagate contract changes across downstream dependencies without destroying existing work.
  * Local Template Engine & Configurable Autonomy: Project-local molds (.stubs/templates/*) capture recurring patterns. Agents operate under 3 configurable autonomy levels (Strict Gate, Guided Execution, Autonomous/Optimistic) supported by a 5-phase retroactive reconciliation engine.
  * Bi-Directional Code Sanding & Self-Healing: The system reconciles specification drift automatically using AST structural hashes and timestamp vectors, while self-healing corrupted headers or manual formatting edits.
