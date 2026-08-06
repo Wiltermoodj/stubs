@@ -429,8 +429,10 @@ Options:
     console.log(`Reason:         ${res.reason}`);
 
     return res.allowed ? 0 : 1;
+  }
+
   private async handleSync(ctx: CliContext): Promise<number> {
-    const config = loadConfig();
+    const config = loadConfig(ctx.configPath);
     const specsDir = config.paths?.specs_dir || 'src';
     const engine = new SandingEngine();
 
