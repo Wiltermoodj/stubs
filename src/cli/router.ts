@@ -3,6 +3,7 @@ import * as path from 'path';
 import { parseOkfSpec } from '../parser/okf';
 import { loadConfig } from '../config/schema';
 import { SandingEngine, SyncResult } from '../sanding/engine';
+import { MaterializerEngine } from '../materializer/engine';
 
 export interface CliContext {
   configPath?: string;
@@ -41,6 +42,8 @@ export class CliRouter {
           return await this.handleValidate(context);
         case 'sync':
           return await this.handleSync(context);
+        case 'materialize':
+          return await this.handleMaterialize(context);
         default:
           console.error(`Error: Unknown command "${context.command}". Use --help for usage.`);
           return 1;
@@ -81,11 +84,12 @@ Usage:
   stubs <command> [options]
 
 Commands:
-  validate <file>  Parse and validate an OKF sidecar (*.ts.md) file.
+  validate <file>     Parse and validate an OKF sidecar (*.ts.md) file.
+  materialize <file>  Parse, extract, typecheck, and write executable code from sidecar.
   sync [file]      Synchronize sidecars and code files.
-  serve            Start the local Web Portal and Event Bridge background server.
-  help             Display this help message.
-  version          Display version information.
+  serve               Start the local Web Portal and Event Bridge background server.
+  help                Display this help message.
+  version             Display version information.
 
 Options:
   -c, --config <path>  Specify path to stubs configuration file (default: .stubs/config.json)
@@ -108,6 +112,44 @@ Options:
   private async handleServe(_ctx: CliContext): Promise<number> {
     console.log('Starting stubs Web Portal (serve mode)...');
     return 0;
+  }
+
+  private async handleMaterialize(ctx: CliContext): Promise<number> {
+    if (ctx.args.length === 0) {
+      console.error('Error: "materialize" command requires a file path argument.');
+      console.error('Usage: stubs materialize <file.ts.md>');
+      return 1;
+    }
+    const targetFile = path.resolve(ctx.args[0]);
+    if (!existsSync(targetFile)) {
+      console.error(`Error: File not found at "${targetFile}"`);
+      return 1;
+    }
+
+    try {
+      const materializer = new MaterializerEngine();
+      const result = await materializer.materialize(targetFile);
+
+      if (!result.success) {
+        console.error(`Materialization failed for "${ctx.args[0]}":`);
+        if (result.error) {
+          console.error(`  Error: ${result.error}`);
+        }
+        if (result.diagnostics && result.diagnostics.length > 0) {
+          console.error('  Diagnostics:');
+          for (const diag of result.diagnostics) {
+            console.error(`    - ${diag}`);
+          }
+        }
+        return 1;
+      }
+
+      console.log(`Materialization succeeded for "${ctx.args[0]}"!`);
+      return 0;
+    } catch (error: any) {
+      console.error(`Error during materialization: ${error.message || error}`);
+      return 1;
+    }
   }
 
   private async handleValidate(ctx: CliContext): Promise<number> {
