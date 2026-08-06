@@ -1,6 +1,8 @@
 import { promises as fs, existsSync } from 'fs';
 import * as path from 'path';
 import { parseOkfSpec } from '../parser/okf';
+import { loadConfig } from '../config/schema';
+import { SandingEngine, SyncResult } from '../sanding/engine';
 
 export interface CliContext {
   configPath?: string;
@@ -37,6 +39,8 @@ export class CliRouter {
           return await this.handleServe(context);
         case 'validate':
           return await this.handleValidate(context);
+        case 'sync':
+          return await this.handleSync(context);
         default:
           console.error(`Error: Unknown command "${context.command}". Use --help for usage.`);
           return 1;
@@ -78,6 +82,7 @@ Usage:
 
 Commands:
   validate <file>  Parse and validate an OKF sidecar (*.ts.md) file.
+  sync [file]      Synchronize sidecars and code files.
   serve            Start the local Web Portal and Event Bridge background server.
   help             Display this help message.
   version          Display version information.
@@ -139,6 +144,51 @@ Options:
     } catch (error: any) {
       console.error(`Error reading or validating file: ${error.message || error}`);
       return 1;
+    }
+  }
+
+  private async handleSync(ctx: CliContext): Promise<number> {
+    const config = loadConfig();
+    const specsDir = config.paths?.specs_dir || 'src';
+    const engine = new SandingEngine();
+
+    if (ctx.args.length > 0) {
+      const targetFile = path.resolve(ctx.args[0]);
+      if (!existsSync(targetFile)) {
+        console.error(`Error: File not found at "${targetFile}"`);
+        return 1;
+      }
+      console.log(`Synchronizing sidecar file: ${ctx.args[0]}...`);
+      const result = await engine.syncFile(targetFile);
+      this.printSyncResult(result);
+      return result.status === 'error' ? 1 : 0;
+    } else {
+      console.log(`Scanning and synchronizing workspace specifications under "${specsDir}"...`);
+      const results = await engine.syncWorkspace(specsDir);
+      let hasError = false;
+      for (const result of results) {
+        this.printSyncResult(result);
+        if (result.status === 'error') hasError = true;
+      }
+      return hasError ? 1 : 0;
+    }
+  }
+
+  private printSyncResult(result: SyncResult): void {
+    if (result.status === 'no_change') {
+      console.log(`  - ${result.filePath}: Already in sync.`);
+    } else if (result.status === 'synced') {
+      console.log(`  - ${result.filePath}: Synchronized [Direction: ${result.direction}]`);
+    } else if (result.status === 'healed') {
+      console.log(
+        `  - ${result.filePath}: Corrupted frontmatter was healed and synchronized [Direction: ${result.direction}]`,
+      );
+    } else if (result.status === 'conflict') {
+      console.warn(
+        `  - ${result.filePath}: [CONFLICT] Both sidecar and code were modified with AST differences. Marked as needs-human-review-resolution.`,
+      );
+    } else {
+      console.error(`  - ${result.filePath}: Error: ${result.error}`);
     }
   }
 }
