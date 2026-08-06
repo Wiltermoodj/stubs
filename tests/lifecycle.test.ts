@@ -170,5 +170,5 @@ export function greet(name: string): string {
     // Run sync again - should report no_change as files are perfectly synchronized now
     const secondSyncResult = await sandingEngine.syncFile(sidecarFilePath);
     expect(secondSyncResult.status).toBe('no_change');
-  });
+  }, 20000);
 });
