@@ -663,6 +663,22 @@ export class GraphEngine {
   }
 
   /**
+   * Retrieves all pending user notes (directives) from the database across all sidecars.
+   */
+  public async getPendingDirectives(): Promise<
+    Array<{ filePath: string; id: string; timestamp: string; text: string; status: string }>
+  > {
+    await this.ensureInitialized();
+    const rows = await this.all<any>(
+      `SELECT file_path as filePath, note_id as id, timestamp, text, status
+       FROM user_notes
+       WHERE status = 'pending'
+       ORDER BY timestamp DESC;`,
+    );
+    return rows;
+  }
+
+  /**
    * Prunes search candidates using depends_on, used_by, and subsystem boundary scopes (src/auth).
    */
   private async getCandidateFilesFromBounds(bounds: string[]): Promise<Set<string>> {

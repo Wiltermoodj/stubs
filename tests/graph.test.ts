@@ -48,6 +48,49 @@ describe('Graph Adjacency & SQLite Search Engine', () => {
     expect(tableNames).toContain('sidecar_fts');
   });
 
+  test('should support getPendingDirectives to retrieve pending user notes across sidecars', async () => {
+    const specWithDirectives: OkfFrontmatter = {
+      title: 'Directives Spec',
+      type: 'sidecar-spec',
+      description: 'Spec with some user notes',
+      tags: [],
+      status: 'spec',
+      version: 1,
+      target_code_file: './dir.ts',
+      status_flag: 'clean',
+      user_notes: [
+        {
+          id: 'NOTE-1',
+          timestamp: '2026-08-05T12:00:00Z',
+          text: 'This is pending',
+          status: 'pending',
+        },
+        {
+          id: 'NOTE-2',
+          timestamp: '2026-08-05T13:00:00Z',
+          text: 'This is completed',
+          status: 'completed',
+        },
+      ],
+    };
+
+    await engine.upsertSidecar({
+      filePath: 'src/directives.ts.md',
+      frontmatter: specWithDirectives,
+      body: '',
+    });
+
+    const pending = await engine.getPendingDirectives();
+    expect(pending.length).toBe(1);
+    expect(pending[0]).toEqual({
+      filePath: 'src/directives.ts.md',
+      id: 'NOTE-1',
+      timestamp: '2026-08-05T12:00:00Z',
+      text: 'This is pending',
+      status: 'pending',
+    });
+  });
+
   test('should support the full indexing CRUD lifecycle of a sidecar specification', async () => {
     const testFrontmatter: OkfFrontmatter = {
       title: 'JWT Authentication Spec',
