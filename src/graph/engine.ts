@@ -23,6 +23,7 @@ export interface SearchOptions {
   bounds?: string[];
   tags?: string[];
   limit?: number;
+  candidateFiles?: Set<string>;
 }
 
 export interface SearchResult {
@@ -197,6 +198,16 @@ export class GraphEngine {
       CREATE TABLE IF NOT EXISTS index_meta (
         key TEXT PRIMARY KEY,
         value TEXT
+      );
+    `);
+
+    // 10. Create sidecar_embeddings table for pluggable vector search engines
+    await this.run(`
+      CREATE TABLE IF NOT EXISTS sidecar_embeddings (
+        file_path TEXT,
+        engine TEXT,
+        embedding TEXT, -- JSON array of floats
+        PRIMARY KEY (file_path, engine)
       );
     `);
   }
@@ -446,6 +457,28 @@ export class GraphEngine {
       );
 
       await this.run('COMMIT;');
+
+      const config = loadConfig();
+      const activeEngine = config.search.engine;
+      const textToEmbed = `
+File: ${filePath}
+Title: ${title}
+Description: ${description}
+Tags: ${tags.join(', ')}
+Exports: ${exports.join(', ')}
+Interfaces: ${interfacesText}
+Decisions: ${decisionsText}
+`.trim();
+
+      if (activeEngine === 'plugin-level-2') {
+        const { Level2SearchPlugin } = await import('./plugins/level2');
+        const plugin = new Level2SearchPlugin(this);
+        await plugin.indexSidecar(filePath, textToEmbed);
+      } else if (activeEngine === 'plugin-level-3') {
+        const { Level3SearchPlugin } = await import('./plugins/level3');
+        const plugin = new Level3SearchPlugin(this);
+        await plugin.indexSidecar(filePath, textToEmbed);
+      }
     } catch (err) {
       await this.run('ROLLBACK;');
       throw err;
@@ -500,6 +533,7 @@ export class GraphEngine {
       await this.run('DELETE FROM exports WHERE file_path = ?;', [filePath]);
       await this.run('DELETE FROM decisions WHERE file_path = ?;', [filePath]);
       await this.run('DELETE FROM user_notes WHERE file_path = ?;', [filePath]);
+      await this.run('DELETE FROM sidecar_embeddings WHERE file_path = ?;', [filePath]);
       await this.run('DELETE FROM sidecars WHERE file_path = ?;', [filePath]);
 
       await this.run('COMMIT;');
@@ -740,6 +774,9 @@ export class GraphEngine {
   public async search(query: string, options: SearchOptions = {}): Promise<SearchResult[]> {
     await this.ensureInitialized();
 
+    const config = loadConfig();
+    const activeEngine = config.search.engine;
+
     const { bounds, tags, limit } = options;
 
     let boundsSet: Set<string> | null = null;
@@ -760,6 +797,24 @@ export class GraphEngine {
       finalCandidateSet = boundsSet;
     } else if (tagsSet) {
       finalCandidateSet = tagsSet;
+    }
+
+    if (activeEngine === 'plugin-level-2') {
+      const { Level2SearchPlugin } = await import('./plugins/level2');
+      const plugin = new Level2SearchPlugin(this);
+      const pluginOptions: SearchOptions = {
+        ...options,
+        candidateFiles: finalCandidateSet || undefined,
+      };
+      return await plugin.search(query, pluginOptions);
+    } else if (activeEngine === 'plugin-level-3') {
+      const { Level3SearchPlugin } = await import('./plugins/level3');
+      const plugin = new Level3SearchPlugin(this);
+      const pluginOptions: SearchOptions = {
+        ...options,
+        candidateFiles: finalCandidateSet || undefined,
+      };
+      return await plugin.search(query, pluginOptions);
     }
 
     let rows: any[];

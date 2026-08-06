@@ -40,9 +40,9 @@ This document outlines the sequential steps to implement the `stubs` framework a
 
 ## Phase 6: Interactive Grill Engine
 
-- [ ] Implement the Grill Engine state machine.
-- [ ] Define and implement the 3-level Grill Depth Matrix (Light Probe, Standard Drill, Deep Interrogation).
-- [ ] Create the interactive terminal prompts and response handlers.
+- [x] Implement the Grill Engine state machine.
+- [x] Define and implement the 3-level Grill Depth Matrix (Light Probe, Standard Drill, Deep Interrogation).
+- [x] Create the interactive terminal prompts and response handlers.
 
 ## Phase 7: Real-Time Web Portal & Event Bridge
 
@@ -52,8 +52,8 @@ This document outlines the sequential steps to implement the `stubs` framework a
 
 ## Phase 8: Optional Pluggable Search Engines
 
-- [ ] Build the Level 2 (Host API Provider) search plugin for external LLMs.
-- [ ] Build the Level 3 (Air-Gapped Local Vector Engine) search plugin using `sqlite-vec` and ONNX runtime.
+- [x] Build the Level 2 (Host API Provider) search plugin for external LLMs.
+- [x] Build the Level 3 (Air-Gapped Local Vector Engine) search plugin using `sqlite-vec` and ONNX runtime.
 
 ## Phase 9: Testing, Refinement & Finalization
 
