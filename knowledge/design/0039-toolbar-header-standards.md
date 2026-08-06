@@ -1,18 +1,20 @@
 ```markdown
 ---
-title: "0039 - Page Toolbar & Section Header Standards"
-type: "adr"
-description: "Accepted"
-status: "active"
-last_updated: "2026-08-01T21:40:00Z"
+title: '0039 - Page Toolbar & Section Header Standards'
+type: 'adr'
+description: 'Accepted'
+status: 'active'
+last_updated: '2026-08-01T21:40:00Z'
 ---
 
 # 0039 - Page Toolbar & Section Header Standards
 
 ## Status
+
 Accepted
 
 ## Context
+
 Across core application domain views (Organizations, Contacts, Dealers, Expenses, Tasks, Deals, Inventory), section and page toolbars lack visual consistency, introduce arbitrary spatial animations, and occupy excessive vertical real estate (120px–220px before table/data display)[cite: 1]. Legacy implementations suffer from redundant secondary search inputs, loose toggle switches ("Archived", "Incomplete"), deprecated status badge pills, unorganized action rows, and hover-triggered dynamic layout shifts[cite: 1].
 
 A unified architectural standard is required to enforce compact single-row toolbars, clean alignment zones, predictable control caps, and strict accessibility compliance across all entity section headers[cite: 1].
@@ -20,22 +22,22 @@ A unified architectural standard is required to enforce compact single-row toolb
 ## Decision
 
 ### 1. Height & Layout Constraints
+
 - **Maximum Vertical Height:** Standard single-row page toolbars must strictly enforce a maximum height of **52px**[cite: 1].
 - **Vertical Real Estate Limit:** When KPI metric summary cards are present above a data grid (e.g., Expenses, Inventory)[cite: 1], the secondary toolbar row must sit immediately adjacent without excess padding[cite: 1]. Total page header space (title + toolbar) must not exceed two structural rows.
 - **Strict Prohibition of Hover-to-Show & Spatial Animations:** Hiding essential toolbar elements (e.g., toggles or search fields) behind hover states or triggering sliding/expanding container animations is **strictly prohibited system-wide**[cite: 1]. All controls must remain statically visible or focusable via keyboard navigation without layout reflows (`transition: all linear` is banned per [ADR 0022](0022-animations-microinteractions.md))[cite: 1].
 
 ### 2. Header Zone Division & Alignment
+
 Page toolbars enforce a strict 2-zone horizontal layout[cite: 1]:
-
-
 ```
 
 +-------------------------------------------------------------------------------------------------+
-| PAGE TOOLBAR BAR (Fixed Height: 52px)                                                           |
-| +------------------------------------+   +----------------------------------------------------+ |
-| | [Title] (e.g., Contacts)           |   | [Search Input]  [Filter Popover]  [Add Primary CTA] | |
-| | [Sub-label Count (Concept C)]      |   | (h-9, 260px max)  (Consolidated)   (Single default) | |
-| +------------------------------------+   +----------------------------------------------------+ |
+| PAGE TOOLBAR BAR (Fixed Height: 52px) |
+| +------------------------------------+ +----------------------------------------------------+ |
+| | [Title] (e.g., Contacts) | | [Search Input] [Filter Popover] [Add Primary CTA] | |
+| | [Sub-label Count (Concept C)] | | (h-9, 260px max) (Consolidated) (Single default) | |
+| +------------------------------------+ +----------------------------------------------------+ |
 +-------------------------------------------------------------------------------------------------+
 
 ```

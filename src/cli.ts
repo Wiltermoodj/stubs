@@ -1,4 +1,3 @@
-#!/usr/bin/env node
 import { CliRouter } from './cli/router';
 
 async function main() {

@@ -1,16 +1,19 @@
 ---
-title: "0030 - Content Formatting Standards"
-type: "adr"
-description: "Accepted"
-status: "active"
-last_updated: "2026-07-29T15:30:00Z"
+title: '0030 - Content Formatting Standards'
+type: 'adr'
+description: 'Accepted'
+status: 'active'
+last_updated: '2026-07-29T15:30:00Z'
 ---
+
 # 0030 - Content Formatting Standards
 
 ## Status
+
 Accepted
 
 ## Context
+
 No standard exists for how dates, times, numbers, currency, or "unknown" values are displayed to users. This produces inconsistent UI: some dates show as ISO strings, some as full long form, currency loses locale formatting, and missing values alternate between blank cells, "N/A", "null", and em-dashes.
 
 ## Decision
@@ -18,15 +21,16 @@ No standard exists for how dates, times, numbers, currency, or "unknown" values 
 ### 1 — Date & Time Display
 
 **Relative vs. Absolute rule (mirrors Facebook's recency model):**
-| Age of event | Display format | Example |
-|---|---|---|
-| < 1 minute | "Just now" | Just now |
-| 1–59 minutes | "{n} minutes ago" | 12 minutes ago |
-| 1–23 hours | "{n} hours ago" | 3 hours ago |
+
+| Age of event                     | Display format        | Example              |
+| -------------------------------- | --------------------- | -------------------- |
+| < 1 minute                       | "Just now"            | Just now             |
+| 1–59 minutes                     | "{n} minutes ago"     | 12 minutes ago       |
+| 1–23 hours                       | "{n} hours ago"       | 3 hours ago          |
 | Yesterday (same calendar day −1) | "Yesterday at {time}" | Yesterday at 2:14 PM |
-| 2–6 days ago | "{day} at {time}" | Tuesday at 2:14 PM |
-| Same calendar year | "MMM D at {time}" | Jul 29 at 2:14 PM |
-| Different year | "MMM D, YYYY" | Jul 29, 2024 |
+| 2–6 days ago                     | "{day} at {time}"     | Tuesday at 2:14 PM   |
+| Same calendar year               | "MMM D at {time}"     | Jul 29 at 2:14 PM    |
+| Different year                   | "MMM D, YYYY"         | Jul 29, 2024         |
 
 **Absolute date format:** `MMM D, YYYY` (e.g., "Jul 29, 2026"). Never `MM/DD/YYYY`.
 
@@ -78,6 +82,7 @@ No standard exists for how dates, times, numbers, currency, or "unknown" values 
 - Single-line (tables/cards): truncate at available width with ellipsis; show full on hover tooltip.
 
 ## Consequences
+
 - All user-facing values display consistently regardless of which component renders them.
 - "Unknown" states are visually unambiguous and never confused with zero or false values.
 - Relative time keeps feeds feeling alive while absolute tooltips preserve precision.

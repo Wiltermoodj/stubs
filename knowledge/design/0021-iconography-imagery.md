@@ -1,19 +1,23 @@
 ---
-title: "0021 - Iconography & Imagery Standards"
-type: "adr"
-description: "Accepted"
-status: "active"
-last_updated: "2026-08-01T15:40:00Z"
+title: '0021 - Iconography & Imagery Standards'
+type: 'adr'
+description: 'Accepted'
+status: 'active'
+last_updated: '2026-08-01T15:40:00Z'
 ---
+
 # 0021 - Iconography & Imagery Standards
 
 ## Status
+
 Accepted
 
 ## Context
+
 Mixed icon sources (different libraries, stock SVGs, emoji) create visual inconsistency. Uncontrolled icon sizing and missing avatar fallbacks degrade interface polish. Images without aspect ratio locking cause layout shifts. Mutating avatar base containers to expand inline tags causes layout reflows and container clipping[cite: 1].
 
 ## Decision
+
 adopt iconography guidelines defined in [Proposal 0006 — Iconography & Imagery](../architecture/architecture/proposals/0006-iconography-and-imagery.md):
 
 1. **Single Icon Library:** One framework (e.g., Lucide) across entire project[cite: 1]. No mixed styles, stock SVGs, or emoji for functional UI[cite: 1].
@@ -25,6 +29,7 @@ adopt iconography guidelines defined in [Proposal 0006 — Iconography & Imagery
 5. **Image Handling:** Aspect ratio locking, lazy loading below fold, alt text for meaningful images, WebP/AVIF preference[cite: 1].
 
 ## Consequences
+
 - Visual consistency across icons via single library[cite: 1].
 - Predictable icon sizing eliminates per-component decisions[cite: 1].
 - Avatar fallbacks prevent broken/empty user representations[cite: 1].

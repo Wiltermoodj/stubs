@@ -2,16 +2,16 @@
   "name": "stubs",
   "version": "1.0.0",
   "description": "stubs AI Agent Skill",
-  "main": "dist/cli.js",
+  "main": ".agents/skills/stubs/dist/cli.js",
   "bin": {
-    "stubs": "dist/cli.js"
+    "stubs": ".agents/skills/stubs/dist/cli.js"
   },
   "scripts": {
-    "build": "tsc",
+    "build": "esbuild src/cli.ts --bundle --platform=node --target=node18 --outfile=.agents/skills/stubs/dist/cli.js --banner:js=\"#!/usr/bin/env node\" --external:sqlite3",
     "test": "jest",
     "lint": "eslint .",
     "format": "prettier --write .",
-    "start": "node dist/cli.js"
+    "start": "node .agents/skills/stubs/dist/cli.js"
   },
   "repository": {
     "type": "git",
@@ -33,6 +33,7 @@
     "@types/sqlite3": "^3.1.11",
     "@typescript-eslint/eslint-plugin": "^8.66.0",
     "@typescript-eslint/parser": "^8.66.0",
+    "esbuild": "^0.24.0",
     "eslint": "^10.8.0",
     "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-prettier": "^5.5.6",

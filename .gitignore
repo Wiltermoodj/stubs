@@ -65,3 +65,5 @@ shared/node_modules/
 # stubs
 /dist/
 /.stubs/*.sqlite
+/.stubs/graph.sqlite*
+

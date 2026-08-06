@@ -1,19 +1,23 @@
 ---
-title: "0024 - Responsive & Adaptive Layout"
-type: "adr"
-description: "Accepted"
-status: "active"
-last_updated: "2026-08-01T14:52:00Z"
+title: '0024 - Responsive & Adaptive Layout'
+type: 'adr'
+description: 'Accepted'
+status: 'active'
+last_updated: '2026-08-01T14:52:00Z'
 ---
+
 # 0024 - Responsive & Adaptive Layout
 
 ## Status
+
 Accepted
 
 ## Context
+
 Applications designed only for desktop viewports break on tablets and phones — data tables overflow, multi-column forms become unusable, and fixed-position elements overlap device notches. Without unified breakpoint conventions and explicit component adaptation rules, responsive behavior varies per component.
 
 ## Decision
+
 Adopt responsive layout standards across all viewports and components:
 
 1. **4 Breakpoints:** `sm` (≥640px), `md` (≥768px), `lg` (≥1024px), `xl` (≥1280px).
@@ -27,7 +31,7 @@ Adopt responsive layout standards across all viewports and components:
 6. **Viewport Meta:** `width=device-width, initial-scale=1`.
 
 ## Consequences
+
 - Data tables adapt predictably across all device factors without broken layouts or horizontal scrollbars.
 - Mobile card transformation preserves full data clarity and actionability on small screens.
 - Mobile-first approach prevents post-hoc responsive fixes.
-

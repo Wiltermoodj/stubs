@@ -13,6 +13,13 @@ module.exports = tseslint.config(
     },
   },
   {
-    ignores: ['dist/', 'node_modules/', 'eslint.config.js', 'jest.config.js'],
+    ignores: [
+      'dist/',
+      '.agents/',
+      '.stubs/',
+      'node_modules/',
+      'eslint.config.js',
+      'jest.config.js',
+    ],
   },
 );

@@ -1,19 +1,23 @@
 ---
-title: "0025 - Forms & Input Design"
-type: "adr"
-description: "Accepted"
-status: "active"
-last_updated: "2026-08-01T14:52:00Z"
+title: '0025 - Forms & Input Design'
+type: 'adr'
+description: 'Accepted'
+status: 'active'
+last_updated: '2026-08-01T14:52:00Z'
 ---
+
 # 0025 - Forms & Input Design
 
 ## Status
+
 Accepted
 
 ## Context
+
 Form and AI prompt interaction UX must remain clear and structured. Traditional input field inconsistencies (placeholders as labels, static red alert colors on resting forms) increase cognitive load. AI capabilities require clear prompt entry, compact media previews, execution transparency, and confidence scoring.
 
 ## Decision
+
 Adopt standardized form and AI component input patterns:
 
 1. **Consistent Field Sizing:** Text inputs and selects: 36–40px height. Textareas: 80px minimum with vertical resize.
@@ -27,7 +31,7 @@ Adopt standardized form and AI component input patterns:
 7. **Field Grouping & Multi-Step:** Related fields sit in semantic `<fieldset>`/`<legend>` blocks separated by 32px (`space-8`). Multi-step forms feature progress steppers with zero data loss on backward navigation.
 
 ## Consequences
+
 - AI interaction flows feature prominent prompt canvases, clean preview blocks, and step-by-step execution visibility.
 - Dynamic-only validation eliminates persistent alert red from resting form surfaces.
 - AI outputs provide expandable confidence scores for full user transparency.
-

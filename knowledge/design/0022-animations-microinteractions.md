@@ -1,21 +1,25 @@
 ---
-title: "0022 - Animations & Micro-Interaction Standards"
-type: "adr"
-description: "Accepted"
-status: "active"
-last_updated: "2026-08-01T15:45:00Z"
+title: '0022 - Animations & Micro-Interaction Standards'
+type: 'adr'
+description: 'Accepted'
+status: 'active'
+last_updated: '2026-08-01T15:45:00Z'
 ---
+
 # 0022 - Animations & Micro-Interaction Standards
 
 ## Status
+
 Accepted
 
 ## Context
+
 Interfaces designed only for happy paths fail silently when network errors or slow responses occur[cite: 1]. Linear animations feel mechanical and unnatural[cite: 1]. Without strict duration budgets and delay rules, rapid cursor movement creates visual noise[cite: 1].
 
-**Relationship to ADR 0011:** [ADR 0011 — Optimistic UI Merging](../architecture/adr/0011-optimistic-ui-merging.md) governs *data-layer merge strategy* for offline/disconnected states[cite: 1]. This ADR governs the *visual and micro-interaction layer*[cite: 1].
+**Relationship to ADR 0011:** [ADR 0011 — Optimistic UI Merging](../architecture/adr/0011-optimistic-ui-merging.md) governs _data-layer merge strategy_ for offline/disconnected states[cite: 1]. This ADR governs the _visual and micro-interaction layer_[cite: 1].
 
 ## Decision
+
 Adopt animation and micro-interaction standards across all UI components:
 
 1. **Strict Ban on Linear Easing:** `transition: all linear` is **strictly prohibited system-wide**[cite: 1]. All transitions and animations must use non-linear cubic-bezier physics curves (e.g., `cubic-bezier(0.4, 0, 0.2, 1)` for default ease-in-out, ease-out for entering elements, ease-in for exiting elements)[cite: 1].
@@ -27,6 +31,7 @@ Adopt animation and micro-interaction standards across all UI components:
 7. **Reduced Motion Compliance:** Respect `prefers-reduced-motion: reduce` by replacing spatial animations with instant state switches or subtle opacity-only fades[cite: 1].
 
 ## Consequences
+
 - Mechanical linear transitions are completely eliminated across the application[cite: 1].
 - All interaction physics adhere strictly to human visual timing (200ms–500ms)[cite: 1].
 - 1000ms tooltip delay eliminates banner flicker during quick cursor movements over toolbars and user avatar lists[cite: 1].

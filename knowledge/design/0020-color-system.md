@@ -1,23 +1,29 @@
 ---
-title: "0020 - Color System Architecture"
-type: "adr"
-description: "Accepted"
-status: "active"
-last_updated: "2026-08-01T14:52:00Z"
+title: '0020 - Color System Architecture'
+type: 'adr'
+description: 'Accepted'
+status: 'active'
+last_updated: '2026-08-01T14:52:00Z'
 ---
+
 # 0020 - Color System Architecture
 
 ## Status
+
 Accepted
 
 ## Context
+
 Color management across multi-theme applications can be fragile. Manual palette creation produces inconsistent perceived brightness across hues (known HSL limitation). Components consuming raw color values break when themes change. External system colors (e.g., Google Calendar) require special handling to maintain visual continuity.
 
 > [!WARNING]
+>
 > ### Zero Static Semantic Alert Colors
+>
 > Saturated red, amber-yellow, or alert-green colors are **strictly forbidden** on resting UI surfaces, cards, and default table views. Semantic alert colors are reserved solely for dynamic, ephemeral feedback states (active input validation errors, transient toast notifications <3s, or active hover/press interactions). Resting elements and status indicators must rely on neutral typography and sub-label hierarchy.
 
 ## Decision
+
 Adopt OKLCH color system standards and palette derivation rules:
 
 1. **OKLCH Perceptual Model:** Mandate OKLCH (`oklch()`) for all dynamic themes, status tints, and chart color series to guarantee human-perceived lightness consistency across all color hues.
@@ -30,6 +36,7 @@ Adopt OKLCH color system standards and palette derivation rules:
 8. **Google Calendar Fidelity:** Fetch live colors from API (1hr cache), maintain 11-color fallback map, render exact hex values, compute foreground contrast dynamically, support 200-color custom label system, preserve core event hues in dark mode while permitting subtle container backdrop/scrim adjustments for WCAG AA compliance ([ADR 0028](0028-theming-dark-mode.md)).
 
 ## Consequences
+
 - OKLCH guarantees consistent perceived brightness across hues without perceptual dark-spots.
 - Chart color series maintain uniform visual weighting across all data dimensions.
 - Zero static alert colors eliminate visual noise and anxiety on resting screens.

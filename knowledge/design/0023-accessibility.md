@@ -1,19 +1,23 @@
 ---
-title: "0023 - Accessibility Standards"
-type: "adr"
-description: "Accepted"
-status: "active"
-last_updated: "2026-07-18T18:35:00Z"
+title: '0023 - Accessibility Standards'
+type: 'adr'
+description: 'Accepted'
+status: 'active'
+last_updated: '2026-07-18T18:35:00Z'
 ---
+
 # 0023 - Accessibility Standards
 
 ## Status
+
 Accepted
 
 ## Context
+
 Accessibility violations — suppressed focus rings, missing keyboard navigation, color-only status indicators, undersized touch targets — exclude users with disabilities and expose projects to legal risk. Without codified standards, accessibility treated as optional polish structural requirement.
 
 ## Decision
+
 adopt accessibility guidelines defined in [Proposal 0008 — Accessibility](../architecture/architecture/proposals/0008-accessibility.md):
 
 1. **WCAG 2.1 Level AA** as minimum compliance target.
@@ -25,6 +29,7 @@ adopt accessibility guidelines defined in [Proposal 0008 — Accessibility](../a
 7. **Screen Reader Support:**`aria-hidden` on decorative images, `aria-label` on icon-only buttons, `aria-live` regions for dynamic updates.
 
 ## Consequences
+
 - Accessibility structural requirement, not afterthought.
 - Focus management rules prevent keyboard users from getting trapped or lost.
 - Color independence ensures status indicators work for color-blind users.

@@ -40,18 +40,22 @@ export class CliRouter {
       }
 
       switch (context.command) {
+        case 'init':
+          return await this.handleInit(context);
         case 'serve':
           return await this.handleServe(context);
         case 'validate':
           return await this.handleValidate(context);
         case 'template':
           return await this.handleTemplate(context);
+        case 'audit':
         case 'reconcile':
           return await this.handleReconcile(context);
         case 'evaluate':
           return await this.handleEvaluate(context);
         case 'grill':
           return await this.handleGrill(context);
+        case 'sand':
         case 'sync':
           return await this.handleSync(context);
         case 'materialize':
@@ -96,13 +100,16 @@ Usage:
   stubs <command> [options]
 
 Commands:
-  template <action>    Manage template molds. Actions: list, render <name> <json_data_or_file>
-  reconcile <file>     Execute the 5-phase retroactive reconciliation engine on a sidecar.
-  evaluate <action>    Evaluate autonomy permission. Actions: draft_template_proposal, scaffold_sidecar, materialize_code
-  validate <file>     Parse and validate an OKF sidecar (*.ts.md) file.
-  materialize <file>  Parse, extract, typecheck, and write executable code from sidecar.
+  init                Initialize workspace configuration (.stubs/config.json).
   grill <file>       Execute the Interactive Grill Engine on a sidecar specification.
-  sync [file]      Synchronize sidecars and code files.
+  materialize <file>  Parse, extract, typecheck, and write executable code from sidecar.
+  audit <file>        Audit sidecar specifications and run retroactive reconciliation.
+  sand [file]         Synchronize sidecars and code files.
+  reconcile <file>    Execute the 5-phase retroactive reconciliation engine on a sidecar.
+  sync [file]         Synchronize sidecars and code files.
+  template <action>   Manage template molds. Actions: list, render <name> <json_data_or_file>
+  evaluate <action>   Evaluate autonomy permission. Actions: draft_template_proposal, scaffold_sidecar, materialize_code
+  validate <file>     Parse and validate an OKF sidecar (*.ts.md) file.
   serve               Start the local Web Portal and Event Bridge background server.
   help                Display this help message.
   version             Display version information.
@@ -114,6 +121,55 @@ Options:
   -h, --help           Display help message.
   -v, --version        Display version info.
 `);
+  }
+
+  private async handleInit(ctx: CliContext): Promise<number> {
+    const configPath = ctx.configPath || '.stubs/config.json';
+    const resolvedPath = path.resolve(configPath);
+    const dir = path.dirname(resolvedPath);
+
+    try {
+      if (!existsSync(dir)) {
+        await fs.mkdir(dir, { recursive: true });
+      }
+
+      if (existsSync(resolvedPath)) {
+        console.log(`Configuration file already exists at ${resolvedPath}`);
+        return 0;
+      }
+
+      const { DEFAULT_CONFIG } = await import('../config/schema');
+      await fs.writeFile(resolvedPath, JSON.stringify(DEFAULT_CONFIG, null, 2), 'utf8');
+      console.log(`Initialized stubs workspace configuration at ${resolvedPath}`);
+      return 0;
+    } catch (err: any) {
+      console.error(`Failed to initialize workspace configuration: ${err.message || err}`);
+      return 1;
+    }
+  }
+
+  private async printVersion(): Promise<void> {
+    const candidatePaths = [
+      path.resolve(__dirname, '../../../package.json'),
+      path.resolve(__dirname, '../../package.json'),
+      path.resolve(process.cwd(), 'package.json'),
+    ];
+
+    for (const pkgPath of candidatePaths) {
+      try {
+        if (existsSync(pkgPath)) {
+          const content = await fs.readFile(pkgPath, 'utf8');
+          const pkg = JSON.parse(content);
+          if (pkg.name === 'stubs' && pkg.version) {
+            console.log(`stubs version ${pkg.version}`);
+            return;
+          }
+        }
+      } catch {
+        // Continue trying next candidate
+      }
+    }
+    console.log('stubs version 1.0.0');
   }
 
   private async handleGrill(ctx: CliContext): Promise<number> {
@@ -192,17 +248,6 @@ Options:
     } catch (error: any) {
       console.error(`Grill execution failed: ${error.message || error}`);
       return 1;
-    }
-  }
-
-  private async printVersion(): Promise<void> {
-    try {
-      const packageJsonPath = path.resolve(__dirname, '../../package.json');
-      const content = await fs.readFile(packageJsonPath, 'utf8');
-      const pkg = JSON.parse(content);
-      console.log(`stubs version ${pkg.version || '1.0.0'}`);
-    } catch {
-      console.log('stubs version 1.0.0');
     }
   }
 

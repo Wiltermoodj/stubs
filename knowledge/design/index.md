@@ -1,9 +1,9 @@
 ---
-title: "Design Principles Index"
-type: "index"
-description: "Index of all design system ADRs governing UI/UX principles for The Bicycle Butler CRM"
-status: "active"
-last_updated: "2026-07-29T15:35:00Z"
+title: 'Design Principles Index'
+type: 'index'
+description: 'Index of all design system ADRs governing UI/UX principles for The Bicycle Butler CRM'
+status: 'active'
+last_updated: '2026-07-29T15:35:00Z'
 ---
 
 # Design Principles
@@ -65,5 +65,6 @@ Architectural Decision Records governing visual design, interaction patterns, an
 ## Cross-References
 
 These ADRs are in `knowledge/architecture/adr/` and are referenced by design ADRs:
+
 - [ADR 0011 — Optimistic UI Merging](../architecture/adr/0011-optimistic-ui-merging.md) — referenced by ADR 0022 (animation scoping)
 - [ADR 0012 — Human-in-the-Loop AI](../architecture/adr/0012-human-in-the-loop-ai-enrichment.md) — referenced by ADR 0022 (ReviewQueue)

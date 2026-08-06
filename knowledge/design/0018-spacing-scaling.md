@@ -1,19 +1,23 @@
 ---
-title: "0018 - Spacing & Scaling System"
-type: "adr"
-description: "Accepted"
-status: "active"
-last_updated: "2026-07-18T18:35:00Z"
+title: '0018 - Spacing & Scaling System'
+type: 'adr'
+description: 'Accepted'
+status: 'active'
+last_updated: '2026-07-18T18:35:00Z'
 ---
+
 # 0018 - Spacing & Scaling System
 
 ## Status
+
 Accepted
 
 ## Context
+
 Ad-hoc spacing values (13px, 17px) produce visually inconsistent interfaces and make design reviews subjective. Without spacing system, UI density varies unpredictably across pages, and text truncation failures break responsive layouts.
 
 ## Decision
+
 adopt spacing guidelines defined in [Proposal 0003 — Spacing & Scaling](../architecture/architecture/proposals/0003-spacing-and-scaling.md):
 
 1. **4-Point Grid:** spacing uses multiples of 4px. Layout spacing between content blocks uses 8px increments.
@@ -24,6 +28,7 @@ adopt spacing guidelines defined in [Proposal 0003 — Spacing & Scaling](../arc
 6. **Border Radius Tokens:** Derived from single base value (8–12px): `radius-sm`, `radius-md`, `radius-lg`, `radius-xl`, `radius-full`.
 
 ## Consequences
+
 - Spacing decisions become deterministic — developers pick from 7 tokens, not infinite pixel values.
 - Responsive layouts protected from string overflow by default.
 - Border radius consistency maintained token derivation ad-hoc values.
