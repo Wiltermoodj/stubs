@@ -62,6 +62,8 @@ export class CliRouter {
           return await this.handleMaterialize(context);
         case 'auth':
           return await this.handleAuth(context);
+        case 'install':
+          return await this.handleInstall(context);
         default:
           console.error(`Error: Unknown command "${context.command}". Use --help for usage.`);
           return 1;
@@ -104,6 +106,7 @@ Usage:
 Commands:
   init                Initialize workspace configuration (.stubs/config.json).
   auth login          Authenticate via Personal Access Tokens (PATs) and store globally.
+  install             Fetch and install stubs skill and assets into the workspace.
   grill <file>       Execute the Interactive Grill Engine on a sidecar specification.
   materialize <file>  Parse, extract, typecheck, and write executable code from sidecar.
   audit <file>        Audit sidecar specifications and run retroactive reconciliation.
@@ -123,6 +126,9 @@ Options:
   --non-interactive    Run the grill engine in non-interactive (automated) mode
   --token <pat>        Provide a GitHub Personal Access Token directly (auth login)
   --provider <name>    Specify auth provider (default: github) (auth login)
+  --repo <owner/repo>  Override default target repo (Defaults to Wiltermoodj/stubs)
+  --branch <name>      Specify a git branch or tag (Defaults to main)
+  -f, --force          Overwrite existing .agents/skills/stubs/ directory
   -h, --help           Display help message.
   -v, --version        Display version info.
 `);
@@ -548,6 +554,39 @@ Options:
         i++;
       } else {
         console.error(`Error: Unknown auth option "${arg}".`);
+  private async handleInstall(ctx: CliContext): Promise<number> {
+    let repo = 'Wiltermoodj/stubs';
+    let branch = 'main';
+    let force = false;
+
+    let i = 0;
+    while (i < ctx.args.length) {
+      const arg = ctx.args[i];
+      if (arg === '--repo') {
+        if (i + 1 >= ctx.args.length) {
+          console.error('Error: Missing value for option --repo');
+          return 1;
+        }
+        repo = ctx.args[i + 1];
+        i += 2;
+      } else if (arg.startsWith('--repo=')) {
+        repo = arg.split('=')[1];
+        i++;
+      } else if (arg === '--branch') {
+        if (i + 1 >= ctx.args.length) {
+          console.error('Error: Missing value for option --branch');
+          return 1;
+        }
+        branch = ctx.args[i + 1];
+        i += 2;
+      } else if (arg.startsWith('--branch=')) {
+        branch = arg.split('=')[1];
+        i++;
+      } else if (arg === '--force' || arg === '-f') {
+        force = true;
+        i++;
+      } else {
+        console.error(`Error: Unknown option "${arg}" for install command.`);
         return 1;
       }
     }
@@ -559,6 +598,82 @@ Options:
 
     const { handleLogin } = await import('./auth');
     return await handleLogin({ token, nonInteractive });
+    const targetDir = process.cwd();
+    const destDir = path.join(targetDir, '.agents/skills/stubs');
+
+    if (existsSync(destDir) && !force) {
+      console.error(
+        `Error: Installation directory already exists at "${destDir}". Use --force or -f to overwrite.`,
+      );
+      return 1;
+    }
+
+    console.log(`Installing stubs skill from ${repo} (${branch})...`);
+
+    const SKILL_FILES = [
+      '.agents/skills/stubs/SKILL.md',
+      '.agents/skills/stubs/sub-skills/auditing/SKILL.md',
+      '.agents/skills/stubs/sub-skills/grilling/SKILL.md',
+      '.agents/skills/stubs/sub-skills/materialization/SKILL.md',
+      '.agents/skills/stubs/sub-skills/sanding/SKILL.md',
+      '.agents/skills/stubs/dist/cli.js',
+    ];
+
+    try {
+      await fs.mkdir(destDir, { recursive: true });
+
+      for (const file of SKILL_FILES) {
+        const url = `https://raw.githubusercontent.com/${repo}/${branch}/${file}`;
+        console.log(`Downloading ${file} from ${url}...`);
+
+        const res = await fetch(url);
+        if (!res.ok) {
+          throw new Error(
+            `Failed to download ${file}: HTTP status ${res.status} ${res.statusText}`,
+          );
+        }
+        const buffer = Buffer.from(await res.arrayBuffer());
+
+        const localPath = path.join(targetDir, file);
+        await fs.mkdir(path.dirname(localPath), { recursive: true });
+        await fs.writeFile(localPath, buffer);
+      }
+
+      await this.updateGitignore(targetDir);
+
+      console.log('stubs installation completed successfully!');
+      return 0;
+    } catch (err: any) {
+      console.error(`Installation failed: ${err.message || err}`);
+      return 1;
+    }
+  }
+
+  private async updateGitignore(targetDir: string): Promise<void> {
+    const gitignorePath = path.join(targetDir, '.gitignore');
+    const ignoreLines = ['# stubs framework', '.stubs/graph.sqlite*', '.stubs/*.sqlite'];
+
+    let currentContent = '';
+    if (existsSync(gitignorePath)) {
+      currentContent = await fs.readFile(gitignorePath, 'utf8');
+    }
+
+    const linesToAdd: string[] = [];
+    for (const line of ignoreLines) {
+      if (!currentContent.includes(line)) {
+        linesToAdd.push(line);
+      }
+    }
+
+    if (linesToAdd.length > 0) {
+      const divider = currentContent && !currentContent.endsWith('\n') ? '\n' : '';
+      await fs.writeFile(
+        gitignorePath,
+        currentContent + divider + linesToAdd.join('\n') + '\n',
+        'utf8',
+      );
+      console.log(`Updated .gitignore at ${gitignorePath}`);
+    }
   }
 
   private printSyncResult(result: SyncResult): void {

@@ -108,4 +108,121 @@ title: "Temp Spec"
       }
     }
   });
+
+  describe('install command', () => {
+    let originalFetch: typeof global.fetch;
+    let originalCwd: () => string;
+    let tempDir: string;
+
+    beforeEach(() => {
+      originalFetch = global.fetch;
+      originalCwd = process.cwd;
+      tempDir = path.resolve(
+        __dirname,
+        'temp_install_test_' + Math.random().toString(36).substring(7),
+      );
+      if (fs.existsSync(tempDir)) {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+      fs.mkdirSync(tempDir, { recursive: true });
+      process.cwd = () => tempDir;
+    });
+
+    afterEach(() => {
+      global.fetch = originalFetch;
+      process.cwd = originalCwd;
+      if (fs.existsSync(tempDir)) {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    it('should install skill and files successfully and update .gitignore', async () => {
+      global.fetch = jest.fn().mockImplementation((url: string) => {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          statusText: 'OK',
+          arrayBuffer: () => Promise.resolve(Buffer.from(`mock content for ${url}`).buffer),
+        });
+      }) as any;
+
+      const code = await router.route(['install']);
+      expect(code).toBe(0);
+
+      // Verify directory structure and files
+      expect(fs.existsSync(path.join(tempDir, '.agents/skills/stubs/SKILL.md'))).toBe(true);
+      expect(
+        fs.existsSync(path.join(tempDir, '.agents/skills/stubs/sub-skills/auditing/SKILL.md')),
+      ).toBe(true);
+      expect(fs.existsSync(path.join(tempDir, '.agents/skills/stubs/dist/cli.js'))).toBe(true);
+      expect(fs.existsSync(path.join(tempDir, '.gitignore'))).toBe(true);
+
+      const gitignore = fs.readFileSync(path.join(tempDir, '.gitignore'), 'utf8');
+      expect(gitignore).toContain('.stubs/graph.sqlite*');
+      expect(gitignore).toContain('.stubs/*.sqlite');
+    });
+
+    it('should fail install if target directory already exists and force is not specified', async () => {
+      fs.mkdirSync(path.join(tempDir, '.agents/skills/stubs'), { recursive: true });
+
+      const code = await router.route(['install']);
+      expect(code).toBe(1);
+      expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('already exists'));
+    });
+
+    it('should succeed install if target directory already exists and force is specified', async () => {
+      fs.mkdirSync(path.join(tempDir, '.agents/skills/stubs'), { recursive: true });
+
+      global.fetch = jest.fn().mockImplementation((url: string) => {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          statusText: 'OK',
+          arrayBuffer: () => Promise.resolve(Buffer.from(`mock content for ${url}`).buffer),
+        });
+      }) as any;
+
+      const code = await router.route(['install', '--force']);
+      expect(code).toBe(0);
+      expect(fs.existsSync(path.join(tempDir, '.agents/skills/stubs/SKILL.md'))).toBe(true);
+    });
+
+    it('should handle custom repo and branch arguments', async () => {
+      const mockFetch = jest.fn().mockImplementation((url: string) => {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          statusText: 'OK',
+          arrayBuffer: () => Promise.resolve(Buffer.from(`mock content for ${url}`).buffer),
+        });
+      });
+      global.fetch = mockFetch as any;
+
+      const code = await router.route([
+        'install',
+        '--repo',
+        'myowner/myrepo',
+        '--branch',
+        'feature-branch',
+      ]);
+      expect(code).toBe(0);
+      expect(mockFetch).toHaveBeenCalledWith(
+        expect.stringContaining('https://raw.githubusercontent.com/myowner/myrepo/feature-branch/'),
+      );
+    });
+
+    it('should handle download network error gracefully', async () => {
+      global.fetch = jest.fn().mockImplementation(() => {
+        return Promise.resolve({
+          ok: false,
+          status: 404,
+          statusText: 'Not Found',
+        });
+      }) as any;
+
+      const code = await router.route(['install']);
+      expect(code).toBe(1);
+      expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('Failed to download'));
+    });
+  });
 });
