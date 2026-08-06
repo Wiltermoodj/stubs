@@ -331,4 +331,46 @@ export interface AuthContext {
     expect(searchRes5.length).toBe(1);
     expect(searchRes5[0].filePath).toBe('src/auth/jwt.ts.md');
   });
+
+  test('should handle edge cases: empty bounds, unmatched tags, and complex FTS/LIKE syntax', async () => {
+    const specTest: OkfFrontmatter = {
+      title: 'Edge Case Spec',
+      type: 'sidecar-spec',
+      description: 'Testing edge AND-cases with FTS5 BM25',
+      tags: ['test', 'edge'],
+      status: 'spec',
+      version: 1,
+      target_code_file: './edge.ts',
+      status_flag: 'clean',
+    };
+    await engine.upsertSidecar({
+      filePath: 'src/edge/test.ts.md',
+      frontmatter: specTest,
+      body: '```typescript\nexport interface EdgeContext {}\n```',
+    });
+
+    // 1. Empty bounds array should not filter out results
+    const resEmptyBounds = await engine.search('EdgeContext', { bounds: [] });
+    expect(resEmptyBounds.length).toBe(1);
+    expect(resEmptyBounds[0].filePath).toBe('src/edge/test.ts.md');
+
+    // 2. Unmatched tags should return no results
+    const resUnmatchedTags = await engine.search('', { tags: ['nonexistent-tag'] });
+    expect(resUnmatchedTags.length).toBe(0);
+
+    // 3. Check combined empty query with tag filter
+    const resTagOnly = await engine.search('', { tags: ['edge'] });
+    expect(resTagOnly.length).toBe(1);
+    expect(resTagOnly[0].filePath).toBe('src/edge/test.ts.md');
+
+    // 4. Complex FTS syntax that might trigger fallback
+    const resComplexFTS = await engine.search('EdgeContext OR "Testing edge AND-cases"');
+    expect(resComplexFTS.length).toBe(1);
+    expect(resComplexFTS[0].filePath).toBe('src/edge/test.ts.md');
+
+    // 5. FTS syntax error (e.g. unmatched quotes or special chars) triggering fallback
+    const resSyntaxErrorFTS = await engine.search('edge AND');
+    expect(resSyntaxErrorFTS.length).toBe(1);
+    expect(resSyntaxErrorFTS[0].filePath).toBe('src/edge/test.ts.md');
+  });
 });
