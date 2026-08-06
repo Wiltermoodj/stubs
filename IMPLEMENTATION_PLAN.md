@@ -20,23 +20,23 @@ This document outlines the sequential steps to implement the `stubs` framework a
 
 ## Phase 3: Markdown AST Parsing & In-Memory Compiler
 
-- [ ] Implement the Markdown AST Parser to extract TypeScript code blocks (`## Implementation`).
-- [ ] Integrate the In-Memory TypeScript Compiler API.
-- [ ] Implement the type-check pipeline with virtual overlay files and `tsconfig.json` loading.
-- [ ] Develop the materialization logic: compute SHA-256 hashes, prepend `@sidecar` headers, and perform atomic file writes.
+- [x] Implement the Markdown AST Parser to extract TypeScript code blocks (`## Implementation`).
+- [x] Integrate the In-Memory TypeScript Compiler API.
+- [x] Implement the type-check pipeline with virtual overlay files and `tsconfig.json` loading.
+- [x] Develop the materialization logic: compute SHA-256 hashes, prepend `@sidecar` headers, and perform atomic file writes.
 
 ## Phase 4: Bi-Directional Code Sanding & Sync Engine
 
-- [ ] Develop the synchronization state manager for `sync_state` frontmatter updates.
-- [ ] Implement AST structural hashing and timestamp vector comparisons.
-- [ ] Create the self-healing frontmatter engine to handle corrupted YAML headers or manual formatting edits.
-- [ ] Build the bi-directional code sanding mechanism to reconcile `.ts` and `.ts.md` files.
+- [x] Develop the synchronization state manager for `sync_state` frontmatter updates.
+- [x] Implement AST structural hashing and timestamp vector comparisons.
+- [x] Create the self-healing frontmatter engine to handle corrupted YAML headers or manual formatting edits.
+- [x] Build the bi-directional code sanding mechanism to reconcile `.ts` and `.ts.md` files.
 
 ## Phase 5: Local Template Engine & Autonomy Protocol
 
-- [ ] Implement the Local Template Engine to process Handlebars/EJS project molds (`.stubs/templates/*`).
-- [ ] Develop the 3-Tier Agent Autonomy Matrix logic (Strict Gate, Guided Execution, Autonomous/Optimistic).
-- [ ] Create the 5-phase retroactive reconciliation engine for the Autonomous tier.
+- [x] Implement the Local Template Engine to process Handlebars/EJS project molds (`.stubs/templates/*`).
+- [x] Develop the 3-Tier Agent Autonomy Matrix logic (Strict Gate, Guided Execution, Autonomous/Optimistic).
+- [x] Create the 5-phase retroactive reconciliation engine for the Autonomous tier.
 
 ## Phase 6: Interactive Grill Engine
 
@@ -46,9 +46,9 @@ This document outlines the sequential steps to implement the `stubs` framework a
 
 ## Phase 7: Real-Time Web Portal & Event Bridge
 
-- [ ] Set up the local background HTTP server (`stubs serve`).
-- [ ] Implement the REST API and Server-Sent Events (SSE) bridge.
-- [ ] Integrate OS-level filesystem watchers to stream sub-10ms graph updates and pending directives to the Web UI.
+- [x] Set up the local background HTTP server (`stubs serve`).
+- [x] Implement the REST API and Server-Sent Events (SSE) bridge.
+- [x] Integrate OS-level filesystem watchers to stream sub-10ms graph updates and pending directives to the Web UI.
 
 ## Phase 8: Optional Pluggable Search Engines
 

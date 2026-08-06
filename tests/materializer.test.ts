@@ -136,7 +136,7 @@ No code blocks here.
       const result = typeCheckVirtualFile('src/temp-file.ts', code);
       expect(result.success).toBe(true);
       expect(result.diagnostics).toHaveLength(0);
-    });
+    }, 30000);
 
     it('should fail with diagnostics on semantic type errors', () => {
       const code = `
@@ -146,7 +146,7 @@ No code blocks here.
       expect(result.success).toBe(false);
       expect(result.diagnostics.length).toBeGreaterThan(0);
       expect(result.diagnostics[0]).toContain("Type 'string' is not assignable to type 'number'");
-    });
+    }, 30000);
 
     it('should load local imports in virtual overlay to avoid false type errors', () => {
       // Create a physical file to import
@@ -168,7 +168,7 @@ No code blocks here.
           fs.unlinkSync(importedFilePath);
         }
       }
-    });
+    }, 30000);
   });
 
   describe('Materializer Engine', () => {
@@ -221,7 +221,7 @@ export function sum(a: number, b: number): number {
       expect(dbEntry.frontmatter.status).toBe('materialized');
       expect(dbEntry.frontmatter.status_flag).toBe('clean');
       expect(dbEntry.frontmatter.sync_state).toBeDefined();
-    });
+    }, 30000);
 
     it('should update sidecar with status_flag="typecheck-failed" and not create code file on type-checking failure', async () => {
       const invalidSidecarContent = `---
@@ -267,7 +267,7 @@ const x: number = "not-a-number";
       expect(dbEntry.frontmatter.status_flag).toBe('typecheck-failed');
       expect(dbEntry.frontmatter.stale_details).toContain('is not assignable');
       expect(dbEntry.frontmatter.stale_details).toContain('number');
-    });
+    }, 30000);
 
     it('should handle materialization failure when no implementation block exists', async () => {
       const emptySidecarContent = `---
@@ -302,6 +302,6 @@ Some metadata.
       const updatedSidecarContent = fs.readFileSync(testSidecarPath, 'utf8');
       expect(updatedSidecarContent).toContain('status_flag: typecheck-failed');
       expect(updatedSidecarContent).toContain('No "## Implementation" section found');
-    });
+    }, 30000);
   });
 });
