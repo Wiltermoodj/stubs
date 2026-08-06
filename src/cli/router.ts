@@ -554,6 +554,19 @@ Options:
         i++;
       } else {
         console.error(`Error: Unknown auth option "${arg}".`);
+        return 1;
+      }
+    }
+
+    if (provider !== 'github') {
+      console.error(`Error: Provider "${provider}" is not supported. Only "github" is supported.`);
+      return 1;
+    }
+
+    const { handleLogin } = await import('./auth');
+    return await handleLogin({ token, nonInteractive });
+  }
+
   private async handleInstall(ctx: CliContext): Promise<number> {
     let repo = 'Wiltermoodj/stubs';
     let branch = 'main';
@@ -591,13 +604,6 @@ Options:
       }
     }
 
-    if (provider !== 'github') {
-      console.error(`Error: Provider "${provider}" is not supported. Only "github" is supported.`);
-      return 1;
-    }
-
-    const { handleLogin } = await import('./auth');
-    return await handleLogin({ token, nonInteractive });
     const targetDir = process.cwd();
     const destDir = path.join(targetDir, '.agents/skills/stubs');
 
