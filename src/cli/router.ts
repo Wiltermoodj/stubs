@@ -1,6 +1,9 @@
 import { promises as fs, existsSync } from 'fs';
 import * as path from 'path';
 import { parseOkfSpec } from '../parser/okf';
+import { TemplateEngine } from '../templates/engine';
+import { AutonomyProtocol } from '../autonomy/protocol';
+import { loadConfig } from '../config/schema';
 
 export interface CliContext {
   configPath?: string;
@@ -37,6 +40,12 @@ export class CliRouter {
           return await this.handleServe(context);
         case 'validate':
           return await this.handleValidate(context);
+        case 'template':
+          return await this.handleTemplate(context);
+        case 'reconcile':
+          return await this.handleReconcile(context);
+        case 'evaluate':
+          return await this.handleEvaluate(context);
         default:
           console.error(`Error: Unknown command "${context.command}". Use --help for usage.`);
           return 1;
@@ -77,10 +86,13 @@ Usage:
   stubs <command> [options]
 
 Commands:
-  validate <file>  Parse and validate an OKF sidecar (*.ts.md) file.
-  serve            Start the local Web Portal and Event Bridge background server.
-  help             Display this help message.
-  version          Display version information.
+  validate <file>      Parse and validate an OKF sidecar (*.ts.md) file.
+  serve                Start the local Web Portal and Event Bridge background server.
+  template <action>    Manage template molds. Actions: list, render <name> <json_data_or_file>
+  reconcile <file>     Execute the 5-phase retroactive reconciliation engine on a sidecar.
+  evaluate <action>    Evaluate autonomy permission. Actions: draft_template_proposal, scaffold_sidecar, materialize_code
+  help                 Display this help message.
+  version              Display version information.
 
 Options:
   -c, --config <path>  Specify path to stubs configuration file (default: .stubs/config.json)
@@ -140,5 +152,113 @@ Options:
       console.error(`Error reading or validating file: ${error.message || error}`);
       return 1;
     }
+  }
+
+  private async handleTemplate(ctx: CliContext): Promise<number> {
+    if (ctx.args.length === 0) {
+      console.error('Error: "template" command requires an action (list, render).');
+      return 1;
+    }
+
+    const action = ctx.args[0];
+    const config = loadConfig(ctx.configPath);
+    const engine = new TemplateEngine(config.paths.templates_dir);
+
+    if (action === 'list') {
+      const templates = await engine.listTemplates();
+      console.log('Available template molds:');
+      for (const t of templates) {
+        console.log(`  - ${t}`);
+      }
+      return 0;
+    }
+
+    if (action === 'render') {
+      if (ctx.args.length < 3) {
+        console.error(
+          'Error: "render" action requires template name and context JSON string/file.',
+        );
+        console.error('Usage: stubs template render <name> <json_string_or_file>');
+        return 1;
+      }
+      const name = ctx.args[1];
+      const dataArg = ctx.args[2];
+
+      let data: any;
+      try {
+        if (existsSync(dataArg)) {
+          const raw = await fs.readFile(dataArg, 'utf8');
+          data = JSON.parse(raw);
+        } else {
+          data = JSON.parse(dataArg);
+        }
+      } catch (err: any) {
+        console.error(`Failed to parse context JSON: ${err.message}`);
+        return 1;
+      }
+
+      try {
+        const output = await engine.renderTemplate(name, data);
+        console.log(output);
+        return 0;
+      } catch (err: any) {
+        console.error(`Rendering failed: ${err.message}`);
+        return 1;
+      }
+    }
+
+    console.error(`Error: Unknown template action "${action}".`);
+    return 1;
+  }
+
+  private async handleReconcile(ctx: CliContext): Promise<number> {
+    if (ctx.args.length === 0) {
+      console.error('Error: "reconcile" command requires a sidecar file path.');
+      console.error('Usage: stubs reconcile <sidecar_file.ts.md>');
+      return 1;
+    }
+
+    const file = ctx.args[0];
+    const config = loadConfig(ctx.configPath);
+    const protocol = new AutonomyProtocol(config);
+
+    console.log(`Running Retroactive Reconciliation on "${file}"...`);
+    const res = await protocol.reconcile(file);
+
+    if (res.success) {
+      console.log(`Success (Phase ${res.phase}): ${res.message}`);
+      return 0;
+    } else {
+      console.error(`Failed (Phase ${res.phase}): ${res.message}`);
+      if (res.validationErrors && res.validationErrors.length > 0) {
+        console.error('Errors:');
+        for (const err of res.validationErrors) {
+          console.error(`  - ${err}`);
+        }
+      }
+      return 1;
+    }
+  }
+
+  private async handleEvaluate(ctx: CliContext): Promise<number> {
+    if (ctx.args.length === 0) {
+      console.error('Error: "evaluate" command requires an action type.');
+      console.error(
+        'Usage: stubs evaluate <draft_template_proposal|scaffold_sidecar|materialize_code>',
+      );
+      return 1;
+    }
+
+    const action = ctx.args[0] as any;
+    const config = loadConfig(ctx.configPath);
+    const protocol = new AutonomyProtocol(config);
+
+    const res = protocol.evaluateAction(action);
+    console.log(`Autonomy Level: ${config.autonomy_level}`);
+    console.log(`Action:         ${action}`);
+    console.log(`Allowed:        ${res.allowed}`);
+    console.log(`Reason:         ${res.reason}`);
+
+    return res.allowed ? 0 : 1;
   }
 }
