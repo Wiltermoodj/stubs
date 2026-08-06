@@ -213,4 +213,99 @@ export function verify();
 
     controller.abort();
   }, 10000);
+
+  test('POST /api/v1/directives should add pending note to the sidecar', async () => {
+    const files = await graphEngine.getFilesIndexed();
+    const filePath = files[0];
+
+    const payload = {
+      filePath,
+      text: 'New Directive Added',
+    };
+
+    const res = await fetch(getUrl('/api/v1/directives'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+
+    expect(res.status).toBe(200);
+    const data = (await res.json()) as any;
+    expect(data.success).toBe(true);
+    expect(data.note.text).toBe('New Directive Added');
+    expect(data.note.status).toBe('pending');
+
+    // Verify it is in the database now as well
+    const dirsRes = await fetch(getUrl('/api/v1/directives?status=pending'));
+    const dirsData = (await dirsRes.json()) as any;
+    const addedNote = dirsData.directives.find((d: any) => d.id === data.note.id);
+    expect(addedNote).toBeDefined();
+    expect(addedNote.text).toBe('New Directive Added');
+  });
+
+  test('POST /api/v1/directives/resolve should resolve a pending note', async () => {
+    const files = await graphEngine.getFilesIndexed();
+    const filePath = files[0];
+
+    // Verify existing pending note
+    const pendingRes = await fetch(getUrl('/api/v1/directives?status=pending'));
+    const pendingData = (await pendingRes.json()) as any;
+    const noteId = pendingData.directives[0].id;
+
+    // Resolve note
+    const res = await fetch(getUrl('/api/v1/directives/resolve'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ filePath, id: noteId }),
+    });
+
+    expect(res.status).toBe(200);
+    const data = (await res.json()) as any;
+    expect(data.success).toBe(true);
+    expect(data.note.status).toBe('resolved');
+
+    // Verify status is updated to resolved
+    const resolvedRes = await fetch(getUrl('/api/v1/directives?status=resolved'));
+    const resolvedData = (await resolvedRes.json()) as any;
+    const resolvedNote = resolvedData.directives.find((d: any) => d.id === noteId);
+    expect(resolvedNote).toBeDefined();
+    expect(resolvedNote.status).toBe('resolved');
+  });
+
+  test('GET /api/v1/templates should list registered templates and drafts', async () => {
+    const res = await fetch(getUrl('/api/v1/templates'));
+    expect(res.status).toBe(200);
+    const data = (await res.json()) as any;
+    expect(data.templates.length).toBeGreaterThanOrEqual(1);
+
+    // One of them should be a draft template containing "-provisional"
+    const provisional = data.templates.find((t: any) => t.isDraft === true);
+    expect(provisional).toBeDefined();
+    expect(provisional.name).toContain('provisional');
+  });
+
+  test('POST /api/v1/templates/approve should approve/rename or reject/delete a draft template', async () => {
+    const templatesRes = await fetch(getUrl('/api/v1/templates'));
+    const templatesData = (await templatesRes.json()) as any;
+    const provisional = templatesData.templates.find((t: any) => t.isDraft === true);
+    expect(provisional).toBeDefined();
+
+    // Approve provisional template
+    const res = await fetch(getUrl('/api/v1/templates/approve'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ templateName: provisional.name, approved: true }),
+    });
+
+    expect(res.status).toBe(200);
+    const data = (await res.json()) as any;
+    expect(data.success).toBe(true);
+    expect(data.message).toContain('approved and renamed');
+
+    // Check templates list again, the draft should be renamed (so no drafts or different name)
+    const templatesRes2 = await fetch(getUrl('/api/v1/templates'));
+    const templatesData2 = (await templatesRes2.json()) as any;
+    const provisionalAfter = templatesData2.templates.find((t: any) => t.name === provisional.name);
+    expect(provisionalAfter).toBeUndefined();
+  });
 });

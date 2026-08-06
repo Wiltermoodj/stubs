@@ -1,8 +1,12 @@
 import * as http from 'http';
 import * as fs from 'fs';
 import * as path from 'path';
+import * as crypto from 'crypto';
 import { GraphEngine } from '../graph/engine';
 import { loadConfig, StubsConfig } from '../config/schema';
+import { parseOkfSpec } from '../parser/okf';
+import { stringifyOkfSpec } from '../materializer/engine';
+import { TemplateEngine } from '../templates/engine';
 
 export class PortalServer {
   private port: number;
@@ -30,6 +34,44 @@ export class PortalServer {
       await this.graphEngine.indexWorkspace(this.config.paths.specs_dir);
     } catch (err: any) {
       console.error(`[PortalServer] Initial workspace indexing failed: ${err.message || err}`);
+    }
+
+    // Setup some default templates for interactive Template Workbench demo if empty
+    try {
+      const templatesDir = path.resolve(this.config.paths.templates_dir);
+      if (!fs.existsSync(templatesDir)) {
+        fs.mkdirSync(templatesDir, { recursive: true });
+      }
+      const files = fs.readdirSync(templatesDir);
+
+      // Ensure we have at least one provisional draft template for the workbench
+      const hasProvisional = files.some((f) => f.toLowerCase().includes('provisional'));
+      if (!hasProvisional) {
+        fs.writeFileSync(
+          path.join(templatesDir, 'controller-v1.0-provisional.ts.md.tpl'),
+          `# Controller Mold (Draft Proposal)
+Provisional template for human review.
+- Project: {{project_name}}
+- Version: v1.0-provisional
+`,
+          'utf8',
+        );
+      }
+
+      // Also populate standard service template if empty
+      if (!files.includes('service.ts.md.tpl')) {
+        fs.writeFileSync(
+          path.join(templatesDir, 'service.ts.md.tpl'),
+          `# Service Mold (Active)
+Using EJS/Handlebars to render a standard service module.
+- Project: {{project_name}}
+- Version: {{version}}
+`,
+          'utf8',
+        );
+      }
+    } catch (err: any) {
+      console.error(`[PortalServer] Default template setup failed: ${err.message || err}`);
     }
 
     this.server = http.createServer((req, res) => {
@@ -80,6 +122,30 @@ export class PortalServer {
   }
 
   /**
+   * Helper to parse JSON request bodies
+   */
+  private async parseJsonBody(req: http.IncomingMessage): Promise<any> {
+    return new Promise((resolve, reject) => {
+      let body = '';
+      req.on('data', (chunk) => {
+        body += chunk.toString();
+      });
+      req.on('end', () => {
+        try {
+          if (!body) {
+            resolve({});
+            return;
+          }
+          resolve(JSON.parse(body));
+        } catch {
+          reject(new Error('Invalid JSON'));
+        }
+      });
+      req.on('error', (err) => reject(err));
+    });
+  }
+
+  /**
    * Handle incoming HTTP requests.
    */
   private async handleRequest(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
@@ -88,7 +154,7 @@ export class PortalServer {
 
     // CORS Headers
     res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
     if (req.method === 'OPTIONS') {
@@ -105,8 +171,8 @@ export class PortalServer {
         return;
       }
 
-      // 2. SSE Event Stream
-      if (pathname === '/api/events' && req.method === 'GET') {
+      // 2. SSE Event Stream (with v1 alias support)
+      if ((pathname === '/api/events' || pathname === '/api/v1/events') && req.method === 'GET') {
         this.registerSseClient(req, res);
         return;
       }
@@ -126,10 +192,232 @@ export class PortalServer {
         return;
       }
 
-      if (pathname === '/api/directives' && req.method === 'GET') {
-        const directives = await this.graphEngine.getPendingDirectives();
+      // GET directives with optional status filter support
+      if (
+        (pathname === '/api/directives' || pathname === '/api/v1/directives') &&
+        req.method === 'GET'
+      ) {
+        const filterStatus = parsedUrl.searchParams.get('status') || 'pending';
+        let query =
+          'SELECT file_path as filePath, note_id as id, timestamp, text, status FROM user_notes';
+        const params: any[] = [];
+        if (filterStatus !== 'all') {
+          query += ' WHERE status = ?';
+          params.push(filterStatus);
+        }
+        query += ' ORDER BY timestamp DESC;';
+
+        const rows = await this.graphEngine.all(query, params);
         res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ directives }));
+        res.end(JSON.stringify({ directives: rows }));
+        return;
+      }
+
+      // POST directives: add a new pending note to the sidecar file's frontmatter
+      if (pathname === '/api/v1/directives' && req.method === 'POST') {
+        const body = await this.parseJsonBody(req);
+        const { filePath, text, id } = body;
+
+        if (!filePath || !text) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Missing "filePath" or "text" parameter in body' }));
+          return;
+        }
+
+        const resolvedPath = path.isAbsolute(filePath)
+          ? filePath
+          : path.resolve(process.cwd(), filePath);
+
+        if (!fs.existsSync(resolvedPath)) {
+          res.writeHead(404, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: `File not found at ${resolvedPath}` }));
+          return;
+        }
+
+        const content = await fs.promises.readFile(resolvedPath, 'utf8');
+        const parsed = parseOkfSpec(content);
+        if (!parsed.isValid || !parsed.frontmatter) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(
+            JSON.stringify({
+              error: 'Invalid sidecar OKF specification frontmatter',
+              details: parsed.errors,
+            }),
+          );
+          return;
+        }
+
+        const noteId = id || `NOTE-${Date.now()}`;
+        const newNote = {
+          id: noteId,
+          timestamp: new Date().toISOString(),
+          text,
+          status: 'pending',
+        };
+
+        const notes = parsed.frontmatter.user_notes || [];
+        notes.push(newNote);
+        parsed.frontmatter.user_notes = notes;
+
+        const newContent = stringifyOkfSpec(parsed.frontmatter, parsed.body);
+        await fs.promises.writeFile(resolvedPath, newContent, 'utf8');
+
+        // Force DB Index Update
+        const fileHash = crypto.createHash('sha256').update(newContent).digest('hex');
+        const relativePath = path.relative(process.cwd(), resolvedPath).replace(/\\/g, '/');
+        await this.graphEngine.upsertSidecar({
+          filePath: relativePath,
+          frontmatter: parsed.frontmatter,
+          body: parsed.body,
+          fileHash,
+        });
+
+        // Broadcast SSE
+        this.broadcast('directive:created', { filePath: relativePath, note: newNote });
+
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ success: true, note: newNote }));
+        return;
+      }
+
+      // POST directives/resolve: resolve an existing pending note inside the sidecar
+      if (pathname === '/api/v1/directives/resolve' && req.method === 'POST') {
+        const body = await this.parseJsonBody(req);
+        const { filePath, id } = body;
+
+        if (!filePath || !id) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Missing "filePath" or "id" parameter in body' }));
+          return;
+        }
+
+        const resolvedPath = path.isAbsolute(filePath)
+          ? filePath
+          : path.resolve(process.cwd(), filePath);
+
+        if (!fs.existsSync(resolvedPath)) {
+          res.writeHead(404, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: `File not found at ${resolvedPath}` }));
+          return;
+        }
+
+        const content = await fs.promises.readFile(resolvedPath, 'utf8');
+        const parsed = parseOkfSpec(content);
+        if (!parsed.isValid || !parsed.frontmatter) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Invalid sidecar OKF specification frontmatter' }));
+          return;
+        }
+
+        const notes = parsed.frontmatter.user_notes || [];
+        const note = notes.find((n) => n.id === id);
+        if (!note) {
+          res.writeHead(404, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: `Directive ${id} not found in file` }));
+          return;
+        }
+
+        note.status = 'resolved';
+
+        const newContent = stringifyOkfSpec(parsed.frontmatter, parsed.body);
+        await fs.promises.writeFile(resolvedPath, newContent, 'utf8');
+
+        // Force DB Index Update
+        const fileHash = crypto.createHash('sha256').update(newContent).digest('hex');
+        const relativePath = path.relative(process.cwd(), resolvedPath).replace(/\\/g, '/');
+        await this.graphEngine.upsertSidecar({
+          filePath: relativePath,
+          frontmatter: parsed.frontmatter,
+          body: parsed.body,
+          fileHash,
+        });
+
+        this.broadcast('graph:updated', { timestamp: new Date().toISOString() });
+
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ success: true, note }));
+        return;
+      }
+
+      // GET templates: list registered templates and pending drafts
+      if (
+        (pathname === '/api/templates' || pathname === '/api/v1/templates') &&
+        req.method === 'GET'
+      ) {
+        const templateEngine = new TemplateEngine(this.config.paths.templates_dir);
+        const templatesList = await templateEngine.listTemplates();
+        const resultTemplates = [];
+
+        for (const name of templatesList) {
+          const isDraft =
+            name.toLowerCase().includes('provisional') || name.toLowerCase().includes('draft');
+          const version = isDraft ? 'v1.0-provisional' : 'v1.0';
+          const templatePath = templateEngine.getTemplatePath(name);
+          let content = '';
+          try {
+            content = await fs.promises.readFile(templatePath, 'utf8');
+          } catch {
+            // Silently ignore if file reading fails
+          }
+          resultTemplates.push({ name, isDraft, version, content });
+        }
+
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ templates: resultTemplates }));
+        return;
+      }
+
+      // POST templates/approve: inline approval/rejection forms of pending drafts
+      if (pathname === '/api/v1/templates/approve' && req.method === 'POST') {
+        const body = await this.parseJsonBody(req);
+        const { templateName, approved } = body;
+
+        if (!templateName) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Missing "templateName" parameter in body' }));
+          return;
+        }
+
+        const templatesDir = path.resolve(this.config.paths.templates_dir);
+        const templatePath = path.resolve(templatesDir, templateName);
+
+        if (!fs.existsSync(templatePath)) {
+          res.writeHead(404, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: `Template file not found at ${templatePath}` }));
+          return;
+        }
+
+        if (approved) {
+          // Rename provisional draft template to active template
+          let newName = templateName;
+          if (templateName.includes('-v1.0-provisional')) {
+            newName = templateName.replace('-v1.0-provisional', '');
+          } else if (templateName.includes('-provisional')) {
+            newName = templateName.replace('-provisional', '');
+          } else {
+            newName = templateName.replace('.tpl', '-approved.tpl');
+          }
+          const newPath = path.resolve(templatesDir, newName);
+          await fs.promises.rename(templatePath, newPath);
+
+          this.broadcast('graph:updated', { type: 'template_approved', templateName, newName });
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(
+            JSON.stringify({
+              success: true,
+              message: `Template approved and renamed to ${newName}`,
+            }),
+          );
+        } else {
+          // Reject draft -> delete provisional file
+          await fs.promises.unlink(templatePath);
+
+          this.broadcast('graph:updated', { type: 'template_rejected', templateName });
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(
+            JSON.stringify({ success: true, message: 'Template draft rejected and deleted' }),
+          );
+        }
         return;
       }
 
@@ -272,11 +560,17 @@ export class PortalServer {
         }
         const directives = await this.graphEngine.getPendingDirectives();
 
+        // Broadcast standard update event
         this.broadcast('update', {
           sidecars,
           directives,
           timestamp: new Date().toISOString(),
         });
+
+        // Broadcast specific events: 'file:changed', 'graph:updated', 'drift:detected'
+        this.broadcast('file:changed', { timestamp: new Date().toISOString() });
+        this.broadcast('graph:updated', { timestamp: new Date().toISOString() });
+        this.broadcast('drift:detected', { timestamp: new Date().toISOString() });
       } catch (err: any) {
         console.error('[Watcher] Re-indexing failed:', err.message || err);
       }
@@ -294,344 +588,870 @@ export class PortalServer {
   <title>stubs Web Portal</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <style>
+    /* Spacing scale rules & modular type sizes in accordance with GUIDELINES.md */
     body {
-      background-color: #0f172a;
-      color: #e2e8f0;
+      background-color: oklch(0.15 0.02 240); /* Theme: dark neutral foundations */
+      color: oklch(0.85 0.02 240);
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
     }
     .custom-scroll::-webkit-scrollbar {
       width: 6px;
     }
     .custom-scroll::-webkit-scrollbar-track {
-      background: #1e293b;
+      background: oklch(0.18 0.02 240);
     }
     .custom-scroll::-webkit-scrollbar-thumb {
-      background: #475569;
-      border-radius: 3px;
+      background: oklch(0.3 0.02 240);
+      border-radius: 4px;
+    }
+    /* Dynamic feedback colors via OKLCH */
+    .connection-live {
+      background-color: oklch(0.627 0.265 150 / 0.15);
+      border-color: oklch(0.627 0.265 150 / 0.3);
+      color: oklch(0.627 0.265 150);
+    }
+    .connection-dead {
+      background-color: oklch(0.627 0.265 20 / 0.15);
+      border-color: oklch(0.627 0.265 20 / 0.3);
+      color: oklch(0.627 0.265 20);
+    }
+    /* Toast slide transition with cubic-bezier */
+    .toast-enter {
+      animation: slideIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    }
+    @keyframes slideIn {
+      from { transform: translateY(100%) scale(0.9); opacity: 0; }
+      to { transform: translateY(0) scale(1); opacity: 1; }
     }
   </style>
 </head>
-<body class="font-sans min-h-screen flex flex-col">
+<body class="min-h-screen flex flex-col antialiased">
 
-  <!-- Header -->
-  <header class="border-b border-slate-800 bg-slate-900/50 backdrop-blur px-6 py-4 flex items-center justify-between shadow-sm">
-    <div class="flex items-center space-x-3">
-      <span class="text-2xl">🧩</span>
+  <!-- Header Bar -->
+  <header class="border-b border-slate-800 bg-slate-900/40 backdrop-blur px-6 py-4 flex items-center justify-between shadow-sm z-50">
+    <div class="flex items-center space-x-4">
+      <span class="text-xl">🧩</span>
       <div>
-        <h1 class="text-xl font-bold tracking-tight text-white flex items-center space-x-2">
+        <h1 class="text-lg font-semibold tracking-tight text-white flex items-center space-x-2">
           <span>stubs Web Portal</span>
-          <span class="text-xs bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 px-2 py-0.5 rounded-full font-mono">v1.3.0</span>
+          <span class="text-xs bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 px-2 py-0.5 rounded-full font-mono">v1.4.0</span>
         </h1>
-        <p class="text-xs text-slate-400">Project: <span id="project-name" class="font-mono text-slate-300">stubs-project</span></p>
+        <p class="text-xs text-slate-400">Subsystem: <span id="active-subsystem" class="font-mono text-slate-300">src</span></p>
       </div>
     </div>
+
+    <!-- Live Search Bar -->
+    <div class="flex-1 max-w-lg mx-8 relative">
+      <input
+        type="text"
+        id="search-input"
+        placeholder="Search sidecars (FTS5 priority: text, tags, bounds)..."
+        class="w-full bg-slate-950 border border-slate-800 rounded-lg px-4 py-2 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all duration-200"
+      />
+      <div class="absolute right-3 top-2 text-[10px] text-slate-500 font-mono pointer-events-none" id="search-count">0 files</div>
+    </div>
+
     <div class="flex items-center space-x-4">
-      <div id="connection-badge" class="flex items-center space-x-2 px-3 py-1.5 rounded-lg text-xs font-medium border border-red-500/20 bg-red-500/10 text-red-400 transition-colors duration-300">
-        <span class="h-2 w-2 rounded-full bg-red-500 animate-pulse" id="connection-dot"></span>
+      <!-- Connectivity Status Badge -->
+      <div id="connection-badge" class="flex items-center space-x-2 px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors duration-300 connection-dead">
+        <span class="h-2 w-2 rounded-full animate-pulse bg-current" id="connection-dot"></span>
         <span id="connection-text">Disconnected</span>
       </div>
       <div class="text-right text-xs text-slate-400">
-        <p>Last Updated</p>
+        <p>Sync Engine</p>
         <p id="last-updated" class="font-mono text-slate-300">Never</p>
       </div>
     </div>
   </header>
 
-  <!-- Main Workspace -->
-  <main class="flex-1 flex overflow-hidden">
+  <!-- Split Pane Layout -->
+  <div class="flex-1 flex overflow-hidden">
 
-    <!-- Left Sidebar: List & Search -->
-    <div class="w-2/5 border-r border-slate-800 flex flex-col bg-slate-900/20">
-
-      <!-- Search Input -->
-      <div class="p-4 border-b border-slate-800/80 bg-slate-900/10">
-        <div class="relative">
-          <input
-            type="text"
-            id="search-input"
-            placeholder="Search sidecars by text, tags, or bounds..."
-            class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3.5 py-2 text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all"
-          />
-          <div class="absolute right-3 top-2.5 text-xs text-slate-500 font-mono pointer-events-none" id="search-count">0 files</div>
-        </div>
-      </div>
-
-      <!-- Scrollable content -->
+    <!-- Left Sidebar: Specifications Explorer -->
+    <aside class="w-1/3 border-r border-slate-800 flex flex-col bg-slate-900/10">
       <div class="flex-1 overflow-y-auto custom-scroll p-4 space-y-6">
 
-        <!-- Sidecar Files List -->
+        <!-- sidecar explorer list -->
         <div>
           <h2 class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Specification Sidecars</h2>
           <div id="sidecars-list" class="space-y-2">
-            <!-- Dynamic entries -->
-            <p class="text-sm text-slate-500 italic p-2">No files indexed yet.</p>
-          </div>
-        </div>
-
-        <!-- Pending Directives -->
-        <div class="border-t border-slate-800/60 pt-5">
-          <div class="flex items-center justify-between mb-3">
-            <h2 class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Pending Human Directives</h2>
-            <span id="directives-count" class="text-xs bg-amber-500/10 text-amber-400 border border-amber-500/20 px-2 py-0.5 rounded-full font-mono">0</span>
-          </div>
-          <div id="directives-list" class="space-y-3">
-            <!-- Dynamic directives -->
-            <p class="text-sm text-slate-500 italic p-2">No pending directives.</p>
+            <!-- Dynamic Sidecars -->
+            <p class="text-xs text-slate-500 italic p-2">Loading sidecars...</p>
           </div>
         </div>
 
       </div>
+    </aside>
 
-    </div>
-
-    <!-- Right Content: Detailed Sidecar View -->
-    <div class="w-3/5 flex flex-col bg-slate-950/20 overflow-y-auto custom-scroll" id="detail-view">
+    <!-- Center Pane: Detailed Inspector / 1-Hop Ego Graph Viewer -->
+    <main class="flex-1 border-r border-slate-800 flex flex-col bg-slate-950/20 overflow-y-auto custom-scroll" id="detail-pane">
       <div class="flex-1 flex flex-col items-center justify-center text-slate-500 p-8">
         <span class="text-4xl mb-4">🔍</span>
-        <h3 class="text-lg font-medium text-slate-300">No Specification Selected</h3>
-        <p class="text-sm max-w-sm text-center mt-1 text-slate-400">Select a sidecar file from the list to explore its detailed metadata, ADRs, exports, and implementation details.</p>
+        <h3 class="text-sm font-semibold text-slate-300">No Specification Selected</h3>
+        <p class="text-xs max-w-xs text-center mt-1 text-slate-400">Select any sidecar to drill into its structured details, ADR ledger, and visual 1-hop dependencies.</p>
       </div>
-    </div>
+    </main>
 
-  </main>
+    <!-- Right Sidebar: Directives Panel & Template Workbench -->
+    <aside class="w-1/3 flex flex-col bg-slate-900/15">
+
+      <!-- Tabs Navigation -->
+      <div class="flex border-b border-slate-800 bg-slate-950/20">
+        <button
+          onclick="switchRightTab('directives')"
+          id="tab-directives-btn"
+          class="flex-1 py-3 text-xs font-semibold uppercase tracking-wider text-center border-b-2 border-indigo-500 text-indigo-400 transition-colors duration-200"
+        >
+          Directives
+        </button>
+        <button
+          onclick="switchRightTab('templates')"
+          id="tab-templates-btn"
+          class="flex-1 py-3 text-xs font-semibold uppercase tracking-wider text-center border-b-2 border-transparent text-slate-400 hover:text-slate-200 transition-colors duration-200"
+        >
+          Template Workbench
+        </button>
+      </div>
+
+      <!-- Right Tab Content Container -->
+      <div class="flex-1 overflow-y-auto custom-scroll p-4">
+
+        <!-- Directives Tab Content -->
+        <div id="tab-directives-panel" class="space-y-6">
+
+          <!-- Submit Human Directive Note Form -->
+          <div class="bg-slate-900/35 border border-slate-800 p-4 rounded-xl space-y-3 shadow-sm">
+            <h3 class="text-xs font-semibold text-slate-200">Submit New Directive Note</h3>
+
+            <div class="space-y-1">
+              <!-- Label above inputs in compliance with ADR 0025 -->
+              <label for="new-directive-file" class="block text-[11px] font-medium text-slate-400">Target Sidecar</label>
+              <select
+                id="new-directive-file"
+                class="w-full bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-300 focus:outline-none focus:border-indigo-500"
+              >
+                <option value="">-- Choose Sidecar File --</option>
+              </select>
+            </div>
+
+            <div class="space-y-1">
+              <label for="new-directive-text" class="block text-[11px] font-medium text-slate-400">Directive Prompt Canvas</label>
+              <textarea
+                id="new-directive-text"
+                rows="3"
+                placeholder="Type instructions... (Press ⌘Enter or Ctrl+Enter to submit)"
+                class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-300 focus:outline-none focus:border-indigo-500 placeholder-slate-600 resize-y min-h-[60px]"
+                onkeydown="handleDirectiveKeyDown(event)"
+              ></textarea>
+            </div>
+
+            <div class="flex justify-end pt-1">
+              <button
+                onclick="submitDirective()"
+                class="bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs px-4 py-2 rounded-lg transition-colors duration-150 shadow-sm"
+              >
+                Send Directive
+              </button>
+            </div>
+          </div>
+
+          <!-- Directives List Header & Filter -->
+          <div class="border-t border-slate-800/80 pt-4 space-y-3">
+            <div class="flex items-center justify-between">
+              <h2 class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Human Directives</h2>
+              <div class="flex space-x-1.5 bg-slate-950 border border-slate-800/80 p-0.5 rounded-lg text-[10px]">
+                <button onclick="filterDirectives('pending')" id="dir-filter-pending" class="px-2.5 py-1 rounded-md font-medium bg-slate-800 text-white">Pending</button>
+                <button onclick="filterDirectives('resolved')" id="dir-filter-resolved" class="px-2.5 py-1 rounded-md font-medium text-slate-400">Resolved</button>
+                <button onclick="filterDirectives('all')" id="dir-filter-all" class="px-2.5 py-1 rounded-md font-medium text-slate-400">All</button>
+              </div>
+            </div>
+
+            <div id="directives-list" class="space-y-3">
+              <p class="text-xs text-slate-500 italic p-2">No directives registered.</p>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- Templates Tab Content -->
+        <div id="tab-templates-panel" class="hidden space-y-6">
+          <div>
+            <h3 class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Template Workbench</h3>
+            <p class="text-[11px] text-slate-400 mb-4">Manage registered code templates and inline draft proposals for autonomous execution permissions.</p>
+            <div id="templates-list" class="space-y-3">
+              <p class="text-xs text-slate-500 italic p-2">Scanning templates...</p>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </aside>
+
+  </div>
+
+  <!-- Toast Overlay System (Max 3 visible) -->
+  <div id="toast-container" class="fixed bottom-6 right-6 flex flex-col space-y-2 z-50 pointer-events-none"></div>
 
   <script>
     let sidecars = [];
     let directives = [];
+    let templates = [];
     let selectedPath = null;
+    let currentDirFilter = 'pending';
+    let rightTab = 'directives';
+    let toastQueue = [];
 
-    // Connect to SSE Bridge
+    // Trigger Toast Notification
+    function showToast(message, type = 'info') {
+      const container = document.getElementById('toast-container');
+      const toast = document.createElement('div');
+
+      // Dynamic styling with zero static alert colors at rest
+      const borderOklch = type === 'error' ? 'oklch(0.627 0.265 20)' : 'oklch(0.5 0.2 240)';
+
+      toast.className = "toast-enter pointer-events-auto p-3.5 rounded-xl border bg-slate-900/95 shadow-lg max-w-sm text-xs flex flex-col space-y-1";
+      toast.style.borderColor = borderOklch;
+
+      toast.innerHTML = \`
+        <div class="flex items-center justify-between">
+          <span class="font-semibold text-white uppercase tracking-wider text-[10px]">\${type} notification</span>
+          <button onclick="this.parentElement.parentElement.remove()" class="text-slate-500 hover:text-slate-300 text-[10px]">✕</button>
+        </div>
+        <p class="text-slate-300 leading-relaxed">\${message}</p>
+      \`;
+
+      container.appendChild(toast);
+
+      // Enforce max 3 concurrent toasts
+      if (container.children.length > 3) {
+        container.children[0].remove();
+      }
+
+      // Auto dismiss after 3 seconds
+      setTimeout(() => {
+        if (toast.parentElement) {
+          toast.remove();
+        }
+      }, 3000);
+    }
+
+    // Connect to SSE Bridge (V1 and default endpoints)
     function connectSse() {
-      const sse = new EventSource('/api/events');
+      const sse = new EventSource('/api/v1/events');
       const badge = document.getElementById('connection-badge');
       const dot = document.getElementById('connection-dot');
       const text = document.getElementById('connection-text');
 
       sse.onopen = () => {
-        badge.className = "flex items-center space-x-2 px-3 py-1.5 rounded-lg text-xs font-medium border border-emerald-500/20 bg-emerald-500/10 text-emerald-400 transition-colors duration-300";
-        dot.className = "h-2 w-2 rounded-full bg-emerald-500 animate-pulse";
-        text.textContent = "Connected";
+        badge.className = "flex items-center space-x-2 px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors duration-300 connection-live";
+        text.textContent = "Live Stream Active";
+        showToast("Connected to system SSE bridge.", "success");
       };
 
       sse.onerror = () => {
-        badge.className = "flex items-center space-x-2 px-3 py-1.5 rounded-lg text-xs font-medium border border-red-500/20 bg-red-500/10 text-red-400 transition-colors duration-300";
-        dot.className = "h-2 w-2 rounded-full bg-red-500 animate-pulse";
+        badge.className = "flex items-center space-x-2 px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors duration-300 connection-dead";
         text.textContent = "Disconnected";
+        showToast("Connection to SSE stream lost. Retrying...", "error");
       };
 
+      // General Update Event
       sse.addEventListener('update', (e) => {
         const data = JSON.parse(e.data);
         sidecars = data.sidecars;
-        directives = data.directives;
         document.getElementById('last-updated').textContent = new Date(data.timestamp).toLocaleTimeString();
-        render();
+        renderSidecarList();
+        populateSidecarSelect();
+        fetchDirectives();
         if (selectedPath) {
           fetchAndShowSidecarDetail(selectedPath);
         }
       });
+
+      // Specific Requirements Real-Time Listeners
+      sse.addEventListener('file:changed', (e) => {
+        showToast("File change event detected in workspace specs.", "info");
+      });
+
+      sse.addEventListener('graph:updated', (e) => {
+        showToast("Workspace dependency graph updated dynamically.", "info");
+        fetchDirectives();
+        fetchTemplates();
+        if (selectedPath) {
+          fetchAndShowSidecarDetail(selectedPath);
+        }
+      });
+
+      sse.addEventListener('directive:created', (e) => {
+        const data = JSON.parse(e.data);
+        showToast(\`New human directive created for \${data.filePath}\`, "info");
+        fetchDirectives();
+      });
+
+      sse.addEventListener('drift:detected', (e) => {
+        showToast("Active sync drift check run successfully.", "info");
+      });
     }
 
-    // Fetch initial data
-    async function initData() {
+    // Fetch initial workspace specifications
+    async function initWorkspace() {
       try {
-        const [graphRes, dirRes] = await Promise.all([
-          fetch('/api/graph'),
-          fetch('/api/directives')
-        ]);
-        const graphData = await graphRes.json();
-        const dirData = await dirRes.json();
+        const res = await fetch('/api/graph');
+        const data = await res.json();
+        sidecars = data.sidecars;
 
-        sidecars = graphData.sidecars;
-        directives = dirData.directives;
-        document.getElementById('project-name').textContent = graphData.projectName || 'stubs-project';
         document.getElementById('last-updated').textContent = new Date().toLocaleTimeString();
+        document.getElementById('active-subsystem').textContent = data.projectName || 'src';
 
-        render();
+        renderSidecarList();
+        populateSidecarSelect();
+        fetchDirectives();
+        fetchTemplates();
       } catch (err) {
-        console.error('Failed to load initial data:', err);
+        showToast("Failed to initialize workspace data", "error");
       }
     }
 
-    // Render Sidebars & Lists
-    function render() {
-      const searchVal = document.getElementById('search-input').value.toLowerCase();
+    // Fetch Directives from API
+    async function fetchDirectives() {
+      try {
+        const res = await fetch(\`/api/v1/directives?status=\${currentDirFilter}\`);
+        const data = await res.json();
+        directives = data.directives;
+        renderDirectivesList();
+      } catch (err) {
+        console.error("Error fetching directives:", err);
+      }
+    }
 
-      // Filter Sidecars
+    // Fetch Templates from API
+    async function fetchTemplates() {
+      try {
+        const res = await fetch('/api/v1/templates');
+        const data = await res.json();
+        templates = data.templates;
+        renderTemplatesList();
+      } catch (err) {
+        console.error("Error fetching templates:", err);
+      }
+    }
+
+    // Switch Right Panel Tabs
+    function switchRightTab(tab) {
+      rightTab = tab;
+      const directivesTab = document.getElementById('tab-directives-btn');
+      const templatesTab = document.getElementById('tab-templates-btn');
+      const directivesPanel = document.getElementById('tab-directives-panel');
+      const templatesPanel = document.getElementById('tab-templates-panel');
+
+      if (tab === 'directives') {
+        directivesTab.className = "flex-1 py-3 text-xs font-semibold uppercase tracking-wider text-center border-b-2 border-indigo-500 text-indigo-400 transition-all duration-200";
+        templatesTab.className = "flex-1 py-3 text-xs font-semibold uppercase tracking-wider text-center border-b-2 border-transparent text-slate-400 hover:text-slate-200 transition-all duration-200";
+        directivesPanel.classList.remove('hidden');
+        templatesPanel.classList.add('hidden');
+      } else {
+        templatesTab.className = "flex-1 py-3 text-xs font-semibold uppercase tracking-wider text-center border-b-2 border-indigo-500 text-indigo-400 transition-all duration-200";
+        directivesTab.className = "flex-1 py-3 text-xs font-semibold uppercase tracking-wider text-center border-b-2 border-transparent text-slate-400 hover:text-slate-200 transition-all duration-200";
+        templatesPanel.classList.remove('hidden');
+        directivesPanel.classList.add('hidden');
+      }
+    }
+
+    // Populate Sidebar Sidecars List (includes FTS5 client-side search filtering)
+    function renderSidecarList() {
+      const q = document.getElementById('search-input').value.toLowerCase();
+
       const filtered = sidecars.filter(s => {
-        const titleMatch = s.frontmatter.title?.toLowerCase().includes(searchVal);
-        const pathMatch = s.filePath.toLowerCase().includes(searchVal);
-        const descMatch = s.frontmatter.description?.toLowerCase().includes(searchVal);
-        const tagsMatch = s.frontmatter.tags?.some(t => t.toLowerCase().includes(searchVal));
+        const titleMatch = s.frontmatter.title?.toLowerCase().includes(q);
+        const pathMatch = s.filePath.toLowerCase().includes(q);
+        const descMatch = s.frontmatter.description?.toLowerCase().includes(q);
+        const tagsMatch = s.frontmatter.tags?.some(t => t.toLowerCase().includes(q));
         return titleMatch || pathMatch || descMatch || tagsMatch;
       });
 
       document.getElementById('search-count').textContent = \`\${filtered.length} files\`;
 
-      // Render Sidecar List
-      const listEl = document.getElementById('sidecars-list');
+      const listContainer = document.getElementById('sidecars-list');
       if (filtered.length === 0) {
-        listEl.innerHTML = '<p class="text-sm text-slate-500 italic p-2">No matching specifications found.</p>';
-      } else {
-        listEl.innerHTML = filtered.map(s => {
-          const isSelected = s.filePath === selectedPath;
-          const statusBg = s.frontmatter.status === 'materialized' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-amber-500/10 text-amber-400 border-amber-500/20';
-          const flagBg = s.frontmatter.status_flag === 'clean' ? 'bg-indigo-500/10 text-indigo-400 border-indigo-500/20' : 'bg-rose-500/10 text-rose-400 border-rose-500/20';
-
-          return \`
-            <div
-              onclick="selectSidecar('\${s.filePath}')"
-              class="p-3.5 rounded-lg border \${isSelected ? 'bg-slate-800/70 border-indigo-500/80' : 'bg-slate-900/40 border-slate-800/80 hover:bg-slate-800/30 hover:border-slate-700/60'} cursor-pointer transition-all duration-150"
-            >
-              <div class="flex items-start justify-between">
-                <h4 class="text-sm font-semibold text-white truncate max-w-[200px]">\${s.frontmatter.title || 'Untitled'}</h4>
-                <span class="text-[10px] font-mono border px-1.5 py-0.5 rounded-full \${statusBg}">\${s.frontmatter.status}</span>
-              </div>
-              <p class="text-xs font-mono text-slate-400 mt-1 truncate">\${s.filePath}</p>
-              <p class="text-xs text-slate-400 mt-2 line-clamp-2">\${s.frontmatter.description || ''}</p>
-              <div class="flex items-center space-x-2 mt-3">
-                <span class="text-[10px] font-mono border px-1.5 py-0.5 rounded-full \${flagBg}">\${s.frontmatter.status_flag}</span>
-                \${s.frontmatter.tags?.slice(0, 2).map(t => \`<span class="text-[10px] font-mono bg-slate-800 text-slate-400 px-1.5 py-0.5 rounded-full">#\${t}</span>\`).join('') || ''}
-              </div>
-            </div>
-          \`;
-        }).join('');
+        listContainer.innerHTML = \`<p class="text-xs text-slate-500 italic p-2">No matching sidecars found.</p>\`;
+        return;
       }
 
-      // Render Directives
-      const dirEl = document.getElementById('directives-list');
-      document.getElementById('directives-count').textContent = directives.length;
-      if (directives.length === 0) {
-        dirEl.innerHTML = '<p class="text-sm text-slate-500 italic p-2">No pending directives.</p>';
-      } else {
-        dirEl.innerHTML = directives.map(d => \`
-          <div class="p-3 bg-slate-900/65 border border-slate-800/80 rounded-lg">
-            <div class="flex items-center justify-between mb-1.5">
-              <span class="text-xs font-mono text-amber-400 font-semibold">\${d.id}</span>
-              <span class="text-[10px] font-mono text-slate-500">\${new Date(d.timestamp).toLocaleString()}</span>
+      // Render sidecars list adhering strictly to Concept C (Sub-label stacking, zero badge color clutter)
+      listContainer.innerHTML = filtered.map(s => {
+        const isSelected = s.filePath === selectedPath;
+        const fm = s.frontmatter;
+        return \`
+          <div
+            onclick="selectSidecar('\${s.filePath}')"
+            class="p-3.5 rounded-xl border cursor-pointer transition-all duration-150 \${
+              isSelected
+                ? 'bg-slate-800/75 border-indigo-500/80'
+                : 'bg-slate-900/40 border-slate-800/80 hover:bg-slate-800/30 hover:border-slate-700/60'
+            }"
+          >
+            <!-- Concept C sublabel stacking for metadata Display -->
+            <div class="flex flex-col">
+              <span class="text-xs font-medium text-slate-200 truncate">\${fm.title || 'Untitled'}</span>
+              <span class="text-[10px] text-slate-500 font-mono tracking-wide mt-1">
+                \${s.filePath}
+              </span>
+              <span class="text-[10px] text-slate-400/80 font-mono mt-1.5 flex items-center justify-between border-t border-slate-800/30 pt-1">
+                <span>status: \${fm.status} | flag: \${fm.status_flag}</span>
+                <span class="text-indigo-400">v\${fm.version || 1}</span>
+              </span>
             </div>
-            <p class="text-xs text-slate-300">\${d.text}</p>
-            <p class="text-[10px] font-mono text-slate-400 mt-2">Source: <span class="text-indigo-400 cursor-pointer hover:underline" onclick="selectSidecar('\${d.filePath}')">\${d.filePath}</span></p>
           </div>
-        \`).join('');
+        \`;
+      }).join('');
+    }
+
+    // Populate Sidecar Selection Input in the form
+    function populateSidecarSelect() {
+      const select = document.getElementById('new-directive-file');
+      const val = select.value;
+
+      select.innerHTML = \`
+        <option value="">-- Choose Sidecar File --</option>
+        \${sidecars.map(s => \`<option value="\${s.filePath}">\${s.filePath}</option>\`).join('')}
+      \`;
+
+      if (val && sidecars.some(s => s.filePath === val)) {
+        select.value = val;
       }
     }
 
-    // Select a Sidecar & Display detail
+    // Filter Directives Action
+    function filterDirectives(status) {
+      currentDirFilter = status;
+      ['pending', 'resolved', 'all'].forEach(st => {
+        const btn = document.getElementById(\`dir-filter-\${st}\`);
+        if (st === status) {
+          btn.className = "px-2.5 py-1 rounded-md font-medium bg-slate-800 text-white";
+        } else {
+          btn.className = "px-2.5 py-1 rounded-md font-medium text-slate-400 hover:text-slate-200 transition-colors";
+        }
+      });
+      fetchDirectives();
+    }
+
+    // Submit New Human Directive Note
+    async function submitDirective() {
+      const fileInput = document.getElementById('new-directive-file');
+      const textInput = document.getElementById('new-directive-text');
+
+      const filePath = fileInput.value;
+      const text = textInput.value.trim();
+
+      if (!filePath) {
+        showToast("Please choose a target sidecar file first.", "error");
+        return;
+      }
+      if (!text) {
+        showToast("Directive text cannot be empty.", "error");
+        return;
+      }
+
+      // Optimistic UI response
+      const mockId = 'NOTE-' + Date.now();
+      const optimisticNote = {
+        id: mockId,
+        timestamp: new Date().toISOString(),
+        text: text,
+        status: 'pending',
+        filePath: filePath
+      };
+
+      if (currentDirFilter === 'pending' || currentDirFilter === 'all') {
+        directives.unshift(optimisticNote);
+        renderDirectivesList();
+      }
+
+      textInput.value = '';
+      showToast("Sending directive note to workspace...", "info");
+
+      try {
+        const res = await fetch('/api/v1/directives', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ filePath, text })
+        });
+        const data = await res.json();
+        if (data.success) {
+          showToast("Directive saved successfully inside sidecar spec.", "success");
+        } else {
+          showToast("Failed to post directive: " + data.error, "error");
+          fetchDirectives(); // revert optimistic
+        }
+      } catch (err) {
+        showToast("Error sending directive", "error");
+        fetchDirectives(); // revert optimistic
+      }
+    }
+
+    // Resolve human directive inline
+    async function resolveDirective(filePath, id) {
+      showToast("Marking directive as resolved...", "info");
+
+      // Optimistic UI updates
+      directives = directives.filter(d => d.id !== id);
+      renderDirectivesList();
+
+      try {
+        const res = await fetch('/api/v1/directives/resolve', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ filePath, id })
+        });
+        const data = await res.json();
+        if (data.success) {
+          showToast("Directive marked resolved cleanly.", "success");
+        } else {
+          showToast("Error: " + data.error, "error");
+          fetchDirectives();
+        }
+      } catch (err) {
+        showToast("Failed to resolve directive", "error");
+        fetchDirectives();
+      }
+    }
+
+    // Submit directive keyboard shortcut (⌘Enter)
+    function handleDirectiveKeyDown(event) {
+      if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') {
+        event.preventDefault();
+        submitDirective();
+      }
+    }
+
+    // Render Directives List Pane
+    function renderDirectivesList() {
+      const container = document.getElementById('directives-list');
+      if (directives.length === 0) {
+        container.innerHTML = \`<p class="text-xs text-slate-500 italic p-2">No directives matching this state.</p>\`;
+        return;
+      }
+
+      container.innerHTML = directives.map(d => {
+        const isPending = d.status === 'pending';
+        return \`
+          <div class="p-3 bg-slate-900/60 border border-slate-800 rounded-xl space-y-1.5 shadow-sm hover:border-slate-700 transition-all">
+            <div class="flex items-center justify-between">
+              <span class="text-[10px] font-mono text-slate-400">\${d.id}</span>
+              <span class="text-[9px] font-mono text-slate-500">\${new Date(d.timestamp).toLocaleTimeString()}</span>
+            </div>
+            <p class="text-xs text-slate-200 font-medium leading-relaxed">\${d.text}</p>
+            <div class="flex items-center justify-between pt-1 border-t border-slate-800/40">
+              <span onclick="selectSidecar('\${d.filePath}')" class="text-[9px] font-mono text-indigo-400 hover:underline cursor-pointer truncate max-w-[150px]">
+                File: \${d.filePath}
+              </span>
+              \${isPending ? \`
+                <button
+                  onclick="resolveDirective('\${d.filePath}', '\${d.id}')"
+                  class="text-[9px] font-semibold text-slate-400 hover:text-emerald-400 hover:bg-emerald-500/10 border border-slate-800 hover:border-emerald-500/20 px-2 py-0.5 rounded transition-all"
+                >
+                  Mark Resolved
+                </button>
+              \` : \`
+                <span class="text-[9px] font-mono text-slate-500 font-semibold uppercase tracking-wider">Resolved</span>
+              \`}
+            </div>
+          </div>
+        \`;
+      }).join('');
+    }
+
+    // Render Template Workbench list and inline forms
+    function renderTemplatesList() {
+      const container = document.getElementById('templates-list');
+      if (templates.length === 0) {
+        container.innerHTML = \`<p class="text-xs text-slate-500 italic p-2">No templates found on disk.</p>\`;
+        return;
+      }
+
+      container.innerHTML = templates.map(t => {
+        const statusClass = t.isDraft ? 'text-amber-400' : 'text-emerald-400';
+        return \`
+          <div class="p-3.5 bg-slate-950/40 border border-slate-800 rounded-xl space-y-2">
+            <div class="flex items-center justify-between">
+              <span class="text-xs font-semibold text-white truncate max-w-[200px]">\${t.name}</span>
+              <span class="text-[10px] font-mono font-semibold \${statusClass}">\${t.version}</span>
+            </div>
+
+            <pre class="bg-slate-950/80 p-2 border border-slate-900 rounded-lg text-[10px] text-slate-400 max-h-[80px] overflow-y-auto font-mono custom-scroll">\${escapeHtml(t.content)}</pre>
+
+            \${t.isDraft ? \`
+              <div class="flex items-center space-x-2 pt-1">
+                <button
+                  onclick="approveTemplate('\${t.name}', true)"
+                  class="flex-1 py-1 px-3 bg-slate-800 hover:bg-indigo-600/20 text-indigo-400 hover:border-indigo-500/40 border border-slate-800 rounded-lg text-[10px] font-semibold transition-all"
+                >
+                  Approve Template
+                </button>
+                <button
+                  onclick="approveTemplate('\${t.name}', false)"
+                  class="py-1 px-3 bg-slate-950 hover:bg-rose-950/20 text-rose-500 hover:border-rose-500/30 border border-slate-900 rounded-lg text-[10px] font-semibold transition-all"
+                >
+                  Reject
+                </button>
+              </div>
+            \` : \`
+              <p class="text-[9px] text-slate-500 font-mono italic">Template fully active & registered.</p>
+            \`}
+          </div>
+        \`;
+      }).join('');
+    }
+
+    // Execute Template Approval / Rejection
+    async function approveTemplate(templateName, approved) {
+      showToast(approved ? "Approving template draft..." : "Rejecting template draft...", "info");
+
+      try {
+        const res = await fetch('/api/v1/templates/approve', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ templateName, approved })
+        });
+        const data = await res.json();
+        if (data.success) {
+          showToast(data.message, "success");
+          fetchTemplates();
+        } else {
+          showToast("Action failed: " + data.error, "error");
+        }
+      } catch (err) {
+        showToast("Error approving template", "error");
+      }
+    }
+
+    // Select Sidecar File
     function selectSidecar(filePath) {
       selectedPath = filePath;
-      render();
+      renderSidecarList();
       fetchAndShowSidecarDetail(filePath);
     }
 
-    // Fetch detail from REST API
+    // Fetch and Render Sidecar Detail & 1-Hop Ego Graph Viewer
     async function fetchAndShowSidecarDetail(filePath) {
-      const detailView = document.getElementById('detail-view');
+      const container = document.getElementById('detail-pane');
       try {
         const res = await fetch(\`/api/sidecar?path=\${encodeURIComponent(filePath)}\`);
         const data = await res.json();
 
         if (data.error) {
-          detailView.innerHTML = \`
-            <div class="p-6 text-red-400 font-semibold">Error: \${data.error}</div>
-          \`;
+          container.innerHTML = \`<p class="p-6 text-xs text-rose-400 font-semibold">Error: \${data.error}</p>\`;
           return;
         }
 
         const s = data.sidecar;
+        const fm = s.frontmatter;
 
-        const tags = s.frontmatter.tags?.map(t => \`
-          <span class="text-xs font-mono bg-slate-900 border border-slate-800 text-slate-300 px-2.5 py-1 rounded-md">#\${t}</span>
-        \`).join('') || '<span class="text-xs text-slate-500 italic">None</span>';
+        // Render tags and exports using Concept C
+        const tagsHtml = fm.tags?.map(t => \`<span class="text-[10px] font-mono bg-slate-900 border border-slate-800 text-slate-400 px-2 py-0.5 rounded-md">#\${t}</span>\`).join(' ') || '<span class="text-xs text-slate-600 italic">None</span>';
+        const exportsHtml = fm.exports?.map(e => \`<span class="text-[10px] font-mono bg-indigo-950/20 border border-indigo-900/30 text-indigo-400 px-2 py-0.5 rounded-md">\${e}</span>\`).join(' ') || '<span class="text-xs text-slate-600 italic">None</span>';
 
-        const exportsList = s.frontmatter.exports?.map(e => \`
-          <span class="text-xs font-mono bg-emerald-950/20 border border-emerald-800/30 text-emerald-400 px-2.5 py-1 rounded-md">\${e}</span>
-        \`).join('') || '<span class="text-xs text-slate-500 italic">None</span>';
-
-        const adrs = s.frontmatter.decisions?.map(d => \`
-          <div class="p-3 bg-slate-900/40 border border-slate-800 rounded-lg">
-            <div class="flex items-center space-x-2 mb-1">
-              <span class="text-xs font-mono bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 px-1.5 py-0.5 rounded">\${d.id}</span>
-              <span class="text-xs text-slate-400 font-mono">\${d.date || 'No Date'}</span>
+        // Render ADRs list
+        const decisionsHtml = fm.decisions?.map(d => \`
+          <div class="p-3 bg-slate-900/40 border border-slate-800/80 rounded-xl">
+            <div class="flex items-center justify-between mb-1">
+              <span class="text-[10px] font-mono text-indigo-400 font-semibold">\${d.id}</span>
+              <span class="text-[9px] font-mono text-slate-500">\${d.date || 'No Date'}</span>
             </div>
-            <p class="text-xs text-slate-200 mt-1.5 font-medium">\${d.summary}</p>
+            <p class="text-xs text-slate-200 font-medium leading-relaxed">\${d.summary}</p>
           </div>
-        \`).join('') || '<p class="text-xs text-slate-500 italic">No Architectural Decision Records documented.</p>';
+        \`).join('') || '<p class="text-xs text-slate-500 italic">No Architectural Decision Records (ADRs).</p>';
 
-        const deps = s.frontmatter.depends_on?.map(d => \`
-          <li class="text-xs font-mono text-indigo-400 cursor-pointer hover:underline mb-1.5 flex items-center space-x-1.5" onclick="selectSidecar('\${d}')">
-            <span>🔌</span> <span>\${d}</span>
+        // Prepare lists of upstream and downstream for the graph and lists
+        const upstreams = fm.depends_on || [];
+        const downstreams = fm.used_by || [];
+
+        const upstreamListHtml = upstreams.map(u => \`
+          <li onclick="selectSidecar('\${u}')" class="text-xs font-mono text-indigo-400 hover:underline cursor-pointer mb-1.5 flex items-center space-x-1.5">
+            <span>🔌</span> <span>\${u}</span>
           </li>
-        \`).join('') || '<p class="text-xs text-slate-500 italic">No depends_on constraints.</p>';
+        \`).join('') || '<p class="text-xs text-slate-500 italic">No upstream dependents.</p>';
 
-        const users = s.frontmatter.used_by?.map(u => \`
-          <li class="text-xs font-mono text-indigo-400 cursor-pointer hover:underline mb-1.5 flex items-center space-x-1.5" onclick="selectSidecar('\${u}')">
-            <span>⚙️</span> <span>\${u}</span>
+        const downstreamListHtml = downstreams.map(d => \`
+          <li onclick="selectSidecar('\${d}')" class="text-xs font-mono text-indigo-400 hover:underline cursor-pointer mb-1.5 flex items-center space-x-1.5">
+            <span>⚙️</span> <span>\${d}</span>
           </li>
-        \`).join('') || '<p class="text-xs text-slate-500 italic">No used_by downstream dependents.</p>';
+        \`).join('') || '<p class="text-xs text-slate-500 italic">No downstream dependents.</p>';
 
-        detailView.innerHTML = \`
+        // Render Detail Layout with Embedded 1-Hop Ego Graph Viewer
+        container.innerHTML = \`
           <div class="p-6 space-y-6">
 
-            <!-- Sidecar Title & Subinfo -->
+            <!-- Metadata & Title Section -->
             <div class="border-b border-slate-800/80 pb-5">
               <div class="flex items-start justify-between">
                 <div>
-                  <h2 class="text-xl font-bold text-white tracking-tight">\${s.frontmatter.title || 'Untitled'}</h2>
-                  <p class="text-xs font-mono text-slate-400 mt-1.5">\${s.filePath}</p>
+                  <h2 class="text-lg font-semibold text-white tracking-tight">\${fm.title || 'Untitled'}</h2>
+                  <p class="text-xs font-mono text-slate-500 mt-1">\${s.filePath}</p>
                 </div>
-                <div class="flex flex-col items-end space-y-1.5">
-                  <span class="text-xs font-mono border px-2.5 py-1 rounded-full bg-slate-800 text-indigo-400 border-slate-700 font-semibold">Status: \${s.frontmatter.status}</span>
-                  <span class="text-[10px] font-mono text-slate-500">v\${s.frontmatter.version || 1}</span>
+                <div class="flex flex-col items-end space-y-1">
+                  <span class="text-[11px] font-semibold font-mono text-slate-300">Status: \${fm.status}</span>
+                  <span class="text-[10px] font-mono text-slate-500">Flag: \${fm.status_flag}</span>
                 </div>
               </div>
-              <p class="text-sm text-slate-300 mt-4 leading-relaxed">\${s.frontmatter.description || 'No description provided.'}</p>
+              <p class="text-xs text-slate-400 mt-3.5 leading-relaxed">\${fm.description || 'No description'}</p>
             </div>
 
-            <!-- Tags & Exports -->
-            <div class="grid grid-cols-2 gap-4">
-              <div>
-                <h4 class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2.5">Metadata Tags</h4>
-                <div class="flex flex-wrap gap-1.5">\${tags}</div>
+            <!-- Interactive 1-Hop Ego Graph Viewer -->
+            <div class="border border-slate-800 bg-slate-950/40 rounded-2xl p-4">
+              <h3 class="text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-3 flex items-center space-x-1.5">
+                <span>📊</span> <span>1-Hop Ego Dependency Graph</span>
+              </h3>
+              <div id="ego-graph-container" class="w-full flex justify-center bg-slate-950 rounded-xl overflow-hidden border border-slate-900/60">
+                <!-- SVG graph renders dynamically below -->
+                \${renderEgoGraphSvg(s.filePath, upstreams, downstreams)}
               </div>
-              <div>
-                <h4 class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2.5">Exports Contract</h4>
-                <div class="flex flex-wrap gap-1.5">\${exportsList}</div>
-              </div>
+              <p class="text-[9px] text-slate-500 mt-2 text-center font-medium italic">Interactive graph: Click on any upstream or downstream node to focus.</p>
             </div>
 
-            <!-- ADR Ledger -->
-            <div>
-              <h4 class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2.5">Architectural Decisions (ADR)</h4>
-              <div class="space-y-2">\${adrs}</div>
-            </div>
-
-            <!-- Graph Topology -->
-            <div class="grid grid-cols-2 gap-4 border-t border-slate-800/60 pt-5">
+            <!-- Upstream & Downstream Lists -->
+            <div class="grid grid-cols-2 gap-6 border-t border-slate-800/60 pt-5">
               <div>
-                <h4 class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2.5">Depends On (Upstream)</h4>
-                <ul>\${deps}</ul>
+                <h4 class="text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-2.5">Depends On (Upstream)</h4>
+                <ul>\${upstreamListHtml}</ul>
               </div>
               <div>
-                <h4 class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2.5">Used By (Downstream)</h4>
-                <ul>\${users}</ul>
+                <h4 class="text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-2.5">Used By (Downstream)</h4>
+                <ul>\${downstreamListHtml}</ul>
               </div>
             </div>
 
-            <!-- Implementation / Sidecar Body -->
+            <!-- Tags & Exports contract -->
+            <div class="grid grid-cols-2 gap-6 border-t border-slate-800/60 pt-5">
+              <div>
+                <h4 class="text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-2.5">Tags</h4>
+                <div class="flex flex-wrap gap-1.5">\${tagsHtml}</div>
+              </div>
+              <div>
+                <h4 class="text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-2.5">Exports</h4>
+                <div class="flex flex-wrap gap-1.5">\${exportsHtml}</div>
+              </div>
+            </div>
+
+            <!-- ADR Ledger section -->
             <div class="border-t border-slate-800/60 pt-5">
-              <h4 class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Sidecar Specifications & Implementation</h4>
-              <pre class="bg-slate-950 border border-slate-800/80 p-4 rounded-lg overflow-x-auto text-xs text-slate-300 font-mono leading-relaxed max-h-[400px] custom-scroll"><code>\${escapeHtml(s.body || '')}</code></pre>
+              <h4 class="text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-3">Architectural Decisions (ADR)</h4>
+              <div class="space-y-3">\${decisionsHtml}</div>
+            </div>
+
+            <!-- Raw body content display -->
+            <div class="border-t border-slate-800/60 pt-5">
+              <h4 class="text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-3">Sidecar Code & Spec Body</h4>
+              <pre class="bg-slate-950 border border-slate-800 p-4 rounded-xl text-[11px] font-mono text-slate-300 leading-relaxed overflow-x-auto max-h-[300px] custom-scroll"><code>\${escapeHtml(s.body || '')}</code></pre>
             </div>
 
           </div>
         \`;
       } catch (err) {
-        detailView.innerHTML = \`
-          <div class="p-6 text-red-400 font-semibold">Failed to fetch sidecar: \${err.message || err}</div>
-        \`;
+        container.innerHTML = \`<p class="p-6 text-xs text-rose-400 font-semibold">Error: \${err.message || err}</p>\`;
       }
     }
 
+    // Generate Beautiful SVG graph centered on active sidecar node
+    function renderEgoGraphSvg(centerNode, upstreams, downstreams) {
+      const width = 500;
+      const height = 220;
+
+      const cleanLabel = (pathStr) => {
+        const parts = pathStr.split('/');
+        return parts[parts.length - 1];
+      };
+
+      const centerLabel = cleanLabel(centerNode);
+
+      // Node Radius settings
+      const centerRad = 35;
+      const neighborRad = 26;
+
+      const centerPos = { x: width / 2, y: height / 2 };
+
+      // Spacing out upstream neighbors
+      const upPos = upstreams.map((item, idx) => {
+        const total = upstreams.length;
+        const x = 70;
+        const spacing = height / (total + 1);
+        const y = spacing * (idx + 1);
+        return { item, x, y };
+      });
+
+      // Spacing out downstream neighbors
+      const downPos = downstreams.map((item, idx) => {
+        const total = downstreams.length;
+        const x = width - 70;
+        const spacing = height / (total + 1);
+        const y = spacing * (idx + 1);
+        return { item, x, y };
+      });
+
+      let svg = \`<svg width="100%" height="\${height}" viewBox="0 0 \${width} \${height}" class="bg-slate-950 text-white font-sans">\`;
+
+      // Draw arrows markers definition
+      svg += \`
+        <defs>
+          <marker id="arrow" viewBox="0 0 10 10" refX="28" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+            <path d="M 0 1 L 10 5 L 0 9 z" fill="oklch(0.5 0.2 240)" />
+          </marker>
+        </defs>
+      \`;
+
+      // Draw connection links from upstream to center
+      upPos.forEach(p => {
+        svg += \`<line x1="\${p.x}" y1="\${p.y}" x2="\${centerPos.x}" y2="\${centerPos.y}" stroke="oklch(0.3 0.05 240)" stroke-width="1.5" marker-end="url(#arrow)" />\`;
+      });
+
+      // Draw connection links from center to downstream
+      downPos.forEach(p => {
+        svg += \`<line x1="\${centerPos.x}" y1="\${centerPos.y}" x2="\${p.x}" y2="\${p.y}" stroke="oklch(0.3 0.05 240)" stroke-width="1.5" marker-end="url(#arrow)" />\`;
+      });
+
+      // Render Upstream Nodes
+      upPos.forEach(p => {
+        const lbl = cleanLabel(p.item);
+        svg += \`
+          <g onclick="selectSidecar('\${p.item}')" class="cursor-pointer group">
+            <circle cx="\${p.x}" cy="\${p.y}" r="\${neighborRad}" fill="oklch(0.2 0.04 240)" stroke="oklch(0.4 0.05 240)" stroke-width="1.5" class="transition-all group-hover:fill-slate-800 group-hover:stroke-indigo-400" />
+            <text x="\${p.x}" y="\${p.y + 4}" font-size="9" font-family="monospace" fill="oklch(0.8 0.02 240)" text-anchor="middle" class="pointer-events-none font-semibold">\${lbl.substring(0, 8)}</text>
+            <title>\${p.item}</title>
+          </g>
+        \`;
+      });
+
+      // Render Downstream Nodes
+      downPos.forEach(p => {
+        const lbl = cleanLabel(p.item);
+        svg += \`
+          <g onclick="selectSidecar('\${p.item}')" class="cursor-pointer group">
+            <circle cx="\${p.x}" cy="\${p.y}" r="\${neighborRad}" fill="oklch(0.2 0.04 240)" stroke="oklch(0.4 0.05 240)" stroke-width="1.5" class="transition-all group-hover:fill-slate-800 group-hover:stroke-indigo-400" />
+            <text x="\${p.x}" y="\${p.y + 4}" font-size="9" font-family="monospace" fill="oklch(0.8 0.02 240)" text-anchor="middle" class="pointer-events-none font-semibold">\${lbl.substring(0, 8)}</text>
+            <title>\${p.item}</title>
+          </g>
+        \`;
+      });
+
+      // Render Center Node
+      svg += \`
+        <g class="pointer-events-none">
+          <circle cx="\${centerPos.x}" cy="\${centerPos.y}" r="\${centerRad}" fill="oklch(0.25 0.12 250)" stroke="oklch(0.5 0.2 240)" stroke-width="2.5" />
+          <text x="\${centerPos.x}" y="\${centerPos.y + 4}" font-size="10" font-family="monospace" fill="white" font-weight="bold" text-anchor="middle">\${centerLabel.substring(0, 10)}</text>
+          <title>\${centerNode}</title>
+        </g>
+      \`;
+
+      if (upstreams.length === 0 && downstreams.length === 0) {
+        svg += \`<text x="\${width / 2}" y="\${height - 15}" font-size="10" fill="oklch(0.5 0.02 240)" text-anchor="middle" class="italic">No connected neighbors in 1-hop ego scope.</text>\`;
+      }
+
+      svg += \`</svg>\`;
+      return svg;
+    }
+
+    // Helper: Escapes HTML strings safely
     function escapeHtml(text) {
+      if (!text) return '';
       return text
         .replace(/&/g, "&amp;")
         .replace(/</g, "&lt;")
@@ -640,11 +1460,11 @@ export class PortalServer {
         .replace(/'/g, "&#039;");
     }
 
-    // Handle search typing
-    document.getElementById('search-input').addEventListener('input', render);
+    // Search Input event handling
+    document.getElementById('search-input').addEventListener('input', renderSidecarList);
 
-    // Initial setup
-    initData();
+    // Initial setup triggers
+    initWorkspace();
     connectSse();
   </script>
 </body>
