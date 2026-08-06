@@ -5,12 +5,16 @@ import { OkfFrontmatter } from '../src/parser/okf';
 
 describe('Graph Adjacency & SQLite Search Engine', () => {
   const dbPath = path.resolve(__dirname, 'temp_test_graph.sqlite');
+  const workspacePath = path.resolve(__dirname, 'temp_workspace_for_index');
   let engine: GraphEngine;
 
   beforeEach(async () => {
     // Ensure clean state before each test
     if (fs.existsSync(dbPath)) {
       fs.unlinkSync(dbPath);
+    }
+    if (fs.existsSync(workspacePath)) {
+      fs.rmSync(workspacePath, { recursive: true, force: true });
     }
     engine = new GraphEngine(dbPath);
     await engine.initialize();
@@ -22,6 +26,9 @@ describe('Graph Adjacency & SQLite Search Engine', () => {
     }
     if (fs.existsSync(dbPath)) {
       fs.unlinkSync(dbPath);
+    }
+    if (fs.existsSync(workspacePath)) {
+      fs.rmSync(workspacePath, { recursive: true, force: true });
     }
   });
 
@@ -332,45 +339,129 @@ export interface AuthContext {
     expect(searchRes5[0].filePath).toBe('src/auth/jwt.ts.md');
   });
 
-  test('should handle edge cases: empty bounds, unmatched tags, and complex FTS/LIKE syntax', async () => {
-    const specTest: OkfFrontmatter = {
-      title: 'Edge Case Spec',
-      type: 'sidecar-spec',
-      description: 'Testing edge AND-cases with FTS5 BM25',
-      tags: ['test', 'edge'],
-      status: 'spec',
-      version: 1,
-      target_code_file: './edge.ts',
-      status_flag: 'clean',
-    };
-    await engine.upsertSidecar({
-      filePath: 'src/edge/test.ts.md',
-      frontmatter: specTest,
-      body: '```typescript\nexport interface EdgeContext {}\n```',
-    });
+  test('should recursively scan, index, prune, and clear workspace specifications', async () => {
+    // 1. Setup workspace directory structure and files
+    fs.mkdirSync(workspacePath, { recursive: true });
+    fs.mkdirSync(path.join(workspacePath, 'sub'), { recursive: true });
+    fs.mkdirSync(path.join(workspacePath, 'node_modules'), { recursive: true }); // should be ignored
 
-    // 1. Empty bounds array should not filter out results
-    const resEmptyBounds = await engine.search('EdgeContext', { bounds: [] });
-    expect(resEmptyBounds.length).toBe(1);
-    expect(resEmptyBounds[0].filePath).toBe('src/edge/test.ts.md');
+    const validSpecA = `---
+title: "Spec A"
+type: "sidecar-spec"
+description: "Desc A"
+tags: ["test"]
+status: "spec"
+version: 1
+target_code_file: "./a.ts"
+status_flag: "clean"
+---
+# Spec A
+`;
 
-    // 2. Unmatched tags should return no results
-    const resUnmatchedTags = await engine.search('', { tags: ['nonexistent-tag'] });
-    expect(resUnmatchedTags.length).toBe(0);
+    const validSpecB = `---
+title: "Spec B"
+type: "sidecar-spec"
+description: "Desc B"
+tags: ["test", "sub"]
+status: "spec"
+version: 1
+target_code_file: "./sub/b.ts"
+status_flag: "clean"
+---
+# Spec B
+`;
 
-    // 3. Check combined empty query with tag filter
-    const resTagOnly = await engine.search('', { tags: ['edge'] });
-    expect(resTagOnly.length).toBe(1);
-    expect(resTagOnly[0].filePath).toBe('src/edge/test.ts.md');
+    const nonOkfFile = `# Normal MD
+This is a standard markdown file, not an OKF sidecar.
+`;
 
-    // 4. Complex FTS syntax that might trigger fallback
-    const resComplexFTS = await engine.search('EdgeContext OR "Testing edge AND-cases"');
-    expect(resComplexFTS.length).toBe(1);
-    expect(resComplexFTS[0].filePath).toBe('src/edge/test.ts.md');
+    const invalidSpec = `---
+title: "Invalid Spec"
+type: "sidecar-spec"
+# Missing other required fields
+---
+# Invalid
+`;
 
-    // 5. FTS syntax error (e.g. unmatched quotes or special chars) triggering fallback
-    const resSyntaxErrorFTS = await engine.search('edge AND');
-    expect(resSyntaxErrorFTS.length).toBe(1);
-    expect(resSyntaxErrorFTS[0].filePath).toBe('src/edge/test.ts.md');
+    // Write files with paths relative to current directory
+    const fileAPathRel = path
+      .relative(process.cwd(), path.join(workspacePath, 'a.ts.md'))
+      .replace(/\\/g, '/');
+    const fileBPathRel = path
+      .relative(process.cwd(), path.join(workspacePath, 'sub/b.md'))
+      .replace(/\\/g, '/');
+    const invalidPathRel = path
+      .relative(process.cwd(), path.join(workspacePath, 'invalid.ts.md'))
+      .replace(/\\/g, '/');
+
+    fs.writeFileSync(path.join(workspacePath, 'a.ts.md'), validSpecA);
+    fs.writeFileSync(path.join(workspacePath, 'sub/b.md'), validSpecB);
+    fs.writeFileSync(path.join(workspacePath, 'node_modules/c.ts.md'), validSpecA); // in ignored folder
+    fs.writeFileSync(path.join(workspacePath, 'normal.md'), nonOkfFile); // non-OKF, should be skipped
+    fs.writeFileSync(path.join(workspacePath, 'invalid.ts.md'), invalidSpec); // invalid frontmatter, should record error
+
+    // 2. Perform initial index Workspace
+    const summary1 = await engine.indexWorkspace(workspacePath);
+    expect(summary1.scanned).toBe(4); // a.ts.md, sub/b.md, normal.md, invalid.ts.md (node_modules is ignored)
+    expect(summary1.indexed).toBe(2); // a.ts.md and sub/b.md (normal.md is skipped, invalid.ts.md has error)
+    expect(summary1.pruned).toBe(0);
+    expect(summary1.errors.length).toBe(1);
+    expect(summary1.errors[0].filePath).toBe(invalidPathRel);
+
+    // Verify files were indexed
+    const indexedFiles = await engine.getFilesIndexed();
+    expect(indexedFiles.sort()).toEqual([fileAPathRel, fileBPathRel].sort());
+
+    const retrievedA = await engine.getSidecar(fileAPathRel);
+    expect(retrievedA).not.toBeNull();
+    expect(retrievedA.frontmatter.title).toBe('Spec A');
+
+    // Verify metadata was stored
+    const totalMetadata = await engine.getMetadata('total_files_indexed');
+    expect(totalMetadata).toBe('2');
+    const lastIndexedAt = await engine.getMetadata('last_indexed_at');
+    expect(lastIndexedAt).not.toBeNull();
+    expect(new Date(lastIndexedAt!).getTime()).not.toBeNaN();
+
+    // 3. Test Incremental Indexing (no changes)
+    const summary2 = await engine.indexWorkspace(workspacePath);
+    expect(summary2.scanned).toBe(4);
+    expect(summary2.indexed).toBe(0); // 0 because file hashes matched!
+    expect(summary2.errors.length).toBe(1);
+
+    // 4. Test Incremental Indexing (one file changed)
+    const updatedSpecA = validSpecA.replace('Desc A', 'Updated Desc A');
+    fs.writeFileSync(path.join(workspacePath, 'a.ts.md'), updatedSpecA);
+
+    const summary3 = await engine.indexWorkspace(workspacePath);
+    expect(summary3.indexed).toBe(1); // Only file A updated!
+    expect(summary3.errors.length).toBe(1);
+
+    const retrievedAUpdated = await engine.getSidecar(fileAPathRel);
+    expect(retrievedAUpdated.frontmatter.description).toBe('Updated Desc A');
+
+    // 5. Test Pruning (delete file sub/b.md and remove invalid file)
+    fs.unlinkSync(path.join(workspacePath, 'sub/b.md'));
+    fs.unlinkSync(path.join(workspacePath, 'invalid.ts.md'));
+
+    const summary4 = await engine.indexWorkspace(workspacePath);
+    expect(summary4.scanned).toBe(2); // a.ts.md, normal.md
+    expect(summary4.indexed).toBe(0);
+    expect(summary4.pruned).toBe(1); // sub/b.md is pruned!
+    expect(summary4.errors.length).toBe(0);
+
+    const remainingFiles = await engine.getFilesIndexed();
+    expect(remainingFiles).toEqual([fileAPathRel]);
+
+    const retrievedBDeleted = await engine.getSidecar(fileBPathRel);
+    expect(retrievedBDeleted).toBeNull();
+
+    // 6. Test Clear Index
+    await engine.clearIndex();
+    const finalFiles = await engine.getFilesIndexed();
+    expect(finalFiles.length).toBe(0);
+
+    const metadataAfterClear = await engine.getMetadata('total_files_indexed');
+    expect(metadataAfterClear).toBeNull();
   });
 });

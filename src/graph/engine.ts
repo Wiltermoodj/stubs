@@ -1,13 +1,22 @@
 import sqlite3 from 'sqlite3';
 import * as fs from 'fs';
 import * as path from 'path';
-import { OkfFrontmatter } from '../parser/okf';
+import * as crypto from 'crypto';
+import { OkfFrontmatter, parseOkfSpec } from '../parser/okf';
 import { loadConfig } from '../config/schema';
+
+export interface IndexSummary {
+  scanned: number;
+  indexed: number;
+  pruned: number;
+  errors: Array<{ filePath: string; error: string }>;
+}
 
 export interface SidecarInput {
   filePath: string;
   frontmatter: OkfFrontmatter;
   body: string;
+  fileHash?: string;
 }
 
 export interface SearchOptions {
@@ -97,6 +106,7 @@ export class GraphEngine {
         raw_content TEXT,
         tags TEXT,
         exports TEXT,
+        file_hash TEXT,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
       );
@@ -181,6 +191,14 @@ export class GraphEngine {
         tokenize='unicode61 remove_diacritics 1'
       );
     `);
+
+    // 9. Create index_meta table for index-wide metadata/status
+    await this.run(`
+      CREATE TABLE IF NOT EXISTS index_meta (
+        key TEXT PRIMARY KEY,
+        value TEXT
+      );
+    `);
   }
 
   private async ensureInitialized(): Promise<void> {
@@ -253,7 +271,7 @@ export class GraphEngine {
   public async upsertSidecar(input: SidecarInput): Promise<void> {
     await this.ensureInitialized();
 
-    const { filePath, frontmatter, body } = input;
+    const { filePath, frontmatter, body, fileHash } = input;
     const {
       title,
       type,
@@ -335,8 +353,8 @@ export class GraphEngine {
           file_path, title, type, description, module_depth, context_object,
           template_source, template_version, status, version, target_code_file,
           status_flag, stale_details, last_sync_timestamp, sidecar_hash, code_hash,
-          interfaces_text, decisions_text, raw_content, tags, exports, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP);`,
+          interfaces_text, decisions_text, raw_content, tags, exports, file_hash, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP);`,
         [
           filePath,
           title,
@@ -359,6 +377,7 @@ export class GraphEngine {
           body,
           tagsStr,
           exportsStr,
+          fileHash || null,
         ],
       );
 
@@ -777,6 +796,212 @@ export class GraphEngine {
     }
 
     return results;
+  }
+
+  /**
+   * Calculates a SHA-256 hash of the content string.
+   */
+  private calculateHash(content: string): string {
+    return crypto.createHash('sha256').update(content).digest('hex');
+  }
+
+  /**
+   * Recursively scans a directory for specification files (.ts.md or .md).
+   */
+  private async scanDirectory(dir: string): Promise<string[]> {
+    const files: string[] = [];
+    const recurse = async (currentDir: string) => {
+      if (!fs.existsSync(currentDir)) return;
+      const entries = await fs.promises.readdir(currentDir, { withFileTypes: true });
+      for (const entry of entries) {
+        const fullPath = path.join(currentDir, entry.name);
+        const relativePath = path.relative(process.cwd(), fullPath).replace(/\\/g, '/');
+
+        if (entry.isDirectory()) {
+          if (
+            entry.name === 'node_modules' ||
+            entry.name === '.git' ||
+            entry.name === '.stubs' ||
+            entry.name === 'dist' ||
+            entry.name === 'build'
+          ) {
+            continue;
+          }
+          await recurse(fullPath);
+        } else if (entry.isFile()) {
+          if (entry.name.endsWith('.ts.md') || entry.name.endsWith('.md')) {
+            files.push(relativePath);
+          }
+        }
+      }
+    };
+    await recurse(dir);
+    return files;
+  }
+
+  /**
+   * Scans, parses, and indexes the specified workspace specifications directory recursively.
+   * Only indexes files that have changed (using SHA-256 hash comparison) unless force option is set.
+   * Cleans up (prunes) database entries for files that no longer exist on disk.
+   */
+  public async indexWorkspace(
+    specsDir: string,
+    options: { force?: boolean } = {},
+  ): Promise<IndexSummary> {
+    await this.ensureInitialized();
+
+    const summary: IndexSummary = {
+      scanned: 0,
+      indexed: 0,
+      pruned: 0,
+      errors: [],
+    };
+
+    const absoluteSpecsDir = path.resolve(specsDir);
+    if (!fs.existsSync(absoluteSpecsDir)) {
+      return summary;
+    }
+
+    let scannedFiles: string[];
+    try {
+      scannedFiles = await this.scanDirectory(absoluteSpecsDir);
+    } catch (err: any) {
+      summary.errors.push({
+        filePath: specsDir,
+        error: `Failed to scan directory: ${err.message}`,
+      });
+      return summary;
+    }
+
+    summary.scanned = scannedFiles.length;
+
+    const processedFiles: Set<string> = new Set();
+
+    for (const relativePath of scannedFiles) {
+      try {
+        const fullPath = path.resolve(relativePath);
+        const content = await fs.promises.readFile(fullPath, 'utf8');
+
+        // Ignore files that don't start with YAML frontmatter marker
+        if (!content.trim().startsWith('---')) {
+          continue;
+        }
+
+        const fileHash = this.calculateHash(content);
+        processedFiles.add(relativePath);
+
+        if (!options.force) {
+          const existing = await this.get<{ file_hash: string }>(
+            'SELECT file_hash FROM sidecars WHERE file_path = ?;',
+            [relativePath],
+          );
+          if (existing && existing.file_hash === fileHash) {
+            continue;
+          }
+        }
+
+        const parseResult = parseOkfSpec(content);
+        if (!parseResult.isValid) {
+          summary.errors.push({
+            filePath: relativePath,
+            error: `Validation errors:\n${parseResult.errors.join('\n')}`,
+          });
+          continue;
+        }
+
+        await this.upsertSidecar({
+          filePath: relativePath,
+          frontmatter: parseResult.frontmatter!,
+          body: parseResult.body,
+          fileHash,
+        });
+
+        summary.indexed++;
+      } catch (err: any) {
+        summary.errors.push({
+          filePath: relativePath,
+          error: `Error during indexing: ${err.message || err}`,
+        });
+      }
+    }
+
+    try {
+      const dbFiles = await this.getFilesIndexed();
+      for (const dbFile of dbFiles) {
+        const absoluteDbFile = path.resolve(dbFile);
+        if (absoluteDbFile.startsWith(absoluteSpecsDir)) {
+          if (!processedFiles.has(dbFile)) {
+            await this.deleteSidecar(dbFile);
+            summary.pruned++;
+          }
+        }
+      }
+    } catch (err: any) {
+      summary.errors.push({
+        filePath: '',
+        error: `Error pruning stale database entries: ${err.message || err}`,
+      });
+    }
+
+    try {
+      const totalIndexed = await this.getFilesIndexed();
+      await this.setMetadata('last_indexed_at', new Date().toISOString());
+      await this.setMetadata('total_files_indexed', String(totalIndexed.length));
+    } catch {
+      // Ignore metadata saving errors
+    }
+
+    return summary;
+  }
+
+  /**
+   * Returns a list of all indexed file paths.
+   */
+  public async getFilesIndexed(): Promise<string[]> {
+    await this.ensureInitialized();
+    const rows = await this.all<{ file_path: string }>('SELECT file_path FROM sidecars;');
+    return rows.map((r) => r.file_path);
+  }
+
+  /**
+   * Retrieves metadata value by key from index_meta.
+   */
+  public async getMetadata(key: string): Promise<string | null> {
+    await this.ensureInitialized();
+    const row = await this.get<{ value: string }>('SELECT value FROM index_meta WHERE key = ?;', [
+      key,
+    ]);
+    return row ? row.value : null;
+  }
+
+  /**
+   * Sets metadata value for key in index_meta.
+   */
+  public async setMetadata(key: string, value: string): Promise<void> {
+    await this.ensureInitialized();
+    await this.run('INSERT OR REPLACE INTO index_meta (key, value) VALUES (?, ?);', [key, value]);
+  }
+
+  /**
+   * Completely clears the persistent database index.
+   */
+  public async clearIndex(): Promise<void> {
+    await this.ensureInitialized();
+    await this.run('BEGIN TRANSACTION;');
+    try {
+      await this.run('DELETE FROM dependencies;');
+      await this.run('DELETE FROM tags;');
+      await this.run('DELETE FROM exports;');
+      await this.run('DELETE FROM decisions;');
+      await this.run('DELETE FROM user_notes;');
+      await this.run('DELETE FROM sidecars;');
+      await this.run('DELETE FROM index_meta;');
+      await this.run('DELETE FROM sidecar_fts;');
+      await this.run('COMMIT;');
+    } catch (err) {
+      await this.run('ROLLBACK;');
+      throw err;
+    }
   }
 
   /**
