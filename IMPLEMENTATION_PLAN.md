@@ -52,8 +52,8 @@ This document outlines the sequential steps to implement the `stubs` framework a
 
 ## Phase 8: Optional Pluggable Search Engines
 
-- [ ] Build the Level 2 (Host API Provider) search plugin for external LLMs.
-- [ ] Build the Level 3 (Air-Gapped Local Vector Engine) search plugin using `sqlite-vec` and ONNX runtime.
+- [x] Build the Level 2 (Host API Provider) search plugin for external LLMs.
+- [x] Build the Level 3 (Air-Gapped Local Vector Engine) search plugin using `sqlite-vec` and ONNX runtime.
 
 ## Phase 9: Testing, Refinement & Finalization
 
