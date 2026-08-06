@@ -13,10 +13,10 @@ This document outlines the sequential steps to implement the `stubs` framework a
 
 ## Phase 2: Database & Search Engine Initialization
 
-- [ ] Integrate SQLite3 and initialize the `.stubs/graph.sqlite` database.
-- [ ] Configure the SQLite FTS5 (Full-Text Search) virtual table (`sidecar_fts`).
-- [ ] Implement the Level 1 Graph Adjacency Engine (Topological graph bounds, metadata tag match, FTS5 BM25 ranking).
-- [ ] Create the schema and helper functions for persistent index management.
+- [x] Integrate SQLite3 and initialize the `.stubs/graph.sqlite` database.
+- [x] Configure the SQLite FTS5 (Full-Text Search) virtual table (`sidecar_fts`).
+- [x] Implement the Level 1 Graph Adjacency Engine (Topological graph bounds, metadata tag match, FTS5 BM25 ranking).
+- [x] Create the schema and helper functions for persistent index management.
 
 ## Phase 3: Markdown AST Parsing & In-Memory Compiler
 
