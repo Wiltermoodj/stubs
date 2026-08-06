@@ -4604,7 +4604,7 @@ var require_util = __commonJS({
       return path12;
     }
     exports2.normalize = normalize;
-    function join5(aRoot, aPath) {
+    function join6(aRoot, aPath) {
       if (aRoot === "") {
         aRoot = ".";
       }
@@ -4636,7 +4636,7 @@ var require_util = __commonJS({
       }
       return joined;
     }
-    exports2.join = join5;
+    exports2.join = join6;
     exports2.isAbsolute = function(aPath) {
       return aPath.charAt(0) === "/" || urlRegexp.test(aPath);
     };
@@ -4809,7 +4809,7 @@ var require_util = __commonJS({
             parsed.path = parsed.path.substring(0, index + 1);
           }
         }
-        sourceURL = join5(urlGenerate(parsed), sourceURL);
+        sourceURL = join6(urlGenerate(parsed), sourceURL);
       }
       return normalize(sourceURL);
     }
@@ -215176,6 +215176,8 @@ var CliRouter = class {
           return await this.handleSync(context);
         case "materialize":
           return await this.handleMaterialize(context);
+        case "install":
+          return await this.handleInstall(context);
         default:
           console.error(`Error: Unknown command "${context.command}". Use --help for usage.`);
           return 1;
@@ -215215,6 +215217,7 @@ Usage:
 
 Commands:
   init                Initialize workspace configuration (.stubs/config.json).
+  install             Fetch and install stubs skill and assets into the workspace.
   grill <file>       Execute the Interactive Grill Engine on a sidecar specification.
   materialize <file>  Parse, extract, typecheck, and write executable code from sidecar.
   audit <file>        Audit sidecar specifications and run retroactive reconciliation.
@@ -215232,6 +215235,9 @@ Options:
   -c, --config <path>  Specify path to stubs configuration file (default: .stubs/config.json)
   --depth <depth>      Specify grill depth (light_probe | standard_drill | deep_interrogation)
   --non-interactive    Run the grill engine in non-interactive (automated) mode
+  --repo <owner/repo>  Override default target repo (Defaults to Wiltermoodj/stubs)
+  --branch <name>      Specify a git branch or tag (Defaults to main)
+  -f, --force          Overwrite existing .agents/skills/stubs/ directory
   -h, --help           Display help message.
   -v, --version        Display version info.
 `);
@@ -215564,6 +215570,105 @@ Options:
         if (result.status === "error") hasError = true;
       }
       return hasError ? 1 : 0;
+    }
+  }
+  async handleInstall(ctx) {
+    let repo = "Wiltermoodj/stubs";
+    let branch = "main";
+    let force = false;
+    let i = 0;
+    while (i < ctx.args.length) {
+      const arg = ctx.args[i];
+      if (arg === "--repo") {
+        if (i + 1 >= ctx.args.length) {
+          console.error("Error: Missing value for option --repo");
+          return 1;
+        }
+        repo = ctx.args[i + 1];
+        i += 2;
+      } else if (arg.startsWith("--repo=")) {
+        repo = arg.split("=")[1];
+        i++;
+      } else if (arg === "--branch") {
+        if (i + 1 >= ctx.args.length) {
+          console.error("Error: Missing value for option --branch");
+          return 1;
+        }
+        branch = ctx.args[i + 1];
+        i += 2;
+      } else if (arg.startsWith("--branch=")) {
+        branch = arg.split("=")[1];
+        i++;
+      } else if (arg === "--force" || arg === "-f") {
+        force = true;
+        i++;
+      } else {
+        console.error(`Error: Unknown option "${arg}" for install command.`);
+        return 1;
+      }
+    }
+    const targetDir = process.cwd();
+    const destDir = path11.join(targetDir, ".agents/skills/stubs");
+    if ((0, import_fs3.existsSync)(destDir) && !force) {
+      console.error(
+        `Error: Installation directory already exists at "${destDir}". Use --force or -f to overwrite.`
+      );
+      return 1;
+    }
+    console.log(`Installing stubs skill from ${repo} (${branch})...`);
+    const SKILL_FILES = [
+      ".agents/skills/stubs/SKILL.md",
+      ".agents/skills/stubs/sub-skills/auditing/SKILL.md",
+      ".agents/skills/stubs/sub-skills/grilling/SKILL.md",
+      ".agents/skills/stubs/sub-skills/materialization/SKILL.md",
+      ".agents/skills/stubs/sub-skills/sanding/SKILL.md",
+      ".agents/skills/stubs/dist/cli.js"
+    ];
+    try {
+      await import_fs3.promises.mkdir(destDir, { recursive: true });
+      for (const file of SKILL_FILES) {
+        const url = `https://raw.githubusercontent.com/${repo}/${branch}/${file}`;
+        console.log(`Downloading ${file} from ${url}...`);
+        const res = await fetch(url);
+        if (!res.ok) {
+          throw new Error(
+            `Failed to download ${file}: HTTP status ${res.status} ${res.statusText}`
+          );
+        }
+        const buffer = Buffer.from(await res.arrayBuffer());
+        const localPath = path11.join(targetDir, file);
+        await import_fs3.promises.mkdir(path11.dirname(localPath), { recursive: true });
+        await import_fs3.promises.writeFile(localPath, buffer);
+      }
+      await this.updateGitignore(targetDir);
+      console.log("stubs installation completed successfully!");
+      return 0;
+    } catch (err) {
+      console.error(`Installation failed: ${err.message || err}`);
+      return 1;
+    }
+  }
+  async updateGitignore(targetDir) {
+    const gitignorePath = path11.join(targetDir, ".gitignore");
+    const ignoreLines = ["# stubs framework", ".stubs/graph.sqlite*", ".stubs/*.sqlite"];
+    let currentContent = "";
+    if ((0, import_fs3.existsSync)(gitignorePath)) {
+      currentContent = await import_fs3.promises.readFile(gitignorePath, "utf8");
+    }
+    const linesToAdd = [];
+    for (const line of ignoreLines) {
+      if (!currentContent.includes(line)) {
+        linesToAdd.push(line);
+      }
+    }
+    if (linesToAdd.length > 0) {
+      const divider = currentContent && !currentContent.endsWith("\n") ? "\n" : "";
+      await import_fs3.promises.writeFile(
+        gitignorePath,
+        currentContent + divider + linesToAdd.join("\n") + "\n",
+        "utf8"
+      );
+      console.log(`Updated .gitignore at ${gitignorePath}`);
     }
   }
   printSyncResult(result) {
