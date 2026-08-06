@@ -1,6 +1,8 @@
 import { promises as fs, existsSync } from 'fs';
 import * as path from 'path';
 import { parseOkfSpec } from '../parser/okf';
+import { GraphEngine } from '../graph/engine';
+import { PortalServer } from '../server/portal';
 import { loadConfig } from '../config/schema';
 import { SandingEngine, SyncResult } from '../sanding/engine';
 import { MaterializerEngine } from '../materializer/engine';
@@ -193,9 +195,46 @@ Options:
     }
   }
 
-  private async handleServe(_ctx: CliContext): Promise<number> {
-    console.log('Starting stubs Web Portal (serve mode)...');
-    return 0;
+  private async handleServe(ctx: CliContext): Promise<number> {
+    let port = 3000;
+    const pIndex = ctx.args.findIndex((arg) => arg === '-p' || arg === '--port');
+    if (pIndex !== -1 && pIndex + 1 < ctx.args.length) {
+      const portVal = parseInt(ctx.args[pIndex + 1], 10);
+      if (!isNaN(portVal)) {
+        port = portVal;
+      }
+    }
+
+    console.log(`Starting stubs Web Portal (serve mode) on port ${port}...`);
+
+    const graphEngine = new GraphEngine();
+    const portalServer = new PortalServer(graphEngine, port, ctx.configPath);
+
+    try {
+      await portalServer.start();
+
+      const shutdown = async () => {
+        console.log('\nShutting down stubs Web Portal server...');
+        await portalServer.stop();
+        await graphEngine.close();
+        process.exit(0);
+      };
+
+      process.on('SIGINT', shutdown);
+      process.on('SIGTERM', shutdown);
+
+      if (process.env.NODE_ENV === 'test') {
+        await portalServer.stop();
+        await graphEngine.close();
+        return 0;
+      }
+
+      // Return a promise that never resolves normally to keep process alive in CLI
+      return new Promise<number>(() => {});
+    } catch (err: any) {
+      console.error(`Failed to start Web Portal: ${err.message || err}`);
+      return 1;
+    }
   }
 
   private async handleMaterialize(ctx: CliContext): Promise<number> {
