@@ -61,3 +61,7 @@ shared/node_modules/
 
 .jules.env
 .gh-pat
+
+# stubs
+/dist/
+/.stubs/*.sqlite

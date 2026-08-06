@@ -5,156 +5,178 @@ Target Engine Runtime: Node.js / TypeScript (ES2022+)
 Knowledge Representation Standard: Google Open Knowledge Format (OKF)
 Software Design Standard: DESIGN_PHILOSOPHY.md
 Persistence & Search Engine: SQLite3 + FTS5 Full-Text Search + Graph Adjacency Engine (Zero-Model Default)
+
 1. Executive Summary & Core Architectural Tenets
-The stubs framework provides an architecture, execution engine, and AI agent instruction protocol for building, maintaining, and evolving complex software codebases.
-Instead of jumping directly from high-level natural language prompts to executable source code—a process prone to architectural drift, hidden type mismatches, and token-heavy refactoring loops—stubs forces an intermediate sidecar specification phase.
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                           CORE DUAL-FILE PARADIGM                           │
-├──────────────────────────────────────┬──────────────────────────────────────┤
-│ Specification Layer (*.ts.md)        │ Executable Source Layer (*.ts)       │
-├──────────────────────────────────────┼──────────────────────────────────────┤
-│ • Permanent OKF Markdown sidecar     │ • Materialized, production-ready code│
-│ • Contains YAML frontmatter & graph  │ • Generated via compiler type-checks │
-│ • Defines interfaces, ADRs, & types  │ • Header-linked via @sidecar annotation│
-│ • Preserves human context & notes    │ • Kept in sync via Code Sanding      │
-└──────────────────────────────────────┴──────────────────────────────────────┘
+   The stubs framework provides an architecture, execution engine, and AI agent instruction protocol for building, maintaining, and evolving complex software codebases.
+   Instead of jumping directly from high-level natural language prompts to executable source code—a process prone to architectural drift, hidden type mismatches, and token-heavy refactoring loops—stubs forces an intermediate sidecar specification phase.
+   ┌─────────────────────────────────────────────────────────────────────────────┐
+   │ CORE DUAL-FILE PARADIGM │
+   ├──────────────────────────────────────┬──────────────────────────────────────┤
+   │ Specification Layer (_.ts.md) │ Executable Source Layer (_.ts) │
+   ├──────────────────────────────────────┼──────────────────────────────────────┤
+   │ • Permanent OKF Markdown sidecar │ • Materialized, production-ready code│
+   │ • Contains YAML frontmatter & graph │ • Generated via compiler type-checks │
+   │ • Defines interfaces, ADRs, & types │ • Header-linked via @sidecar annotation│
+   │ • Preserves human context & notes │ • Kept in sync via Code Sanding │
+   └──────────────────────────────────────┴──────────────────────────────────────┘
 
 Key Architectural Tenets
- * Dual-File Sidecar Architecture: Every production source file (*.ts) is paired 1:1 with an Open Knowledge Format Markdown specification sidecar (*.ts.md). Specifications are permanent, living architectural assets.
- * Zero-Model Core Engine: Drop-in skill installation requires zero external API keys, zero mandatory local ML models, and no environment setup. The host AI agent provides reasoning, while the local CLI binary handles mechanical tasks at 0 LLM token cost.
- * Pluggable Search Architecture: Graph traversal, OKF tag matching, and native SQLite FTS5 (Full-Text Search) serve as the core search layer by default. Vector search engines (Host API or Local ONNX) exist strictly as optional, opt-in plugins.
- * Open Knowledge Format (OKF): Every sidecar forms a node in a traversable, graph-structured knowledge network linked via YAML frontmatter (depends_on, used_by, exports, tags).
- * Deep Module Enforcement: Code generation and interface design strictly enforce deep module boundaries, information hiding, error elimination, and context aggregation.
- * Continuous Re-Grilling & Non-Destructive Refinement: System design is iterative. Re-grilling passes (refine, pivot, delta) propagate contract changes across downstream dependencies without destroying existing work.
- * Local Template Engine & Configurable Autonomy: Project-local molds (.stubs/templates/*) capture recurring patterns. Agents operate under 3 configurable autonomy levels (Strict Gate, Guided Execution, Autonomous/Optimistic) supported by a 5-phase retroactive reconciliation engine.
- * Bi-Directional Code Sanding & Self-Healing: The system reconciles specification drift automatically using AST structural hashes and timestamp vectors, while self-healing corrupted headers or manual formatting edits.
- * Real-Time Web Portal & Event Bridge: A local background server (stubs serve) streams sub-10ms graph updates, pending directives, and template proposals via Server-Sent Events (SSE).
+
+- Dual-File Sidecar Architecture: Every production source file (_.ts) is paired 1:1 with an Open Knowledge Format Markdown specification sidecar (_.ts.md). Specifications are permanent, living architectural assets.
+- Zero-Model Core Engine: Drop-in skill installation requires zero external API keys, zero mandatory local ML models, and no environment setup. The host AI agent provides reasoning, while the local CLI binary handles mechanical tasks at 0 LLM token cost.
+- Pluggable Search Architecture: Graph traversal, OKF tag matching, and native SQLite FTS5 (Full-Text Search) serve as the core search layer by default. Vector search engines (Host API or Local ONNX) exist strictly as optional, opt-in plugins.
+- Open Knowledge Format (OKF): Every sidecar forms a node in a traversable, graph-structured knowledge network linked via YAML frontmatter (depends_on, used_by, exports, tags).
+- Deep Module Enforcement: Code generation and interface design strictly enforce deep module boundaries, information hiding, error elimination, and context aggregation.
+- Continuous Re-Grilling & Non-Destructive Refinement: System design is iterative. Re-grilling passes (refine, pivot, delta) propagate contract changes across downstream dependencies without destroying existing work.
+- Local Template Engine & Configurable Autonomy: Project-local molds (.stubs/templates/*) capture recurring patterns. Agents operate under 3 configurable autonomy levels (Strict Gate, Guided Execution, Autonomous/Optimistic) supported by a 5-phase retroactive reconciliation engine.
+- Bi-Directional Code Sanding & Self-Healing: The system reconciles specification drift automatically using AST structural hashes and timestamp vectors, while self-healing corrupted headers or manual formatting edits.
+- Real-Time Web Portal & Event Bridge: A local background server (stubs serve) streams sub-10ms graph updates, pending directives, and template proposals via Server-Sent Events (SSE).
+
 2. Strategic Engineering & Deep Module Philosophy
-All agents and developers operating within the stubs framework MUST enforce these core engineering rules across all software modules, shared libraries, and UI layers.
-2.1 Strategic vs. Tactical Programming
- * Principle: Working code is not enough. The primary goal is creating clean, well-factored abstractions that minimize future cognitive load.
- * Rule: Every feature task MUST allocate 10–20% of total effort toward refining abstractions, updating sidecar specifications, and cleaning up touched subsystems. "Tactical Tornadoes" (quick patches that introduce caller complexity) are strictly prohibited.
-2.2 Deep Modules & Information Hiding
- * Principle: Modules MUST provide a simple, narrow public interface that conceals extensive internal implementation complexity.
- * Rule: Prohibit pass-through / shallow modules that merely re-export underlying functions with zero domain enrichment.
- * Boundary Test: Unit tests MUST target the public interface of a deep module, never its internal private methods. Refactoring module internals MUST NOT break existing unit tests.
-2.3 Define Errors Out of Existence
- * Principle: Exception handling is a primary source of software complexity. Design module interfaces so that edge cases fall naturally within normal execution semantics rather than throwing exceptions.
- * Rule: Favor idempotent operations, null-object representations, and explicit Result<T, E> types over throwing disruptive runtime errors. Reserve runtime exceptions strictly for unrecoverable infrastructure faults.
-2.4 Distinct Abstraction per Layer ("Different Layer, Different Abstraction")
- * Principle: Adjacent layers in the system stack MUST present fundamentally different representations of the domain.
- * Rule: A Server Action or API endpoint MUST NOT simply mirror the parameter signatures and return types of an underlying database hook or ORM model.
-2.5 Pull Complexity Downward
- * Principle: It is far better for a module implementation to be internally complex if it makes its callers vastly simpler.
- * Rule: Modules MUST absorb state machine checks, retry loops, hardware status polling, and default parameter fallbacks internally, presenting callers with clean, single-line invocations.
-2.6 Elimination of Temporal Decomposition & Context Objects
- * Principle: Structuring code based on the temporal sequence of operations forces callers to orchestrate complex multi-step setup chains (init(), configure(), process()).
- * Rule (Self-Initialization): Modules MUST handle their own internal setup, lazy loading, and state checks on demand.
- * Rule (Context Objects): Group environment, session, security, and location parameters into a single, unified ContextObject (e.g., AuthContext, RequestContext) to prevent intermediate functions from acting as pass-through parameter carriers.
-2.7 Code Cohesion: Bring Together What Belongs Together
- * Principle: Splitting closely related logic into micro-functions or micro-files creates "code splatter," forcing developers to jump across files to trace execution.
- * Rule: Code that shares secret knowledge, operates on the same data structures, or is always executed together MUST reside within the same deep module.
+   All agents and developers operating within the stubs framework MUST enforce these core engineering rules across all software modules, shared libraries, and UI layers.
+   2.1 Strategic vs. Tactical Programming
+
+- Principle: Working code is not enough. The primary goal is creating clean, well-factored abstractions that minimize future cognitive load.
+- Rule: Every feature task MUST allocate 10–20% of total effort toward refining abstractions, updating sidecar specifications, and cleaning up touched subsystems. "Tactical Tornadoes" (quick patches that introduce caller complexity) are strictly prohibited.
+  2.2 Deep Modules & Information Hiding
+- Principle: Modules MUST provide a simple, narrow public interface that conceals extensive internal implementation complexity.
+- Rule: Prohibit pass-through / shallow modules that merely re-export underlying functions with zero domain enrichment.
+- Boundary Test: Unit tests MUST target the public interface of a deep module, never its internal private methods. Refactoring module internals MUST NOT break existing unit tests.
+  2.3 Define Errors Out of Existence
+- Principle: Exception handling is a primary source of software complexity. Design module interfaces so that edge cases fall naturally within normal execution semantics rather than throwing exceptions.
+- Rule: Favor idempotent operations, null-object representations, and explicit Result<T, E> types over throwing disruptive runtime errors. Reserve runtime exceptions strictly for unrecoverable infrastructure faults.
+  2.4 Distinct Abstraction per Layer ("Different Layer, Different Abstraction")
+- Principle: Adjacent layers in the system stack MUST present fundamentally different representations of the domain.
+- Rule: A Server Action or API endpoint MUST NOT simply mirror the parameter signatures and return types of an underlying database hook or ORM model.
+  2.5 Pull Complexity Downward
+- Principle: It is far better for a module implementation to be internally complex if it makes its callers vastly simpler.
+- Rule: Modules MUST absorb state machine checks, retry loops, hardware status polling, and default parameter fallbacks internally, presenting callers with clean, single-line invocations.
+  2.6 Elimination of Temporal Decomposition & Context Objects
+- Principle: Structuring code based on the temporal sequence of operations forces callers to orchestrate complex multi-step setup chains (init(), configure(), process()).
+- Rule (Self-Initialization): Modules MUST handle their own internal setup, lazy loading, and state checks on demand.
+- Rule (Context Objects): Group environment, session, security, and location parameters into a single, unified ContextObject (e.g., AuthContext, RequestContext) to prevent intermediate functions from acting as pass-through parameter carriers.
+  2.7 Code Cohesion: Bring Together What Belongs Together
+- Principle: Splitting closely related logic into micro-functions or micro-files creates "code splatter," forcing developers to jump across files to trace execution.
+- Rule: Code that shares secret knowledge, operates on the same data structures, or is always executed together MUST reside within the same deep module.
+
 3. Dual-File Topology & Lifecycle State Machine
-3.1 File System Layout Standard
-src/
-├── auth/
-│   ├── index.md                 # Subsystem router & graph index
-│   ├── jwt.ts                   # Materialized executable code
-│   ├── jwt.ts.md                # OKF sidecar specification & ADR
-│   ├── session.ts
-│   └── session.ts.md
-.stubs/
-├── graph.sqlite                 # Persistent SQLite graph index & FTS5 search index
-├── config.json                  # Project configuration & autonomy rules
-├── templates/                   # Handlebars/EJS project molds (*.ts.md.tpl)
-│   ├── default.ts.md.tpl
-│   └── service.ts.md.tpl
-└── scripts/                     # Local deterministic helper scripts
-    └── gen-from-template.ts
+   3.1 File System Layout Standard
+   src/
+   ├── auth/
+   │ ├── index.md # Subsystem router & graph index
+   │ ├── jwt.ts # Materialized executable code
+   │ ├── jwt.ts.md # OKF sidecar specification & ADR
+   │ ├── session.ts
+   │ └── session.ts.md
+   .stubs/
+   ├── graph.sqlite # Persistent SQLite graph index & FTS5 search index
+   ├── config.json # Project configuration & autonomy rules
+   ├── templates/ # Handlebars/EJS project molds (*.ts.md.tpl)
+   │ ├── default.ts.md.tpl
+   │ └── service.ts.md.tpl
+   └── scripts/ # Local deterministic helper scripts
+   └── gen-from-template.ts
 
 3.2 Progressive Lifecycle Phase Machine
-┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
-│  Phase 1:       │ ──► │  Phase 2:       │ ──► │  Phase 3:       │ ──► │  Phase 4:       │
-│  Skeleton       │     │  Specification  │     │  Materialization│     │  Maintenance    │
-└─────────────────┘     └─────────────────┘     └─────────────────┘     └─────────────────┘
-  • High-level      • Interfaces &        • In-memory TS      • Code Sanding
-    purpose & scope   types defined         type check pass     • Re-Grilling
-  • Valid OKF       • Function            • Extracted to      • Cascade
-    frontmatter       signatures            executable          updates
-  • Subsystem index • ADRs documented       *.ts file         • Directive
-    link created    • status: "spec"      • status:            resolution
-                                            "materialized"
+┌─────────────────┐ ┌─────────────────┐ ┌─────────────────┐ ┌─────────────────┐
+│ Phase 1: │ ──► │ Phase 2: │ ──► │ Phase 3: │ ──► │ Phase 4: │
+│ Skeleton │ │ Specification │ │ Materialization│ │ Maintenance │
+└─────────────────┘ └─────────────────┘ └─────────────────┘ └─────────────────┘
+• High-level • Interfaces & • In-memory TS • Code Sanding
+purpose & scope types defined type check pass • Re-Grilling
+• Valid OKF • Function • Extracted to • Cascade
+frontmatter signatures executable updates
+• Subsystem index • ADRs documented *.ts file • Directive
+link created • status: "spec" • status: resolution
+"materialized"
 
 4. OKF Specification Sidecar & Frontmatter Schema
-Every specification sidecar (*.ts.md) conforms strictly to the following Open Knowledge Format schema:
+   Every specification sidecar (*.ts.md) conforms strictly to the following Open Knowledge Format schema:
+
 ---
+
 # OKF Core Metadata
+
 title: "JWT Authentication Handler Spec"
 type: "sidecar-spec" # subsystem-index | sidecar-spec | module-stub
 description: "Architecture, cryptographic trade-offs, and verification interfaces for JWTs."
 tags: ["auth", "security", "jwt"]
 
 # Design Philosophy Validation
+
 module_depth: "deep" # deep | shallow
 context_object: "AuthContext"
 
 # Template Lineage
+
 template_source: "service-layer"
 template_version: 1 # Integer version or "1.0-provisional"
 
 # Stubs Lifecycle Metadata
+
 status: "spec" # skeleton | spec | implemented | materialized | grilling | partially-materialized
 version: 3
 target_code_file: "./jwt.ts"
 
 # Export Contracts & Graph Links
+
 exports:
-  - "verifyToken"
-  - "generateToken"
-depends_on:
-  - "src/config/env.ts.md"
-  - "src/types/user.ts.md"
-used_by:
-  - "src/middleware/authGuard.ts.md"
+
+- "verifyToken"
+- "generateToken"
+  depends_on:
+- "src/config/env.ts.md"
+- "src/types/user.ts.md"
+  used_by:
+- "src/middleware/authGuard.ts.md"
 
 # System Health & Cascade Flags
+
 status_flag: "clean" # clean | dependency-stale | template-outdated | template-realign-required | needs-human-review-resolution | typecheck-failed
 stale_details: null
 
 # Structural Vectors & Synchronization State
+
 sync_state:
-  last_sync_timestamp: "2026-08-05T18:00:00Z"
-  sidecar_hash: "a1b2c3d4e5f6a7b8c9d0"
-  code_hash: "f6g7h8i9j0a1b2c3d4e5"
+last_sync_timestamp: "2026-08-05T18:00:00Z"
+sidecar_hash: "a1b2c3d4e5f6a7b8c9d0"
+code_hash: "f6g7h8i9j0a1b2c3d4e5"
 
 # Architectural Decision Records (ADRs)
+
 decisions:
-  - id: "DEC-001"
-    summary: "Adopt ES256 key signing and Result-pattern error returns for token verification."
-    date: "2026-08-05"
+
+- id: "DEC-001"
+  summary: "Adopt ES256 key signing and Result-pattern error returns for token verification."
+  date: "2026-08-05"
 
 # Human Directive Channel (Web Portal / Terminal Feedback)
+
 user_notes:
-  - id: "NOTE-20260805-01"
-    timestamp: "2026-08-05T18:00:00Z"
-    text: "Ensure verifyToken handles TokenExpiredError internally and returns explicit Result object."
-    status: "pending"
+
+- id: "NOTE-20260805-01"
+  timestamp: "2026-08-05T18:00:00Z"
+  text: "Ensure verifyToken handles TokenExpiredError internally and returns explicit Result object."
+  status: "pending"
+
 ---
 
 # JWT Authentication Handler Specification
 
 ## 1. Module Overview & Responsibilities
+
 Provides high-performance JWT token generation and cryptographic verification. Absorbs internal key rotation, algorithm selection, and clock skew mitigation to present callers with a single-line verification entrypoint.
 
 ## 2. Interfaces & Types
-```typescript
+
+````typescript
 export interface AuthContext {
   userId: string;
   roles: string[];
   tenantId: string;
 }
 
-export type TokenResult = 
+export type TokenResult =
   | { success: true; payload: AuthContext }
   | { success: false; error: "EXPIRED" | "INVALID_SIGNATURE" | "MALFORMED" };
 
@@ -320,3 +342,4 @@ This zero-model search stack processes queries across 10,000+ sidecar files in u
 | DEC-ARCH-015 | Partial Materialization Flags (--target). | Enables type-only extraction (.d.ts) and stub generation during early prototyping phases. |
 | DEC-ARCH-016 | Persistent SQLite Indexing (graph.sqlite). | Eliminates O(N) filesystem parsing overhead on multi-thousand file repositories. |
 | DEC-ARCH-017 | Pluggable Search Architecture (SQLite FTS5 Default). | Guarantees zero-config skill drop-in with 0 required model dependencies or API keys. |
+````
