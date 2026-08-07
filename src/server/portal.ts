@@ -28,7 +28,10 @@ export class PortalServer {
   // Cache remote GraphEngine instances keyed by "repo#branch"
   private remoteGraphs: Map<string, GraphEngine> = new Map();
   // Store dynamic templates in remote mode
-  private remoteTemplates: Map<string, { name: string; content: string; isDraft: boolean; version: string }[]> = new Map();
+  private remoteTemplates: Map<
+    string,
+    { name: string; content: string; isDraft: boolean; version: string }[]
+  > = new Map();
 
   private currentRepo: string = '';
   private currentBranch: string = '';
@@ -164,11 +167,14 @@ Using EJS/Handlebars to render a standard service module.
   /**
    * Resolves appropriate GraphEngine based on parameters
    */
-  private async resolveGraphEngine(parsedUrl: URL): Promise<{ engine: GraphEngine; isRemote: boolean; repo: string; branch: string }> {
+  private async resolveGraphEngine(
+    parsedUrl: URL,
+  ): Promise<{ engine: GraphEngine; isRemote: boolean; repo: string; branch: string }> {
     const mode = parsedUrl.searchParams.get('mode') || (this.config.remote ? 'remote' : 'local');
     if (mode === 'remote') {
       const repo = parsedUrl.searchParams.get('repo') || this.config.remote?.repo || '';
-      const branch = parsedUrl.searchParams.get('branch') || this.config.remote?.default_branch || 'main';
+      const branch =
+        parsedUrl.searchParams.get('branch') || this.config.remote?.default_branch || 'main';
       if (!repo) {
         return { engine: this.graphEngine, isRemote: false, repo: '', branch: '' };
       }
@@ -196,7 +202,11 @@ Using EJS/Handlebars to render a standard service module.
     return { engine: this.graphEngine, isRemote: false, repo: '', branch: '' };
   }
 
-  private async ingestRemoteSpecs(engine: GraphEngine, repo: string, branch: string): Promise<void> {
+  private async ingestRemoteSpecs(
+    engine: GraphEngine,
+    repo: string,
+    branch: string,
+  ): Promise<void> {
     const [owner, name] = repo.split('/');
     if (!owner || !name) return;
 
@@ -205,7 +215,10 @@ Using EJS/Handlebars to render a standard service module.
       const tree = await client.fetchTree(owner, name, branch);
 
       // Filter specs ending in .ts.md or .md and having Frontmatter
-      const specFiles = tree.filter((entry) => entry.type === 'blob' && (entry.path.endsWith('.ts.md') || entry.path.endsWith('.md')));
+      const specFiles = tree.filter(
+        (entry) =>
+          entry.type === 'blob' && (entry.path.endsWith('.ts.md') || entry.path.endsWith('.md')),
+      );
 
       for (const spec of specFiles) {
         try {
@@ -230,13 +243,20 @@ Using EJS/Handlebars to render a standard service module.
       // Also ingest remote templates for listTemplates
       const templates: { name: string; content: string; isDraft: boolean; version: string }[] = [];
       const templateDir = this.config.paths.templates_dir || '.stubs/templates';
-      const templateFiles = tree.filter((entry) => entry.type === 'blob' && entry.path.startsWith(templateDir) && entry.path.endsWith('.tpl'));
+      const templateFiles = tree.filter(
+        (entry) =>
+          entry.type === 'blob' &&
+          entry.path.startsWith(templateDir) &&
+          entry.path.endsWith('.tpl'),
+      );
 
       for (const tpl of templateFiles) {
         try {
           const content = await client.fetchFileContents(owner, name, tpl.path, branch);
           const baseName = path.basename(tpl.path);
-          const isDraft = baseName.toLowerCase().includes('provisional') || baseName.toLowerCase().includes('draft');
+          const isDraft =
+            baseName.toLowerCase().includes('provisional') ||
+            baseName.toLowerCase().includes('draft');
           const version = isDraft ? 'v1.0-provisional' : 'v1.0';
           templates.push({
             name: baseName,
@@ -245,16 +265,21 @@ Using EJS/Handlebars to render a standard service module.
             version,
           });
         } catch (e: any) {
-          console.error(`[PortalServer] Error loading remote template ${tpl.path}:`, e.message || e);
+          console.error(
+            `[PortalServer] Error loading remote template ${tpl.path}:`,
+            e.message || e,
+          );
         }
       }
       this.remoteTemplates.set(`${repo}#${branch}`, templates);
 
       // Broadcast SSE for github:sync
       this.broadcast('github:sync', { repo, branch, timestamp: new Date().toISOString() });
-
     } catch (err: any) {
-      console.error(`[PortalServer] Failed to ingest remote specs/templates for ${repo}#${branch}:`, err.message || err);
+      console.error(
+        `[PortalServer] Failed to ingest remote specs/templates for ${repo}#${branch}:`,
+        err.message || err,
+      );
     }
   }
 
@@ -278,7 +303,10 @@ Using EJS/Handlebars to render a standard service module.
 
     try {
       // 0. GitHub API endpoints
-      if ((pathname === '/api/v1/repos' || pathname === '/api/v1/github/repos') && req.method === 'GET') {
+      if (
+        (pathname === '/api/v1/repos' || pathname === '/api/v1/github/repos') &&
+        req.method === 'GET'
+      ) {
         const repoParam = parsedUrl.searchParams.get('repo');
         if (repoParam) {
           const [owner, repoName] = repoParam.split('/');
@@ -318,7 +346,7 @@ Using EJS/Handlebars to render a standard service module.
                 // Ignore errors
               }
               return { ...repo, hasStubs };
-            })
+            }),
           );
 
           res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -330,7 +358,10 @@ Using EJS/Handlebars to render a standard service module.
         return;
       }
 
-      if ((pathname === '/api/v1/branches' || pathname === '/api/v1/github/branches') && req.method === 'GET') {
+      if (
+        (pathname === '/api/v1/branches' || pathname === '/api/v1/github/branches') &&
+        req.method === 'GET'
+      ) {
         const repoParam = parsedUrl.searchParams.get('repo');
         if (!repoParam) {
           res.writeHead(400, { 'Content-Type': 'application/json' });
@@ -379,7 +410,9 @@ Using EJS/Handlebars to render a standard service module.
           }
         }
         res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ sidecars, projectName: isRemote ? repo : this.config.project_name }));
+        res.end(
+          JSON.stringify({ sidecars, projectName: isRemote ? repo : this.config.project_name }),
+        );
         return;
       }
 
@@ -464,7 +497,14 @@ Using EJS/Handlebars to render a standard service module.
 
         if (isRemote) {
           const [owner, repoName] = repo.split('/');
-          await createOrUpdateFile(owner, repoName, filePath, newContent, `Add user note ${noteId}`, branch);
+          await createOrUpdateFile(
+            owner,
+            repoName,
+            filePath,
+            newContent,
+            `Add user note ${noteId}`,
+            branch,
+          );
           await engine.upsertSidecar({
             filePath,
             frontmatter: parsed.frontmatter,
@@ -483,7 +523,12 @@ Using EJS/Handlebars to render a standard service module.
         }
 
         // Broadcast SSE
-        this.broadcast('directive:created', { filePath: isRemote ? filePath : path.relative(process.cwd(), resolvedPath).replace(/\\/g, '/'), note: newNote });
+        this.broadcast('directive:created', {
+          filePath: isRemote
+            ? filePath
+            : path.relative(process.cwd(), resolvedPath).replace(/\\/g, '/'),
+          note: newNote,
+        });
 
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ success: true, note: newNote }));
@@ -542,7 +587,14 @@ Using EJS/Handlebars to render a standard service module.
 
         if (isRemote) {
           const [owner, repoName] = repo.split('/');
-          await createOrUpdateFile(owner, repoName, filePath, newContent, `Resolve note ${id}`, branch);
+          await createOrUpdateFile(
+            owner,
+            repoName,
+            filePath,
+            newContent,
+            `Resolve note ${id}`,
+            branch,
+          );
           await engine.upsertSidecar({
             filePath,
             frontmatter: parsed.frontmatter,
@@ -641,7 +693,14 @@ Using EJS/Handlebars to render a standard service module.
             const newPath = `${templateDir}/${newName}`;
 
             // Create new template at new path with the same content
-            await createOrUpdateFile(owner, repoName, newPath, tplObj.content, `Approve template ${templateName}`, branch);
+            await createOrUpdateFile(
+              owner,
+              repoName,
+              newPath,
+              tplObj.content,
+              `Approve template ${templateName}`,
+              branch,
+            );
 
             // Delete old provisional draft (by committing empty or mock delete via createOrUpdateFile/GitHub APIs as needed,
             // or simply updating the file contents of the template to be active - in typical GitHub we commit the file name change).
@@ -669,7 +728,10 @@ Using EJS/Handlebars to render a standard service module.
                 });
               }
             } catch (err: any) {
-              console.error(`[PortalServer] Optional remote file delete failed:`, err.message || err);
+              console.error(
+                `[PortalServer] Optional remote file delete failed:`,
+                err.message || err,
+              );
             }
 
             // Update cache
@@ -708,16 +770,25 @@ Using EJS/Handlebars to render a standard service module.
                 });
               }
             } catch (err: any) {
-              console.error(`[PortalServer] Optional remote file delete failed:`, err.message || err);
+              console.error(
+                `[PortalServer] Optional remote file delete failed:`,
+                err.message || err,
+              );
             }
 
             // Update cache
-            this.remoteTemplates.set(key, cached.filter((t) => t.name !== templateName));
+            this.remoteTemplates.set(
+              key,
+              cached.filter((t) => t.name !== templateName),
+            );
 
             this.broadcast('graph:updated', { type: 'template_rejected', templateName });
             res.writeHead(200, { 'Content-Type': 'application/json' });
             res.end(
-              JSON.stringify({ success: true, message: 'Template draft rejected and deleted from remote repository.' }),
+              JSON.stringify({
+                success: true,
+                message: 'Template draft rejected and deleted from remote repository.',
+              }),
             );
           }
           return;

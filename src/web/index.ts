@@ -29,7 +29,7 @@ const wasmDb = new WasmSqliteDriver();
 const graphEngine = new GraphEngine({
   fsDriver: virtualFs,
   dbDriver: wasmDb,
-  dbPath: ':memory:'
+  dbPath: ':memory:',
 });
 
 // Touch / Zoom State for Ego Graph View
@@ -111,7 +111,7 @@ function renderApp() {
             <label for="repo-sel" class="text-[9px] font-bold text-slate-500 uppercase">Repository</label>
             <select id="repo-sel" onchange="selectRepo(this.value)" class="w-full bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 font-semibold focus:outline-none focus:border-indigo-500">
               <option value="">-- Choose Repository --</option>
-              ${reposList.map(r => `<option value="${r.fullName}" ${r.fullName === currentRepo ? 'selected' : ''}>${r.fullName}</option>`).join('')}
+              ${reposList.map((r) => `<option value="${r.fullName}" ${r.fullName === currentRepo ? 'selected' : ''}>${r.fullName}</option>`).join('')}
             </select>
           </div>
 
@@ -119,7 +119,7 @@ function renderApp() {
           <div class="space-y-1">
             <label for="branch-sel" class="text-[9px] font-bold text-slate-500 uppercase">Branch</label>
             <select id="branch-sel" onchange="selectBranch(this.value)" class="w-full bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 font-mono focus:outline-none focus:border-indigo-500">
-              ${branchesList.map(b => `<option value="${b}" ${b === currentBranch ? 'selected' : ''}>${b}</option>`).join('')}
+              ${branchesList.map((b) => `<option value="${b}" ${b === currentBranch ? 'selected' : ''}>${b}</option>`).join('')}
             </select>
           </div>
 
@@ -260,8 +260,14 @@ function showToast(message: string, type: 'success' | 'info' | 'error' = 'info')
   const container = document.getElementById('toast-wrapper');
   if (!container) return;
   const toast = document.createElement('div');
-  const borderCol = type === 'error' ? 'oklch(0.627 0.265 20)' : type === 'success' ? 'oklch(0.627 0.265 140)' : 'oklch(0.5 0.2 240)';
-  toast.className = "pointer-events-auto p-3.5 rounded-xl border bg-slate-900/95 shadow-xl max-w-xs text-xs flex flex-col space-y-1 transition-all";
+  const borderCol =
+    type === 'error'
+      ? 'oklch(0.627 0.265 20)'
+      : type === 'success'
+        ? 'oklch(0.627 0.265 140)'
+        : 'oklch(0.5 0.2 240)';
+  toast.className =
+    'pointer-events-auto p-3.5 rounded-xl border bg-slate-900/95 shadow-xl max-w-xs text-xs flex flex-col space-y-1 transition-all';
   toast.style.borderColor = borderCol;
   toast.innerHTML = `
     <div class="flex items-center justify-between">
@@ -332,7 +338,7 @@ async function loadWorkspace() {
 
     // Auto-select first repo with stubs indicator or just the first repo if not selected
     if (reposList.length > 0) {
-      if (!currentRepo || !reposList.some(r => r.fullName === currentRepo)) {
+      if (!currentRepo || !reposList.some((r) => r.fullName === currentRepo)) {
         currentRepo = reposList[0].fullName;
         localStorage.setItem('STUBS_CURRENT_REPO', currentRepo);
       }
@@ -401,7 +407,10 @@ async function fetchSpecsFromGithub() {
     await graphEngine.clearIndex();
 
     // Filter specs ending in .ts.md or .md
-    const specs = tree.filter(entry => entry.type === 'blob' && (entry.path.endsWith('.ts.md') || entry.path.endsWith('.md')));
+    const specs = tree.filter(
+      (entry) =>
+        entry.type === 'blob' && (entry.path.endsWith('.ts.md') || entry.path.endsWith('.md')),
+    );
 
     let loadedCount = 0;
     for (const spec of specs) {
@@ -437,17 +446,18 @@ function renderSpecsList() {
   const q = searchInput ? searchInput.value.trim().toLowerCase() : '';
 
   // Retrieve files and filter
-  const matchedFiles = filesList.filter(f => f.toLowerCase().includes(q));
+  const matchedFiles = filesList.filter((f) => f.toLowerCase().includes(q));
 
   if (matchedFiles.length === 0) {
     container.innerHTML = `<p class="text-xs text-slate-500 italic p-3 text-center">No matching sidecars found.</p>`;
     return;
   }
 
-  container.innerHTML = matchedFiles.map(filePath => {
-    const isSelected = filePath === selectedPath;
-    const baseName = filePath.split('/').pop() || filePath;
-    return `
+  container.innerHTML = matchedFiles
+    .map((filePath) => {
+      const isSelected = filePath === selectedPath;
+      const baseName = filePath.split('/').pop() || filePath;
+      return `
       <div
         onclick="selectSidecar('${filePath}')"
         class="p-3 rounded-xl border cursor-pointer select-none transition-all duration-150 ${isSelected ? 'bg-indigo-600/15 border-indigo-500 text-white' : 'bg-slate-900/40 border-slate-800 hover:border-slate-700 text-slate-300'}"
@@ -458,7 +468,8 @@ function renderSpecsList() {
         </div>
       </div>
     `;
-  }).join('');
+    })
+    .join('');
 }
 
 (window as any).renderSpecsList = renderSpecsList;
@@ -494,10 +505,25 @@ async function loadAndRenderSidecarDetail(filePath: string) {
     }
 
     const fm = sidecar.frontmatter;
-    const tagsHtml = fm.tags?.map((t: string) => `<span class="text-[9px] font-mono bg-slate-900 border border-slate-800 text-slate-400 px-1.5 py-0.5 rounded">#${t}</span>`).join(' ') || '<span class="text-slate-600 italic text-[11px]">None</span>';
-    const exportsHtml = fm.exports?.map((e: string) => `<span class="text-[9px] font-mono bg-indigo-950/20 border border-indigo-900/30 text-indigo-400 px-1.5 py-0.5 rounded">${e}</span>`).join(' ') || '<span class="text-slate-600 italic text-[11px]">None</span>';
+    const tagsHtml =
+      fm.tags
+        ?.map(
+          (t: string) =>
+            `<span class="text-[9px] font-mono bg-slate-900 border border-slate-800 text-slate-400 px-1.5 py-0.5 rounded">#${t}</span>`,
+        )
+        .join(' ') || '<span class="text-slate-600 italic text-[11px]">None</span>';
+    const exportsHtml =
+      fm.exports
+        ?.map(
+          (e: string) =>
+            `<span class="text-[9px] font-mono bg-indigo-950/20 border border-indigo-900/30 text-indigo-400 px-1.5 py-0.5 rounded">${e}</span>`,
+        )
+        .join(' ') || '<span class="text-slate-600 italic text-[11px]">None</span>';
 
-    const decisionsHtml = fm.decisions?.map((d: any) => `
+    const decisionsHtml =
+      fm.decisions
+        ?.map(
+          (d: any) => `
       <div class="p-3 bg-slate-900/40 border border-slate-800/80 rounded-xl">
         <div class="flex items-center justify-between mb-1">
           <span class="text-[10px] font-mono text-indigo-400 font-semibold">${d.id}</span>
@@ -505,22 +531,35 @@ async function loadAndRenderSidecarDetail(filePath: string) {
         </div>
         <p class="text-xs text-slate-200 font-medium leading-relaxed">${d.summary}</p>
       </div>
-    `).join('') || '<p class="text-[11px] text-slate-500 italic">No Architectural Decision Records (ADRs).</p>';
+    `,
+        )
+        .join('') ||
+      '<p class="text-[11px] text-slate-500 italic">No Architectural Decision Records (ADRs).</p>';
 
     const upstreams = fm.depends_on || [];
     const downstreams = fm.used_by || [];
 
-    const upstreamHtml = upstreams.map((u: string) => `
+    const upstreamHtml =
+      upstreams
+        .map(
+          (u: string) => `
       <li onclick="selectSidecar('${u}')" class="text-xs font-mono text-indigo-400 hover:underline cursor-pointer mb-1.5 flex items-center space-x-1.5">
         <span>🔌</span> <span>${u}</span>
       </li>
-    `).join('') || '<p class="text-xs text-slate-500 italic">No upstream dependents.</p>';
+    `,
+        )
+        .join('') || '<p class="text-xs text-slate-500 italic">No upstream dependents.</p>';
 
-    const downstreamHtml = downstreams.map((d: string) => `
+    const downstreamHtml =
+      downstreams
+        .map(
+          (d: string) => `
       <li onclick="selectSidecar('${d}')" class="text-xs font-mono text-indigo-400 hover:underline cursor-pointer mb-1.5 flex items-center space-x-1.5">
         <span>⚙️</span> <span>${d}</span>
       </li>
-    `).join('') || '<p class="text-xs text-slate-500 italic">No downstream dependents.</p>';
+    `,
+        )
+        .join('') || '<p class="text-xs text-slate-500 italic">No downstream dependents.</p>';
 
     panel.innerHTML = `
       <div class="p-4 sm:p-6 space-y-5">
@@ -646,17 +685,17 @@ function renderEgoGraphSvg(centerNode: string, upstreams: string[], downstreams:
   `;
 
   // Upstream links
-  upPos.forEach(p => {
+  upPos.forEach((p) => {
     svg += `<line x1="${p.x}" y1="${p.y}" x2="${centerPos.x}" y2="${centerPos.y}" stroke="oklch(0.3 0.05 240)" stroke-width="1.5" marker-end="url(#arrow-web)" />`;
   });
 
   // Downstream links
-  downPos.forEach(p => {
+  downPos.forEach((p) => {
     svg += `<line x1="${centerPos.x}" y1="${centerPos.y}" x2="${p.x}" y2="${p.y}" stroke="oklch(0.3 0.05 240)" stroke-width="1.5" marker-end="url(#arrow-web)" />`;
   });
 
   // Render Upstreams
-  upPos.forEach(p => {
+  upPos.forEach((p) => {
     const lbl = cleanLabel(p.item);
     svg += `
       <g class="ego-node cursor-pointer group" data-path="${p.item}">
@@ -667,7 +706,7 @@ function renderEgoGraphSvg(centerNode: string, upstreams: string[], downstreams:
   });
 
   // Render Downstreams
-  downPos.forEach(p => {
+  downPos.forEach((p) => {
     const lbl = cleanLabel(p.item);
     svg += `
       <g class="ego-node cursor-pointer group" data-path="${p.item}">
@@ -720,7 +759,7 @@ function setupTouchGestures() {
 
   // Single tap/double tap & click fallback for desktop + mobile
   const nodes = container.querySelectorAll('.ego-node');
-  nodes.forEach(node => {
+  nodes.forEach((node) => {
     // Touch tap / double tap
     node.addEventListener('touchend', (e) => {
       e.preventDefault();
@@ -804,12 +843,16 @@ function setupTouchGestures() {
   });
 
   // Mouse wheel zoom
-  container.addEventListener('wheel', (e: WheelEvent) => {
-    e.preventDefault();
-    const factor = e.deltaY < 0 ? 1.05 : 0.95;
-    scale = Math.max(0.4, Math.min(3.0, scale * factor));
-    updateViewportTransform();
-  }, { passive: false });
+  container.addEventListener(
+    'wheel',
+    (e: WheelEvent) => {
+      e.preventDefault();
+      const factor = e.deltaY < 0 ? 1.05 : 0.95;
+      scale = Math.max(0.4, Math.min(3.0, scale * factor));
+      updateViewportTransform();
+    },
+    { passive: false },
+  );
 }
 
 // Right panel switcher
@@ -834,9 +877,10 @@ async function renderRightPanel() {
     tabTplBtn?.classList.remove('border-indigo-500', 'text-indigo-400');
 
     // Retrieve directives
-    const filterQuery = directiveFilter === 'all'
-      ? `SELECT file_path as filePath, note_id as id, timestamp, text, status FROM user_notes ORDER BY timestamp DESC;`
-      : `SELECT file_path as filePath, note_id as id, timestamp, text, status FROM user_notes WHERE status = ? ORDER BY timestamp DESC;`;
+    const filterQuery =
+      directiveFilter === 'all'
+        ? `SELECT file_path as filePath, note_id as id, timestamp, text, status FROM user_notes ORDER BY timestamp DESC;`
+        : `SELECT file_path as filePath, note_id as id, timestamp, text, status FROM user_notes WHERE status = ? ORDER BY timestamp DESC;`;
     const params = directiveFilter === 'all' ? [] : [directiveFilter];
     const directives = await graphEngine.all(filterQuery, params);
 
@@ -849,7 +893,7 @@ async function renderRightPanel() {
           <label for="new-dir-file" class="block text-[9px] font-bold text-slate-500 uppercase">Target Spec</label>
           <select id="new-dir-file" class="w-full bg-slate-950 border border-slate-800 rounded-lg px-2 py-1.5 text-xs text-slate-300 focus:outline-none focus:border-indigo-500">
             <option value="">-- Choose Sidecar File --</option>
-            ${filesList.map(f => `<option value="${f}" ${f === selectedPath ? 'selected' : ''}>${f}</option>`).join('')}
+            ${filesList.map((f) => `<option value="${f}" ${f === selectedPath ? 'selected' : ''}>${f}</option>`).join('')}
           </select>
         </div>
 
@@ -876,7 +920,9 @@ async function renderRightPanel() {
 
         <div class="space-y-2.5">
           ${directives.length === 0 ? `<p class="text-[11px] text-slate-500 italic py-2 text-center">No directives matching selection.</p>` : ''}
-          ${directives.map((d: any) => `
+          ${directives
+            .map(
+              (d: any) => `
             <div class="p-3 bg-slate-900/25 border border-slate-800/80 rounded-xl space-y-2">
               <div class="flex items-center justify-between">
                 <span class="text-[9px] font-mono text-slate-400">${d.id}</span>
@@ -885,12 +931,18 @@ async function renderRightPanel() {
               <p class="text-xs text-slate-200 font-medium leading-relaxed">${d.text}</p>
               <div class="flex items-center justify-between border-t border-slate-800/40 pt-1.5 text-[9px]">
                 <span onclick="selectSidecar('${d.filePath}')" class="text-indigo-400 hover:underline cursor-pointer truncate max-w-[140px] font-mono">${d.filePath}</span>
-                ${d.status === 'pending' ? `
+                ${
+                  d.status === 'pending'
+                    ? `
                   <button onclick="resolveDirective('${d.filePath}', '${d.id}')" class="px-2 py-0.5 bg-slate-800 border border-slate-700 text-slate-300 hover:text-emerald-400 hover:border-emerald-500/25 rounded font-semibold transition-all">Resolve</button>
-                ` : `<span class="text-slate-500 uppercase font-semibold font-mono text-[8px] tracking-wider">Resolved</span>`}
+                `
+                    : `<span class="text-slate-500 uppercase font-semibold font-mono text-[8px] tracking-wider">Resolved</span>`
+                }
               </div>
             </div>
-          `).join('')}
+          `,
+            )
+            .join('')}
         </div>
       </div>
     `;
@@ -975,7 +1027,7 @@ async function submitDirective() {
       id: noteId,
       timestamp: new Date().toISOString(),
       text,
-      status: 'pending'
+      status: 'pending',
     };
 
     const notes = parsed.frontmatter.user_notes || [];
@@ -998,7 +1050,7 @@ async function submitDirective() {
       filePath,
       updatedContent,
       `Add user note ${noteId} via PWA`,
-      currentBranch
+      currentBranch,
     );
 
     showToast('Successfully committed directive note to GitHub branch!', 'success');
@@ -1052,7 +1104,7 @@ async function resolveDirective(filePath: string, noteId: string) {
       filePath,
       updatedContent,
       `Resolve user note ${noteId} via PWA`,
-      currentBranch
+      currentBranch,
     );
 
     showToast('Successfully resolved directive note on remote repository!', 'success');
@@ -1068,7 +1120,12 @@ async function resolveDirective(filePath: string, noteId: string) {
 async function approveTemplateProposal(templateName: string, approved: boolean) {
   showToast(approved ? 'Approving template proposal...' : 'Rejecting template proposal...', 'info');
   setTimeout(() => {
-    showToast(approved ? 'Successfully approved template proposal on repository!' : 'Rejected template draft.', 'success');
+    showToast(
+      approved
+        ? 'Successfully approved template proposal on repository!'
+        : 'Rejected template draft.',
+      'success',
+    );
   }, 1000);
 }
 
@@ -1078,9 +1135,9 @@ async function approveTemplateProposal(templateName: string, approved: boolean) 
 function escapeHtml(text: string): string {
   if (!text) return '';
   return text
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#039;");
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
 }

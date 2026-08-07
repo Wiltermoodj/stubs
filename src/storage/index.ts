@@ -6,11 +6,14 @@ import initSqlJs, { Database } from 'sql.js';
 
 // --- Interfaces ---
 
-export interface FileSystemDriver {
-  readFile(filePath: string): Promise<string>;
-  writeFile(filePath: string, content: string): Promise<void>;
-  readDir(dirPath: string): Promise<string[]>;
-  exists(filePath: string): Promise<boolean>;
+export interface FileStorageDriver {
+  readFile(path: string): Promise<string>;
+  writeFile(path: string, content: string): Promise<void>;
+  exists(path: string): Promise<boolean>;
+  readDir(path: string): Promise<string[]>;
+}
+
+export interface FileSystemDriver extends FileStorageDriver {
   glob(pattern: string): Promise<string[]>;
 }
 
@@ -110,6 +113,8 @@ export class NodeFileSystem implements FileSystemDriver {
     return results;
   }
 }
+
+export class NodeFileSystemDriver extends NodeFileSystem implements FileStorageDriver {}
 
 export class BetterSqliteDriver implements DatabaseDriver {
   private db: sqlite3.Database | null = null;
@@ -324,14 +329,52 @@ export class VirtualFileSystem implements FileSystemDriver {
   }
 }
 
+export class MemoryVirtualFileSystemDriver extends VirtualFileSystem implements FileStorageDriver {}
+
 export class WasmSqliteDriver implements DatabaseDriver {
   private db: Database | null = null;
   private isFts5Supported = false;
+  private dbPath?: string;
+  private fsDriver?: FileStorageDriver;
+  private initialData?: Uint8Array;
+
+  constructor(options?: {
+    dbPath?: string;
+    fsDriver?: FileStorageDriver;
+    initialData?: Uint8Array;
+  }) {
+    this.dbPath = options?.dbPath;
+    this.fsDriver = options?.fsDriver;
+    this.initialData = options?.initialData;
+  }
 
   public async initialize(): Promise<void> {
     if (this.db) return;
     const SQL = await initSqlJs();
-    this.db = new SQL.Database();
+
+    let data: Uint8Array | undefined = this.initialData;
+
+    if (!data && this.dbPath && this.fsDriver) {
+      try {
+        if (await this.fsDriver.exists(this.dbPath)) {
+          const content = await this.fsDriver.readFile(this.dbPath);
+          if (content) {
+            data = new Uint8Array(content.length);
+            for (let i = 0; i < content.length; i++) {
+              data[i] = content.charCodeAt(i);
+            }
+          }
+        }
+      } catch (err) {
+        // Fall back to empty database if reading fails
+      }
+    }
+
+    if (data) {
+      this.db = new SQL.Database(data);
+    } else {
+      this.db = new SQL.Database();
+    }
 
     try {
       this.db.run('CREATE VIRTUAL TABLE fts_test USING fts5(x); DROP TABLE fts_test;');
@@ -435,19 +478,17 @@ export class WasmSqliteDriver implements DatabaseDriver {
   public async prepare(sql: string): Promise<PreparedStatement> {
     if (!this.db) throw new Error('Database not initialized');
 
-    const self = this;
-
     return {
       run: async (params: any[] = []) => {
-        const prep = self.preprocessSql(sql, params);
-        const stmt = self.db!.prepare(prep.sql);
+        const prep = this.preprocessSql(sql, params);
+        const stmt = this.db!.prepare(prep.sql);
         if (prep.params.length > 0) {
           stmt.bind(prep.params);
         }
         stmt.step();
         stmt.free();
 
-        const res = self.db!.exec('SELECT last_insert_rowid() as id, changes() as changes;');
+        const res = this.db!.exec('SELECT last_insert_rowid() as id, changes() as changes;');
         let lastID = 0;
         let changes = 0;
         if (res && res[0]) {
@@ -457,8 +498,8 @@ export class WasmSqliteDriver implements DatabaseDriver {
         return { lastID, changes };
       },
       get: async <T = any>(params: any[] = []): Promise<T | undefined> => {
-        const prep = self.preprocessSql(sql, params);
-        const stmt = self.db!.prepare(prep.sql);
+        const prep = this.preprocessSql(sql, params);
+        const stmt = this.db!.prepare(prep.sql);
         let result: T | undefined;
         if (prep.params.length > 0) {
           stmt.bind(prep.params);
@@ -470,8 +511,8 @@ export class WasmSqliteDriver implements DatabaseDriver {
         return result;
       },
       all: async <T = any>(params: any[] = []): Promise<T[]> => {
-        const prep = self.preprocessSql(sql, params);
-        const stmt = self.db!.prepare(prep.sql);
+        const prep = this.preprocessSql(sql, params);
+        const stmt = this.db!.prepare(prep.sql);
         const results: T[] = [];
         if (prep.params.length > 0) {
           stmt.bind(prep.params);
@@ -482,12 +523,27 @@ export class WasmSqliteDriver implements DatabaseDriver {
         stmt.free();
         return results;
       },
-      finalize: async () => {}
+      finalize: async () => {},
     };
   }
 
   public async close(): Promise<void> {
     if (!this.db) return;
+
+    if (this.dbPath && this.fsDriver) {
+      try {
+        const data = this.db.export();
+        let content = '';
+        const batchSize = 8192;
+        for (let i = 0; i < data.length; i += batchSize) {
+          content += String.fromCharCode.apply(null, data.subarray(i, i + batchSize) as any);
+        }
+        await this.fsDriver.writeFile(this.dbPath, content);
+      } catch (err) {
+        // Ignore persist errors
+      }
+    }
+
     this.db.close();
     this.db = null;
   }

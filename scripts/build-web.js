@@ -21,17 +21,17 @@ async function buildWeb() {
       target: ['es2022'],
       outfile: 'dist/web/app.js',
       alias: {
-        'fs': './src/web/shims.ts',
+        fs: './src/web/shims.ts',
         'fs/promises': './src/web/shims.ts',
-        'path': './src/web/shims.ts',
-        'os': './src/web/shims.ts',
-        'crypto': './src/web/shims.ts',
-        'sqlite3': './src/web/shims.ts'
+        path: './src/web/shims.ts',
+        os: './src/web/shims.ts',
+        crypto: './src/web/shims.ts',
+        sqlite3: './src/web/shims.ts',
       },
       define: {
         'process.env.NODE_ENV': '"production"',
-        'global': 'window'
-      }
+        global: 'window',
+      },
     });
     console.log('[Build] esbuild bundle complete: dist/web/app.js');
 

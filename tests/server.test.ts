@@ -360,7 +360,7 @@ export function verify();
       try {
         const res = await originalFetch(getUrl('/api/v1/github/repos'));
         expect(res.status).toBe(200);
-        const data = await res.json() as any;
+        const data = (await res.json()) as any;
         expect(data.repositories).toBeDefined();
         expect(data.repositories.length).toBe(1);
         expect(data.repositories[0].fullName).toContain('test-repo-with-stubs');
@@ -377,16 +377,15 @@ export function verify();
       mockFetchQueue.push({
         ok: true,
         status: 200,
-        json: async () => [
-          { name: 'main' },
-          { name: 'feature/auth' },
-        ],
+        json: async () => [{ name: 'main' }, { name: 'feature/auth' }],
       });
 
       try {
-        const res = await originalFetch(getUrl('/api/v1/github/branches?repo=test-owner/test-repo-with-stubs'));
+        const res = await originalFetch(
+          getUrl('/api/v1/github/branches?repo=test-owner/test-repo-with-stubs'),
+        );
         expect(res.status).toBe(200);
-        const data = await res.json() as any;
+        const data = (await res.json()) as any;
         expect(data.branches).toBeDefined();
         expect(data.branches).toContain('main');
         expect(data.branches).toContain('feature/auth');
@@ -404,9 +403,7 @@ export function verify();
         ok: true,
         status: 200,
         json: async () => ({
-          tree: [
-            { path: 'remote-auth.ts.md', type: 'blob' },
-          ],
+          tree: [{ path: 'remote-auth.ts.md', type: 'blob' }],
         }),
       });
       // 2. fetch raw specs contents
@@ -430,9 +427,11 @@ export function remoteVerify();
       });
 
       try {
-        const res = await originalFetch(getUrl('/api/graph?mode=remote&repo=test-owner/remote-repo&branch=main'));
+        const res = await originalFetch(
+          getUrl('/api/graph?mode=remote&repo=test-owner/remote-repo&branch=main'),
+        );
         expect(res.status).toBe(200);
-        const data = await res.json() as any;
+        const data = (await res.json()) as any;
         expect(data.projectName).toBe('test-owner/remote-repo');
         expect(data.sidecars.length).toBe(1);
         expect(data.sidecars[0].filePath).toBe('remote-auth.ts.md');
@@ -451,9 +450,7 @@ export function remoteVerify();
         ok: true,
         status: 200,
         json: async () => ({
-          tree: [
-            { path: 'remote-auth.ts.md', type: 'blob' },
-          ],
+          tree: [{ path: 'remote-auth.ts.md', type: 'blob' }],
         }),
       });
       mockFetchQueue.push({
@@ -476,7 +473,9 @@ export function remoteVerify();
       });
 
       // Call GET api/graph to trigger first-time remote specs ingestion
-      const initRes = await originalFetch(getUrl('/api/graph?mode=remote&repo=test-owner/remote-repo&branch=main'));
+      const initRes = await originalFetch(
+        getUrl('/api/graph?mode=remote&repo=test-owner/remote-repo&branch=main'),
+      );
       expect(initRes.status).toBe(200);
 
       // Now prepare mocks for POST /api/v1/directives
@@ -517,14 +516,17 @@ export function remoteVerify();
       };
 
       try {
-        const res = await originalFetch(getUrl('/api/v1/directives?mode=remote&repo=test-owner/remote-repo&branch=main'), {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload),
-        });
+        const res = await originalFetch(
+          getUrl('/api/v1/directives?mode=remote&repo=test-owner/remote-repo&branch=main'),
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+          },
+        );
 
         expect(res.status).toBe(200);
-        const data = await res.json() as any;
+        const data = (await res.json()) as any;
         expect(data.success).toBe(true);
         expect(data.note.text).toBe('Verify remote directive commit works');
       } finally {
@@ -559,7 +561,7 @@ export function remoteVerify();
       try {
         const res = await originalFetch(getUrl('/api/v1/repos'));
         expect(res.status).toBe(200);
-        const data = await res.json() as any;
+        const data = (await res.json()) as any;
         expect(data.repositories).toBeDefined();
         expect(data.repositories.length).toBe(1);
         expect(data.repositories[0].fullName).toContain('test-repo-with-stubs');
@@ -576,16 +578,15 @@ export function remoteVerify();
       mockFetchQueue.push({
         ok: true,
         status: 200,
-        json: async () => [
-          { name: 'main' },
-          { name: 'feature/auth' },
-        ],
+        json: async () => [{ name: 'main' }, { name: 'feature/auth' }],
       });
 
       try {
-        const res = await originalFetch(getUrl('/api/v1/repos?repo=test-owner/test-repo-with-stubs'));
+        const res = await originalFetch(
+          getUrl('/api/v1/repos?repo=test-owner/test-repo-with-stubs'),
+        );
         expect(res.status).toBe(200);
-        const data = await res.json() as any;
+        const data = (await res.json()) as any;
         expect(data.branches).toBeDefined();
         expect(data.branches).toContain('main');
         expect(data.branches).toContain('feature/auth');
@@ -603,9 +604,7 @@ export function remoteVerify();
         ok: true,
         status: 200,
         json: async () => ({
-          tree: [
-            { path: 'remote-auth.ts.md', type: 'blob' },
-          ],
+          tree: [{ path: 'remote-auth.ts.md', type: 'blob' }],
         }),
       });
       // 2. fetch raw specs contents
@@ -629,9 +628,11 @@ export function remoteVerify();
       });
 
       try {
-        const res = await originalFetch(getUrl('/api/v1/graph?mode=remote&repo=test-owner/remote-repo&branch=main'));
+        const res = await originalFetch(
+          getUrl('/api/v1/graph?mode=remote&repo=test-owner/remote-repo&branch=main'),
+        );
         expect(res.status).toBe(200);
-        const data = await res.json() as any;
+        const data = (await res.json()) as any;
         expect(data.projectName).toBe('test-owner/remote-repo');
         expect(data.sidecars.length).toBe(1);
         expect(data.sidecars[0].filePath).toBe('remote-auth.ts.md');
