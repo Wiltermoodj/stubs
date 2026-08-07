@@ -1,9 +1,15 @@
-import sqlite3 from 'sqlite3';
-import * as fs from 'fs';
-import * as path from 'path';
 import * as crypto from 'crypto';
+import * as path from 'path';
 import { OkfFrontmatter, parseOkfSpec } from '../parser/okf';
 import { loadConfig } from '../config/schema';
+import {
+  FileSystemDriver,
+  DatabaseDriver,
+  NodeFileSystem,
+  BetterSqliteDriver,
+  VirtualFileSystem,
+  WasmSqliteDriver,
+} from '../storage';
 
 export interface IndexSummary {
   scanned: number;
@@ -37,45 +43,46 @@ export interface SearchResult {
 }
 
 export class GraphEngine {
-  private db: sqlite3.Database | null = null;
   private dbPath: string;
+  public fsDriver!: FileSystemDriver;
+  public dbDriver!: DatabaseDriver;
 
-  constructor(customDbPath?: string) {
-    if (customDbPath) {
-      this.dbPath = path.resolve(customDbPath);
+  constructor(
+    dbPathOrOptions?:
+      | string
+      | { fsDriver?: FileSystemDriver; dbDriver?: DatabaseDriver; dbPath?: string },
+  ) {
+    let resolvedDbPath: string | undefined;
+
+    if (typeof dbPathOrOptions === 'string') {
+      resolvedDbPath = dbPathOrOptions;
+    } else if (dbPathOrOptions && typeof dbPathOrOptions === 'object') {
+      this.fsDriver = dbPathOrOptions.fsDriver!;
+      this.dbDriver = dbPathOrOptions.dbDriver!;
+      resolvedDbPath = dbPathOrOptions.dbPath;
+    }
+
+    if (resolvedDbPath) {
+      this.dbPath = resolvedDbPath;
     } else {
       const config = loadConfig();
-      this.dbPath = path.resolve(config.paths.db_path || '.stubs/graph.sqlite');
+      this.dbPath = config.paths.db_path || '.stubs/graph.sqlite';
+    }
+
+    if (!this.fsDriver) {
+      this.fsDriver = new NodeFileSystem();
+    }
+    if (!this.dbDriver) {
+      this.dbDriver = new BetterSqliteDriver(this.dbPath);
     }
   }
 
   /**
    * Initializes the database connection and creates tables if they do not exist.
-   * Ensures the parent directory of the database exists.
    */
   public async initialize(): Promise<void> {
-    if (this.db) return;
-
-    const dir = path.dirname(this.dbPath);
-    if (!fs.existsSync(dir)) {
-      fs.mkdirSync(dir, { recursive: true });
-    }
-
-    return new Promise((resolve, reject) => {
-      this.db = new sqlite3.Database(this.dbPath, (err) => {
-        if (err) {
-          return reject(
-            new Error(`Failed to open SQLite database at ${this.dbPath}: ${err.message}`),
-          );
-        }
-        this.createSchema()
-          .then(resolve)
-          .catch((schemaErr) => {
-            this.db = null;
-            reject(schemaErr);
-          });
-      });
-    });
+    await this.dbDriver.initialize();
+    await this.createSchema();
   }
 
   private async createSchema(): Promise<void> {
@@ -213,54 +220,19 @@ export class GraphEngine {
   }
 
   private async ensureInitialized(): Promise<void> {
-    if (!this.db) {
-      await this.initialize();
-    }
+    await this.initialize();
   }
 
-  public run(sql: string, params: any[] = []): Promise<{ lastID: number; changes: number }> {
-    return new Promise((resolve, reject) => {
-      if (!this.db) {
-        return reject(new Error('Database not initialized.'));
-      }
-      this.db.run(sql, params, function (this: sqlite3.RunResult, err: Error | null) {
-        if (err) {
-          reject(err);
-        } else {
-          resolve({ lastID: this.lastID, changes: this.changes });
-        }
-      });
-    });
+  public async run(sql: string, params: any[] = []): Promise<{ lastID: number; changes: number }> {
+    return await this.dbDriver.run(sql, params);
   }
 
-  public get<T = any>(sql: string, params: any[] = []): Promise<T | undefined> {
-    return new Promise((resolve, reject) => {
-      if (!this.db) {
-        return reject(new Error('Database not initialized.'));
-      }
-      this.db.get(sql, params, (err, row) => {
-        if (err) {
-          reject(err);
-        } else {
-          resolve(row as T | undefined);
-        }
-      });
-    });
+  public async get<T = any>(sql: string, params: any[] = []): Promise<T | undefined> {
+    return await this.dbDriver.get(sql, params);
   }
 
-  public all<T = any>(sql: string, params: any[] = []): Promise<T[]> {
-    return new Promise((resolve, reject) => {
-      if (!this.db) {
-        return reject(new Error('Database not initialized.'));
-      }
-      this.db.all(sql, params, (err, rows) => {
-        if (err) {
-          reject(err);
-        } else {
-          resolve(rows as T[]);
-        }
-      });
-    });
+  public async all<T = any>(sql: string, params: any[] = []): Promise<T[]> {
+    return await this.dbDriver.all(sql, params);
   }
 
   /**
@@ -877,40 +849,6 @@ Decisions: ${decisionsText}
   }
 
   /**
-   * Recursively scans a directory for specification files (.ts.md or .md).
-   */
-  private async scanDirectory(dir: string): Promise<string[]> {
-    const files: string[] = [];
-    const recurse = async (currentDir: string) => {
-      if (!fs.existsSync(currentDir)) return;
-      const entries = await fs.promises.readdir(currentDir, { withFileTypes: true });
-      for (const entry of entries) {
-        const fullPath = path.join(currentDir, entry.name);
-        const relativePath = path.relative(process.cwd(), fullPath).replace(/\\/g, '/');
-
-        if (entry.isDirectory()) {
-          if (
-            entry.name === 'node_modules' ||
-            entry.name === '.git' ||
-            entry.name === '.stubs' ||
-            entry.name === 'dist' ||
-            entry.name === 'build'
-          ) {
-            continue;
-          }
-          await recurse(fullPath);
-        } else if (entry.isFile()) {
-          if (entry.name.endsWith('.ts.md') || entry.name.endsWith('.md')) {
-            files.push(relativePath);
-          }
-        }
-      }
-    };
-    await recurse(dir);
-    return files;
-  }
-
-  /**
    * Scans, parses, and indexes the specified workspace specifications directory recursively.
    * Only indexes files that have changed (using SHA-256 hash comparison) unless force option is set.
    * Cleans up (prunes) database entries for files that no longer exist on disk.
@@ -928,14 +866,13 @@ Decisions: ${decisionsText}
       errors: [],
     };
 
-    const absoluteSpecsDir = path.resolve(specsDir);
-    if (!fs.existsSync(absoluteSpecsDir)) {
+    if (!(await this.fsDriver.exists(specsDir))) {
       return summary;
     }
 
     let scannedFiles: string[];
     try {
-      scannedFiles = await this.scanDirectory(absoluteSpecsDir);
+      scannedFiles = await this.fsDriver.glob(specsDir);
     } catch (err: any) {
       summary.errors.push({
         filePath: specsDir,
@@ -950,8 +887,7 @@ Decisions: ${decisionsText}
 
     for (const relativePath of scannedFiles) {
       try {
-        const fullPath = path.resolve(relativePath);
-        const content = await fs.promises.readFile(fullPath, 'utf8');
+        const content = await this.fsDriver.readFile(relativePath);
 
         // Ignore files that don't start with YAML frontmatter marker
         if (!content.trim().startsWith('---')) {
@@ -999,8 +935,11 @@ Decisions: ${decisionsText}
     try {
       const dbFiles = await this.getFilesIndexed();
       for (const dbFile of dbFiles) {
-        const absoluteDbFile = path.resolve(dbFile);
-        if (absoluteDbFile.startsWith(absoluteSpecsDir)) {
+        const absoluteDbFile = path.resolve(dbFile).replace(/\\/g, '/');
+        const absoluteSpecsDir = path.resolve(specsDir).replace(/\\/g, '/');
+        const prefix = absoluteSpecsDir.endsWith('/') ? absoluteSpecsDir : `${absoluteSpecsDir}/`;
+
+        if (absoluteDbFile.startsWith(prefix) || absoluteDbFile === absoluteSpecsDir) {
           if (!processedFiles.has(dbFile)) {
             await this.deleteSidecar(dbFile);
             summary.pruned++;
@@ -1079,16 +1018,38 @@ Decisions: ${decisionsText}
    * Closes the database connection.
    */
   public async close(): Promise<void> {
-    if (!this.db) return;
-    return new Promise((resolve, reject) => {
-      this.db!.close((err) => {
-        if (err) {
-          reject(err);
-        } else {
-          this.db = null;
-          resolve();
-        }
-      });
-    });
+    await this.dbDriver.close();
   }
+}
+
+/**
+ * Factory function to create a GraphEngine instance based on execution environment.
+ */
+export function createGraphEngine(
+  options: {
+    fsDriver?: FileSystemDriver;
+    dbDriver?: DatabaseDriver;
+    dbPath?: string;
+  } = {},
+): GraphEngine {
+  const isNode = typeof process !== 'undefined' && process.versions && process.versions.node;
+
+  let fsDriver = options.fsDriver;
+  let dbDriver = options.dbDriver;
+  let dbPath = options.dbPath;
+
+  if (!dbPath) {
+    const config = loadConfig();
+    dbPath = config.paths.db_path || '.stubs/graph.sqlite';
+  }
+
+  if (isNode) {
+    if (!fsDriver) fsDriver = new NodeFileSystem();
+    if (!dbDriver) dbDriver = new BetterSqliteDriver(dbPath);
+  } else {
+    if (!fsDriver) fsDriver = new VirtualFileSystem();
+    if (!dbDriver) dbDriver = new WasmSqliteDriver();
+  }
+
+  return new GraphEngine({ fsDriver, dbDriver, dbPath });
 }
