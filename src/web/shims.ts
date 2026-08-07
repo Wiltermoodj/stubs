@@ -17,7 +17,7 @@ function sha256(ascii: string): string {
       for (i = 0; i < 313; i += candidate) {
         isPrime[i] = true;
       }
-      hash.push((mathPow(candidate, .5) * maxWord) | 0);
+      hash.push((mathPow(candidate, 0.5) * maxWord) | 0);
     }
     candidate++;
   }
@@ -40,7 +40,7 @@ function sha256(ascii: string): string {
       for (i = 0; i < 313; i += candidate) {
         isPrime[i] = true;
       }
-      k.push((mathPow(candidate, 1/3) * maxWord) | 0);
+      k.push((mathPow(candidate, 1 / 3) * maxWord) | 0);
     }
     candidate++;
   }
@@ -142,21 +142,33 @@ export function basename(p: string): string {
 }
 
 // Named exports from fs/promises to prevent esbuild undefined warnings
-export async function readFile(filePath: string): Promise<string> { return ''; }
+export async function readFile(filePath: string): Promise<string> {
+  return '';
+}
 export async function writeFile(filePath: string, content: string): Promise<void> {}
-export async function readdir(dirPath: string): Promise<string[]> { return []; }
-export async function readDir(dirPath: string): Promise<string[]> { return []; }
+export async function readdir(dirPath: string): Promise<string[]> {
+  return [];
+}
+export async function readDir(dirPath: string): Promise<string[]> {
+  return [];
+}
 export async function mkdir(dirPath: string): Promise<void> {}
 export async function access(filePath: string): Promise<void> {}
 export async function rename(oldPath: string, newPath: string): Promise<void> {}
 export async function unlink(filePath: string): Promise<void> {}
 
 // Named exports from fs (Sync methods)
-export function readFileSync(p: string, encoding?: string): string { return ''; }
-export function existsSync(p: string): boolean { return false; }
+export function readFileSync(p: string, encoding?: string): string {
+  return '';
+}
+export function existsSync(p: string): boolean {
+  return false;
+}
 export function mkdirSync(p: string, options?: any) {}
 export function writeFileSync(p: string, c: string, options?: any) {}
-export function readdirSync(p: string): string[] { return []; }
+export function readdirSync(p: string): string[] {
+  return [];
+}
 
 // Shimming promises block under fs
 export const promises = {
@@ -167,7 +179,7 @@ export const promises = {
   mkdir,
   access,
   rename,
-  unlink
+  unlink,
 };
 
 // Shimming "os" Node.js module
@@ -197,10 +209,18 @@ export class Database {
   }
   prepare(sql: string) {
     return {
-      run: (params: any, cb: any) => { if (cb) cb(null); },
-      get: (params: any, cb: any) => { if (cb) cb(null, null); },
-      all: (params: any, cb: any) => { if (cb) cb(null, []); },
-      finalize: (cb: any) => { if (cb) cb(null); }
+      run: (params: any, cb: any) => {
+        if (cb) cb(null);
+      },
+      get: (params: any, cb: any) => {
+        if (cb) cb(null, null);
+      },
+      all: (params: any, cb: any) => {
+        if (cb) cb(null, []);
+      },
+      finalize: (cb: any) => {
+        if (cb) cb(null);
+      },
     };
   }
   close(callback?: (err: Error | null) => void) {
@@ -231,5 +251,5 @@ export default {
   writeFileSync,
   readdirSync,
   homedir,
-  Database
+  Database,
 };

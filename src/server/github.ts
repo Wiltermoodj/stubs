@@ -223,7 +223,9 @@ export class GitHubClient {
 
     if (!response.ok) {
       const errorText = await response.text();
-      throw new Error(`Failed to list branches for ${owner}/${repo} (Status ${response.status}): ${errorText}`);
+      throw new Error(
+        `Failed to list branches for ${owner}/${repo} (Status ${response.status}): ${errorText}`,
+      );
     }
 
     const branches: any = await response.json();
@@ -368,11 +370,7 @@ export async function fetchFileContents(
   return await client.fetchFileContents(owner, repo, path, branch);
 }
 
-export async function listBranches(
-  owner: string,
-  repo: string,
-  token?: string,
-): Promise<string[]> {
+export async function listBranches(owner: string, repo: string, token?: string): Promise<string[]> {
   const client = new GitHubClient(token);
   return await client.listBranches(owner, repo);
 }

@@ -6,14 +6,14 @@ const ASSETS = [
   './manifest.json',
   './sql-wasm.wasm',
   './sql-wasm-browser.wasm',
-  'https://cdn.tailwindcss.com'
+  'https://cdn.tailwindcss.com',
 ];
 
 self.addEventListener('install', (e) => {
   e.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
       return cache.addAll(ASSETS);
-    })
+    }),
   );
   self.skipWaiting();
 });
@@ -26,9 +26,9 @@ self.addEventListener('activate', (e) => {
           if (key !== CACHE_NAME) {
             return caches.delete(key);
           }
-        })
+        }),
       );
-    })
+    }),
   );
   self.clients.claim();
 });
@@ -39,11 +39,13 @@ self.addEventListener('fetch', (e) => {
       if (cachedResponse) {
         return cachedResponse;
       }
-      return fetch(e.request).then((response) => {
-        return response;
-      }).catch(() => {
-        // Fallback or silent ignore
-      });
-    })
+      return fetch(e.request)
+        .then((response) => {
+          return response;
+        })
+        .catch(() => {
+          // Fallback or silent ignore
+        });
+    }),
   );
 });

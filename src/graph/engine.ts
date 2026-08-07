@@ -1,15 +1,125 @@
 import * as crypto from 'crypto';
-import * as path from 'path';
 import { OkfFrontmatter, parseOkfSpec } from '../parser/okf';
 import { loadConfig } from '../config/schema';
 import {
-  FileSystemDriver,
+  FileStorageDriver,
   DatabaseDriver,
   NodeFileSystem,
   BetterSqliteDriver,
   VirtualFileSystem,
   WasmSqliteDriver,
 } from '../storage';
+
+export function normalizePosixPath(p: string): string {
+  if (!p) return '';
+  let normalized = p.replace(/\\/g, '/');
+  normalized = normalized.replace(/\/{2,}/g, '/');
+
+  let drivePrefix = '';
+  const driveMatch = normalized.match(/^([a-zA-Z]:)/);
+  if (driveMatch) {
+    drivePrefix = driveMatch[1];
+    normalized = normalized.substring(drivePrefix.length);
+  }
+
+  const parts = normalized.split('/');
+  const result: string[] = [];
+  for (const part of parts) {
+    if (part === '.' || part === '') {
+      continue;
+    }
+    if (part === '..') {
+      if (result.length > 0 && result[result.length - 1] !== '..') {
+        result.pop();
+      } else {
+        result.push('..');
+      }
+    } else {
+      result.push(part);
+    }
+  }
+
+  const isAbsolute = normalized.startsWith('/');
+  let prefix = drivePrefix;
+  if (isAbsolute || drivePrefix) {
+    prefix += '/';
+  }
+  return prefix + result.join('/');
+}
+
+export function resolvePosixPath(p: string): string {
+  let normalized = p.replace(/\\/g, '/');
+  const isAbsolute = normalized.startsWith('/') || /^[a-zA-Z]:/.test(normalized);
+  if (!isAbsolute) {
+    const cwd =
+      typeof process !== 'undefined' && typeof process.cwd === 'function'
+        ? process.cwd().replace(/\\/g, '/')
+        : '/';
+    normalized = cwd + '/' + normalized;
+  }
+  return normalizePosixPath(normalized);
+}
+
+async function fallbackGlob(fsDriver: FileStorageDriver, pattern: string): Promise<string[]> {
+  const results: string[] = [];
+  const normalizedPattern = pattern.replace(/\\/g, '/');
+
+  const recurse = async (currDir: string) => {
+    try {
+      const entries = await fsDriver.readDir(currDir);
+      for (const entry of entries) {
+        const fullPath = currDir === '.' || currDir === '' ? entry : `${currDir}/${entry}`;
+        const normalizedPath = fullPath.replace(/\\/g, '/');
+
+        if (
+          entry === 'node_modules' ||
+          entry === '.git' ||
+          entry === '.stubs' ||
+          entry === 'dist' ||
+          entry === 'build'
+        ) {
+          continue;
+        }
+
+        let isDir = false;
+        try {
+          const subEntries = await fsDriver.readDir(normalizedPath);
+          if (subEntries && subEntries.length > 0) {
+            isDir = true;
+          }
+        } catch {
+          isDir = false;
+        }
+
+        if (isDir) {
+          await recurse(normalizedPath);
+        } else {
+          if (entry.endsWith('.ts.md') || entry.endsWith('.md')) {
+            results.push(normalizedPath);
+          }
+        }
+      }
+    } catch {
+      // Ignore directory read errors
+    }
+  };
+
+  const isWildcard = normalizedPattern.includes('*');
+  let baseDir = normalizedPattern;
+  if (isWildcard) {
+    const firstWildcard = normalizedPattern.indexOf('*');
+    const partBefore = normalizedPattern.substring(0, firstWildcard);
+    const lastSlash = partBefore.lastIndexOf('/');
+    if (lastSlash !== -1) {
+      baseDir = partBefore.substring(0, lastSlash);
+    } else {
+      baseDir = '.';
+    }
+  }
+
+  await recurse(baseDir);
+  return results;
+}
 
 export interface IndexSummary {
   scanned: number;
@@ -44,13 +154,12 @@ export interface SearchResult {
 
 export class GraphEngine {
   private dbPath: string;
-  public fsDriver!: FileSystemDriver;
+  public fsDriver!: FileStorageDriver;
   public dbDriver!: DatabaseDriver;
 
   constructor(
     dbPathOrOptions?:
-      | string
-      | { fsDriver?: FileSystemDriver; dbDriver?: DatabaseDriver; dbPath?: string },
+      string | { fsDriver?: FileStorageDriver; dbDriver?: DatabaseDriver; dbPath?: string },
   ) {
     let resolvedDbPath: string | undefined;
 
@@ -872,7 +981,11 @@ Decisions: ${decisionsText}
 
     let scannedFiles: string[];
     try {
-      scannedFiles = await this.fsDriver.glob(specsDir);
+      if (typeof (this.fsDriver as any).glob === 'function') {
+        scannedFiles = await (this.fsDriver as any).glob(specsDir);
+      } else {
+        scannedFiles = await fallbackGlob(this.fsDriver, specsDir);
+      }
     } catch (err: any) {
       summary.errors.push({
         filePath: specsDir,
@@ -935,8 +1048,8 @@ Decisions: ${decisionsText}
     try {
       const dbFiles = await this.getFilesIndexed();
       for (const dbFile of dbFiles) {
-        const absoluteDbFile = path.resolve(dbFile).replace(/\\/g, '/');
-        const absoluteSpecsDir = path.resolve(specsDir).replace(/\\/g, '/');
+        const absoluteDbFile = resolvePosixPath(dbFile);
+        const absoluteSpecsDir = resolvePosixPath(specsDir);
         const prefix = absoluteSpecsDir.endsWith('/') ? absoluteSpecsDir : `${absoluteSpecsDir}/`;
 
         if (absoluteDbFile.startsWith(prefix) || absoluteDbFile === absoluteSpecsDir) {
@@ -1027,7 +1140,7 @@ Decisions: ${decisionsText}
  */
 export function createGraphEngine(
   options: {
-    fsDriver?: FileSystemDriver;
+    fsDriver?: FileStorageDriver;
     dbDriver?: DatabaseDriver;
     dbPath?: string;
   } = {},
