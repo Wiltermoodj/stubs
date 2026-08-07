@@ -531,5 +531,114 @@ export function remoteVerify();
         process.env.STUBS_GITHUB_PAT = originalPat;
       }
     });
+
+    test('GET /api/v1/repos lists all accessible repositories with stubs indicator', async () => {
+      const originalPat = process.env.STUBS_GITHUB_PAT;
+      process.env.STUBS_GITHUB_PAT = 'mock-pat';
+
+      // 1st call user/repos -> mock array of repos
+      mockFetchQueue.push({
+        ok: true,
+        status: 200,
+        json: async () => [
+          { full_name: 'test-owner/test-repo-with-stubs', default_branch: 'main' },
+        ],
+      });
+      // 2nd call tree for first repo -> contains stubs files
+      mockFetchQueue.push({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          tree: [
+            { path: '.stubs/config.json', type: 'blob' },
+            { path: 'auth.ts.md', type: 'blob' },
+          ],
+        }),
+      });
+
+      try {
+        const res = await originalFetch(getUrl('/api/v1/repos'));
+        expect(res.status).toBe(200);
+        const data = await res.json() as any;
+        expect(data.repositories).toBeDefined();
+        expect(data.repositories.length).toBe(1);
+        expect(data.repositories[0].fullName).toContain('test-repo-with-stubs');
+        expect(data.repositories[0].hasStubs).toBe(true);
+      } finally {
+        process.env.STUBS_GITHUB_PAT = originalPat;
+      }
+    });
+
+    test('GET /api/v1/repos?repo=... lists branches for a repository', async () => {
+      const originalPat = process.env.STUBS_GITHUB_PAT;
+      process.env.STUBS_GITHUB_PAT = 'mock-pat';
+
+      mockFetchQueue.push({
+        ok: true,
+        status: 200,
+        json: async () => [
+          { name: 'main' },
+          { name: 'feature/auth' },
+        ],
+      });
+
+      try {
+        const res = await originalFetch(getUrl('/api/v1/repos?repo=test-owner/test-repo-with-stubs'));
+        expect(res.status).toBe(200);
+        const data = await res.json() as any;
+        expect(data.branches).toBeDefined();
+        expect(data.branches).toContain('main');
+        expect(data.branches).toContain('feature/auth');
+      } finally {
+        process.env.STUBS_GITHUB_PAT = originalPat;
+      }
+    });
+
+    test('GET /api/v1/graph?mode=remote fetches, parses, and indexes remote specifications into in-memory engine', async () => {
+      const originalPat = process.env.STUBS_GITHUB_PAT;
+      process.env.STUBS_GITHUB_PAT = 'mock-pat';
+
+      // 1. fetch tree
+      mockFetchQueue.push({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          tree: [
+            { path: 'remote-auth.ts.md', type: 'blob' },
+          ],
+        }),
+      });
+      // 2. fetch raw specs contents
+      mockFetchQueue.push({
+        ok: true,
+        status: 200,
+        text: async () => `---
+title: "Remote Auth Spec"
+type: "sidecar-spec"
+description: "Ingested from GitHub directly"
+tags: ["remote"]
+status: "spec"
+version: 1
+target_code_file: "./remote-auth.ts"
+status_flag: "clean"
+---
+\`\`\`typescript
+export function remoteVerify();
+\`\`\`
+`,
+      });
+
+      try {
+        const res = await originalFetch(getUrl('/api/v1/graph?mode=remote&repo=test-owner/remote-repo&branch=main'));
+        expect(res.status).toBe(200);
+        const data = await res.json() as any;
+        expect(data.projectName).toBe('test-owner/remote-repo');
+        expect(data.sidecars.length).toBe(1);
+        expect(data.sidecars[0].filePath).toBe('remote-auth.ts.md');
+        expect(data.sidecars[0].frontmatter.title).toBe('Remote Auth Spec');
+      } finally {
+        process.env.STUBS_GITHUB_PAT = originalPat;
+      }
+    });
   });
 });

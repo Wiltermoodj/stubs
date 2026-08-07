@@ -30,6 +30,9 @@ export class PortalServer {
   // Store dynamic templates in remote mode
   private remoteTemplates: Map<string, { name: string; content: string; isDraft: boolean; version: string }[]> = new Map();
 
+  private currentRepo: string = '';
+  private currentBranch: string = '';
+
   constructor(graphEngine: GraphEngine, port = 3000, configPath?: string) {
     this.graphEngine = graphEngine;
     this.port = port;
@@ -169,6 +172,13 @@ Using EJS/Handlebars to render a standard service module.
       if (!repo) {
         return { engine: this.graphEngine, isRemote: false, repo: '', branch: '' };
       }
+
+      if (repo !== this.currentRepo || branch !== this.currentBranch) {
+        this.currentRepo = repo;
+        this.currentBranch = branch;
+        this.broadcast('branch:changed', { repo, branch, timestamp: new Date().toISOString() });
+      }
+
       const key = `${repo}#${branch}`;
       if (this.remoteGraphs.has(key)) {
         return { engine: this.remoteGraphs.get(key)!, isRemote: true, repo, branch };
@@ -240,6 +250,9 @@ Using EJS/Handlebars to render a standard service module.
       }
       this.remoteTemplates.set(`${repo}#${branch}`, templates);
 
+      // Broadcast SSE for github:sync
+      this.broadcast('github:sync', { repo, branch, timestamp: new Date().toISOString() });
+
     } catch (err: any) {
       console.error(`[PortalServer] Failed to ingest remote specs/templates for ${repo}#${branch}:`, err.message || err);
     }
@@ -265,7 +278,26 @@ Using EJS/Handlebars to render a standard service module.
 
     try {
       // 0. GitHub API endpoints
-      if (pathname === '/api/v1/github/repos' && req.method === 'GET') {
+      if ((pathname === '/api/v1/repos' || pathname === '/api/v1/github/repos') && req.method === 'GET') {
+        const repoParam = parsedUrl.searchParams.get('repo');
+        if (repoParam) {
+          const [owner, repoName] = repoParam.split('/');
+          if (!owner || !repoName) {
+            res.writeHead(400, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: 'Invalid "repo" format, expected owner/repo' }));
+            return;
+          }
+          try {
+            const branches = await listBranches(owner, repoName);
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ branches }));
+          } catch (err: any) {
+            res.writeHead(500, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: err.message || err }));
+          }
+          return;
+        }
+
         try {
           const repos = await listAccessibleRepositories();
 
@@ -298,7 +330,7 @@ Using EJS/Handlebars to render a standard service module.
         return;
       }
 
-      if (pathname === '/api/v1/github/branches' && req.method === 'GET') {
+      if ((pathname === '/api/v1/branches' || pathname === '/api/v1/github/branches') && req.method === 'GET') {
         const repoParam = parsedUrl.searchParams.get('repo');
         if (!repoParam) {
           res.writeHead(400, { 'Content-Type': 'application/json' });
@@ -336,7 +368,7 @@ Using EJS/Handlebars to render a standard service module.
       }
 
       // 3. API endpoints
-      if (pathname === '/api/graph' && req.method === 'GET') {
+      if ((pathname === '/api/graph' || pathname === '/api/v1/graph') && req.method === 'GET') {
         const { engine, isRemote, repo } = await this.resolveGraphEngine(parsedUrl);
         const files = await engine.getFilesIndexed();
         const sidecars = [];
@@ -1173,7 +1205,7 @@ Using EJS/Handlebars to render a standard service module.
 
     async function loadRemoteRepos() {
       try {
-        const res = await fetch('/api/v1/github/repos');
+        const res = await fetch('/api/v1/repos');
         const data = await res.json();
         const repoSelect = document.getElementById('repo-select');
 
@@ -1209,7 +1241,7 @@ Using EJS/Handlebars to render a standard service module.
 
     async function loadBranches(repo) {
       try {
-        const res = await fetch(\`/api/v1/github/branches?repo=\${encodeURIComponent(repo)}\`);
+        const res = await fetch(\`/api/v1/repos?repo=\${encodeURIComponent(repo)}\`);
         const data = await res.json();
         const branchSelect = document.getElementById('branch-select');
 
@@ -1317,6 +1349,18 @@ Using EJS/Handlebars to render a standard service module.
 
       sse.addEventListener('drift:detected', (e) => {
         showToast("Active sync drift check run successfully.", "info");
+      });
+
+      sse.addEventListener('github:sync', (e) => {
+        const data = JSON.parse(e.data);
+        showToast(\`Remote GitHub specifications synchronized for \${data.repo} (\${data.branch})\`, "success");
+        initWorkspace();
+      });
+
+      sse.addEventListener('branch:changed', (e) => {
+        const data = JSON.parse(e.data);
+        showToast(\`Branch switched to \${data.branch} on \n\${data.repo}\`, "info");
+        initWorkspace();
       });
     }
 
