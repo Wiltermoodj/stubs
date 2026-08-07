@@ -19,6 +19,15 @@ let currentBranch: string = localStorage.getItem('STUBS_CURRENT_BRANCH') || 'mai
 let reposList: RepositoryInfo[] = [];
 let branchesList: string[] = [];
 let filesList: string[] = [];
+
+try {
+  reposList = JSON.parse(localStorage.getItem('STUBS_REPOS_LIST') || '[]');
+  branchesList = JSON.parse(localStorage.getItem('STUBS_BRANCHES_LIST') || '[]');
+  filesList = JSON.parse(localStorage.getItem('STUBS_FILES_LIST') || '[]');
+} catch (e) {
+  console.warn('Failed to parse cached list state:', e);
+}
+
 let selectedPath: string | null = null;
 let currentTab: 'directives' | 'templates' = 'directives';
 let directiveFilter: 'pending' | 'resolved' | 'all' = 'pending';
@@ -31,6 +40,25 @@ const graphEngine = new GraphEngine({
   dbDriver: wasmDb,
   dbPath: ':memory:',
 });
+
+// Helper to load offline files into the virtual filesystem
+async function loadCachedFilesForCurrentRepoBranch() {
+  if (currentRepo && currentBranch) {
+    try {
+      const cachedFiles = JSON.parse(localStorage.getItem(`STUBS_OFFLINE_FILES_${currentRepo}_${currentBranch}`) || '{}');
+      await graphEngine.clearIndex();
+      for (const [filePath, content] of Object.entries(cachedFiles)) {
+        await virtualFs.writeFile(filePath, content as string);
+      }
+      await graphEngine.indexWorkspace('/', { force: true });
+      filesList = await graphEngine.getFilesIndexed();
+      localStorage.setItem('STUBS_FILES_LIST', JSON.stringify(filesList));
+      renderApp();
+    } catch (e) {
+      console.warn('Failed to load cached files:', e);
+    }
+  }
+}
 
 // Touch / Zoom State for Ego Graph View
 let scale = 1.0;
@@ -53,13 +81,38 @@ let container: HTMLElement;
 window.addEventListener('DOMContentLoaded', async () => {
   container = document.getElementById('app-container') || document.body;
   await wasmDb.initialize();
+
+  // Pre-load from local storage cache for instant offline startup
+  if (currentRepo && currentBranch) {
+    try {
+      const cachedFiles = JSON.parse(localStorage.getItem(`STUBS_OFFLINE_FILES_${currentRepo}_${currentBranch}`) || '{}');
+      for (const [filePath, content] of Object.entries(cachedFiles)) {
+        await virtualFs.writeFile(filePath, content as string);
+      }
+    } catch (e) {
+      console.warn('Failed to populate initial virtual files from cache:', e);
+    }
+  }
+
   await graphEngine.initialize();
+
+  if (filesList.length > 0) {
+    try {
+      await graphEngine.indexWorkspace('/', { force: true });
+    } catch (e) {
+      console.warn('Failed to index cached workspace:', e);
+    }
+  }
+
   renderApp();
 
   if (!pat) {
     showPatModal();
   } else {
-    await loadWorkspace();
+    await loadWorkspace().catch(err => {
+      console.warn('Could not sync remote workspace on startup, using offline cache:', err);
+      showToast('Offline mode active. Using cached specifications.', 'info');
+    });
   }
 });
 
@@ -335,6 +388,7 @@ async function loadWorkspace() {
   try {
     const client = new GitHubClient(pat);
     reposList = await client.listAccessibleRepositories();
+    localStorage.setItem('STUBS_REPOS_LIST', JSON.stringify(reposList));
 
     // Auto-select first repo with stubs indicator or just the first repo if not selected
     if (reposList.length > 0) {
@@ -345,6 +399,8 @@ async function loadWorkspace() {
 
       const [owner, name] = currentRepo.split('/');
       branchesList = await client.listBranches(owner, name);
+      localStorage.setItem('STUBS_BRANCHES_LIST', JSON.stringify(branchesList));
+
       if (!currentBranch || !branchesList.includes(currentBranch)) {
         currentBranch = branchesList.includes('main') ? 'main' : branchesList[0] || 'main';
         localStorage.setItem('STUBS_CURRENT_BRANCH', currentBranch);
@@ -355,6 +411,8 @@ async function loadWorkspace() {
     await fetchSpecsFromGithub();
   } catch (err: any) {
     showToast('Error loading repositories: ' + err.message, 'error');
+    // Fallback to offline cached files if possible
+    await loadCachedFilesForCurrentRepoBranch();
   }
 }
 
@@ -368,6 +426,8 @@ async function selectRepo(repo: string) {
     const [owner, name] = repo.split('/');
     const client = new GitHubClient(pat);
     branchesList = await client.listBranches(owner, name);
+    localStorage.setItem('STUBS_BRANCHES_LIST', JSON.stringify(branchesList));
+
     currentBranch = branchesList.includes('main') ? 'main' : branchesList[0] || 'main';
     localStorage.setItem('STUBS_CURRENT_BRANCH', currentBranch);
 
@@ -375,6 +435,7 @@ async function selectRepo(repo: string) {
     await fetchSpecsFromGithub();
   } catch (err: any) {
     showToast('Error loading branches: ' + err.message, 'error');
+    await loadCachedFilesForCurrentRepoBranch();
   }
 }
 
@@ -387,7 +448,10 @@ async function selectBranch(branch: string) {
   showToast(`Switching to branch: ${branch}`, 'info');
 
   renderApp();
-  await fetchSpecsFromGithub();
+  await fetchSpecsFromGithub().catch(async (err) => {
+    showToast('Failed to fetch from branch, loading cached files instead: ' + err.message, 'warning');
+    await loadCachedFilesForCurrentRepoBranch();
+  });
 }
 
 (window as any).selectBranch = selectBranch;
@@ -413,11 +477,14 @@ async function fetchSpecsFromGithub() {
     );
 
     let loadedCount = 0;
+    const cachedFiles: Record<string, string> = {};
+
     for (const spec of specs) {
       try {
         const content = await client.fetchFileContents(owner, name, spec.path, currentBranch);
         if (content.trim().startsWith('---')) {
           await virtualFs.writeFile(spec.path, content);
+          cachedFiles[spec.path] = content;
           loadedCount++;
         }
       } catch (err) {
@@ -425,15 +492,20 @@ async function fetchSpecsFromGithub() {
       }
     }
 
+    // Save offline files cache for the current repo and branch
+    localStorage.setItem(`STUBS_OFFLINE_FILES_${currentRepo}_${currentBranch}`, JSON.stringify(cachedFiles));
+
     // Force run workspace indexing in memory
     await graphEngine.indexWorkspace('/', { force: true });
 
     filesList = await graphEngine.getFilesIndexed();
+    localStorage.setItem('STUBS_FILES_LIST', JSON.stringify(filesList));
     showToast(`Successfully indexed ${loadedCount} specification files.`, 'success');
 
     renderApp();
   } catch (err: any) {
     showToast('Error fetching remote workspace: ' + err.message, 'error');
+    await loadCachedFilesForCurrentRepoBranch();
   }
 }
 
@@ -1038,6 +1110,15 @@ async function submitDirective() {
     const updatedContent = stringifyOkfSpec(parsed.frontmatter, parsed.body);
     await virtualFs.writeFile(filePath, updatedContent);
 
+    // Update offline cache
+    try {
+      const cachedFiles = JSON.parse(localStorage.getItem(`STUBS_OFFLINE_FILES_${currentRepo}_${currentBranch}`) || '{}');
+      cachedFiles[filePath] = updatedContent;
+      localStorage.setItem(`STUBS_OFFLINE_FILES_${currentRepo}_${currentBranch}`, JSON.stringify(cachedFiles));
+    } catch (e) {
+      console.warn('Failed to update cache on submitDirective:', e);
+    }
+
     // 4. Force index update in-memory
     await graphEngine.indexWorkspace('/', { force: true });
 
@@ -1051,9 +1132,11 @@ async function submitDirective() {
       updatedContent,
       `Add user note ${noteId} via PWA`,
       currentBranch,
-    );
+    ).catch((err) => {
+      showToast('Offline save succeeded locally. GitHub sync failed: ' + err.message, 'warning');
+    });
 
-    showToast('Successfully committed directive note to GitHub branch!', 'success');
+    showToast('Successfully saved directive note!', 'success');
     textInput.value = '';
 
     // Close mobile right drawer
@@ -1094,6 +1177,16 @@ async function resolveDirective(filePath: string, noteId: string) {
 
     const updatedContent = stringifyOkfSpec(parsed.frontmatter, parsed.body);
     await virtualFs.writeFile(filePath, updatedContent);
+
+    // Update offline cache
+    try {
+      const cachedFiles = JSON.parse(localStorage.getItem(`STUBS_OFFLINE_FILES_${currentRepo}_${currentBranch}`) || '{}');
+      cachedFiles[filePath] = updatedContent;
+      localStorage.setItem(`STUBS_OFFLINE_FILES_${currentRepo}_${currentBranch}`, JSON.stringify(cachedFiles));
+    } catch (e) {
+      console.warn('Failed to update cache on resolveDirective:', e);
+    }
+
     await graphEngine.indexWorkspace('/', { force: true });
 
     const [owner, name] = currentRepo.split('/');
@@ -1105,9 +1198,11 @@ async function resolveDirective(filePath: string, noteId: string) {
       updatedContent,
       `Resolve user note ${noteId} via PWA`,
       currentBranch,
-    );
+    ).catch((err) => {
+      showToast('Offline resolve succeeded locally. GitHub sync failed: ' + err.message, 'warning');
+    });
 
-    showToast('Successfully resolved directive note on remote repository!', 'success');
+    showToast('Successfully resolved directive note!', 'success');
     await loadAndRenderSidecarDetail(filePath);
   } catch (err: any) {
     showToast('Failed to resolve directive: ' + err.message, 'error');

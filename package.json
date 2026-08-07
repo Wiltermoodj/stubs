@@ -9,6 +9,7 @@
   "scripts": {
     "build": "esbuild src/cli.ts --bundle --platform=node --target=node18 --outfile=.agents/skills/stubs/dist/cli.js --banner:js=\"#!/usr/bin/env node\" --external:sqlite3",
     "build:web": "node scripts/build-web.js",
+    "deploy:pages": "gh-pages -d dist/web",
     "test": "jest",
     "lint": "eslint .",
     "format": "prettier --write .",
@@ -39,6 +40,7 @@
     "eslint": "^10.8.0",
     "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-prettier": "^5.5.6",
+    "gh-pages": "^6.3.0",
     "jest": "^30.4.2",
     "js-yaml": "^5.2.3",
     "prettier": "^3.9.6",
