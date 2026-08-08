@@ -3,6 +3,7 @@ import * as path from 'path';
 import * as os from 'os';
 import * as crypto from 'crypto';
 import { loadConfig } from '../config/schema';
+import { loadCredentials } from '../storage/credentials';
 
 function getEncryptionKey(): Buffer {
   let machineId = '';

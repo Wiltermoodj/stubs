@@ -1,3 +1,7 @@
+import { applyGlobalConsoleMasking } from './storage/credentials';
+// Apply global masking on console outputs early
+applyGlobalConsoleMasking();
+
 import { CliRouter } from './cli/router';
 
 async function main() {

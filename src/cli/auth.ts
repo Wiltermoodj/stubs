@@ -1,18 +1,91 @@
-import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import * as readline from 'readline';
 import { GitHubClient, encryptToken } from '../server/github';
+import { loadCredentials, saveCredentials } from '../storage/credentials';
 
 /**
  * Handles the login workflow interactive or via provided token option.
  * Stores global credentials in ~/.stubs/credentials.json (chmod 600).
  */
+/**
+ * Helper to read token securely from stdin (supports interactive masking and piped input).
+ */
+async function askTokenMasked(promptMessage: string): Promise<string> {
+  if (!process.stdin.isTTY) {
+    // Non-TTY / Piped input: read from stdin directly
+    return new Promise((resolve) => {
+      let data = '';
+      process.stdin.on('data', (chunk) => {
+        data += chunk;
+      });
+      process.stdin.on('end', () => {
+        resolve(data.trim());
+      });
+    });
+  }
+
+  // Interactive / TTY: read keypresses, echo '*' or silent, and resolve
+  return new Promise((resolve) => {
+    process.stdout.write(promptMessage);
+    const stdin = process.stdin;
+    stdin.setRawMode(true);
+    stdin.resume();
+    stdin.setEncoding('utf8');
+
+    let input = '';
+    const onData = (char: string) => {
+      if (char === '\n' || char === '\r' || char === '\u0003') {
+        // Enter or Ctrl+C
+        stdin.setRawMode(false);
+        stdin.pause();
+        stdin.removeListener('data', onData);
+        process.stdout.write('\n');
+        if (char === '\u0003') {
+          process.exit(130);
+        }
+        resolve(input.trim());
+        return;
+      }
+      if (char === '\u007f' || char === '\b') {
+        // Backspace
+        if (input.length > 0) {
+          input = input.slice(0, -1);
+          // Erase last '*' from screen
+          process.stdout.write('\b \b');
+        }
+      } else {
+        input += char;
+        process.stdout.write('*');
+      }
+    };
+
+    stdin.on('data', onData);
+  });
+}
+
 export async function handleLogin(
   options: { token?: string; nonInteractive?: boolean } = {},
 ): Promise<number> {
   const credsDir = path.join(os.homedir(), '.stubs');
   const credsPath = path.join(credsDir, 'credentials.json');
+
+  // Environment Variable Priority: if set, use it directly without writing to disk
+  const envToken = process.env.STUBS_GITHUB_PAT || process.env.GITHUB_TOKEN;
+  if (envToken) {
+    console.log('Validating environment token (STUBS_GITHUB_PAT/GITHUB_TOKEN)...');
+    try {
+      const client = new GitHubClient(envToken);
+      const user = await client.validateToken();
+      console.log(
+        `Successfully authenticated as GitHub user: ${user.login} (${user.name || 'No Name'}) via environment variable.`,
+      );
+      return 0;
+    } catch (error: any) {
+      console.error(`Validation of environment token failed: ${error.message || error}`);
+      return 1;
+    }
+  }
 
   let token = options.token;
 
@@ -24,9 +97,7 @@ export async function handleLogin(
 
   if (!token) {
     if (options.nonInteractive) {
-      console.error(
-        'Error: Token must be provided with --token when running in non-interactive mode.',
-      );
+      console.error('Error: STDIN pipe or interactive prompt is required for token submission.');
       return 1;
     }
 
@@ -75,20 +146,12 @@ export async function handleLogin(
       `Successfully authenticated as GitHub user: ${user.login} (${user.name || 'No Name'})`,
     );
 
-    // Ensure directory exists
-    if (!fs.existsSync(credsDir)) {
-      fs.mkdirSync(credsDir, { recursive: true });
-    }
-
-    // Read current credentials if they exist
+    // Read current credentials via secure storage
     let credentials: Record<string, any> = {};
-    if (fs.existsSync(credsPath)) {
-      try {
-        const raw = fs.readFileSync(credsPath, 'utf8');
-        credentials = JSON.parse(raw);
-      } catch {
-        // Ignore and write a new one
-      }
+    try {
+      credentials = loadCredentials();
+    } catch {
+      // Ignore and write a new one
     }
 
     // Save token mapped to host 'github.com' and globally (encrypted at rest)
@@ -99,20 +162,26 @@ export async function handleLogin(
     };
     credentials.github_token = encryptToken(token);
 
-    fs.writeFileSync(credsPath, JSON.stringify(credentials, null, 2), 'utf8');
+    saveCredentials(credentials);
 
-    // Chmod 600 (only owner can read and write)
-    try {
-      fs.chmodSync(credsPath, 0o600);
-    } catch (chmodErr: any) {
-      console.warn(
-        `Warning: Could not set secure file permissions (600) on credentials file: ${chmodErr.message}`,
-      );
+    // Overwrite and clear raw token from memory immediately after storage
+    if (token) {
+      const tokenBuf = Buffer.from(token);
+      tokenBuf.fill(0);
     }
+
+    token = '';
 
     console.log(`Global credentials securely stored in ${credsPath}`);
     return 0;
   } catch (error: any) {
+    // Clear token if error occurs too
+    if (token) {
+      const tokenBuf = Buffer.from(token);
+      tokenBuf.fill(0);
+    }
+    // eslint-disable-next-line no-useless-assignment
+    token = '';
     console.error(`Authentication/Validation failed: ${error.message || error}`);
     return 1;
   }

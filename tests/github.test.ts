@@ -11,6 +11,13 @@ import {
   decryptToken,
 } from '../src/server/github';
 import { handleLogin } from '../src/cli/auth';
+import {
+  loadCredentials,
+  saveCredentials,
+  maskToken,
+  encrypt,
+  decrypt,
+} from '../src/storage/credentials';
 
 describe('GitHub Client API and Auth Credentials Manager', () => {
   const originalEnv = { ...process.env };
@@ -63,15 +70,8 @@ describe('GitHub Client API and Auth Credentials Manager', () => {
       const configPath = path.join(os.tmpdir(), 'stubs_config_test.json');
       fs.writeFileSync(configPath, JSON.stringify({ github_token: 'config_token' }), 'utf8');
 
-      // Create a mock credentials file
-      if (!fs.existsSync(mockCredsDir)) {
-        fs.mkdirSync(mockCredsDir, { recursive: true });
-      }
-      fs.writeFileSync(
-        mockCredsPath,
-        JSON.stringify({ 'github.com': { token: 'credentials_token' } }),
-        'utf8',
-      );
+      // Create a mock credentials file using saveCredentials
+      saveCredentials({ 'github.com': { token: 'credentials_token' } });
 
       const resolved = resolveToken(configPath);
       expect(resolved).toBe('env_pat_token');
@@ -109,14 +109,7 @@ describe('GitHub Client API and Auth Credentials Manager', () => {
       delete process.env.STUBS_GITHUB_PAT;
       delete process.env.GITHUB_TOKEN;
 
-      if (!fs.existsSync(mockCredsDir)) {
-        fs.mkdirSync(mockCredsDir, { recursive: true });
-      }
-      fs.writeFileSync(
-        mockCredsPath,
-        JSON.stringify({ 'github.com': { token: 'credentials_token_hier' } }),
-        'utf8',
-      );
+      saveCredentials({ 'github.com': { token: 'credentials_token_hier' } });
 
       const resolved = resolveToken();
       expect(resolved).toBe('credentials_token_hier');
@@ -320,7 +313,7 @@ describe('GitHub Client API and Auth Credentials Manager', () => {
 
       expect(exitCode).toBe(0);
 
-      // Verify file written to ~/.stubs/credentials.json
+      // Verify file written to ~/.stubs/credentials.json (encrypted format)
       expect(fs.existsSync(mockCredsPath)).toBe(true);
       const raw = fs.readFileSync(mockCredsPath, 'utf8');
       const creds = JSON.parse(raw);
@@ -357,6 +350,108 @@ describe('GitHub Client API and Auth Credentials Manager', () => {
       expect(exitCode).toBe(1);
       expect(fs.existsSync(mockCredsPath)).toBe(false);
 
+      global.fetch = originalFetch;
+    });
+  });
+
+  describe('Secure Storage, Input Masking & Redaction Unit Tests', () => {
+    it('should successfully encrypt and decrypt credentials payload', () => {
+      const plaintext = 'secret-token-payload';
+      const encrypted = encrypt(plaintext);
+
+      const parsed = JSON.parse(encrypted);
+      expect(parsed.encrypted).toBe(true);
+      expect(parsed.salt).toBeDefined();
+      expect(parsed.iv).toBeDefined();
+      expect(parsed.tag).toBeDefined();
+      expect(parsed.ciphertext).toBeDefined();
+
+      const decrypted = decrypt(encrypted);
+      expect(decrypted).toBe(plaintext);
+    });
+
+    it('should enforce strict file permissions (0600) on load and throw exception if insecure', () => {
+      if (process.platform === 'win32') {
+        // Skip chmod checks on Windows
+        return;
+      }
+
+      const creds = { github_token: 'test_token' };
+      saveCredentials(creds);
+
+      // Make the file world-readable (chmod 0644 equivalent or world readable)
+      fs.chmodSync(mockCredsPath, 0o644);
+
+      expect(() => loadCredentials()).toThrow(
+        /Security Error: Credentials file.*has insecure permissions/,
+      );
+
+      // Restore to secure permissions
+      fs.chmodSync(mockCredsPath, 0o600);
+      const loaded = loadCredentials();
+      expect(loaded.github_token).toBe('test_token');
+    });
+
+    it('should correctly redact/mask classic and fine-grained PATs in arbitrary strings', () => {
+      const classicPat = 'ghp_1234567890abcdefghijklmnopqrstuvwxyz';
+      const finePat =
+        'github_pat_1234567890abcdefghijklmnopqrstuvwxyz_1234567890abcdefghijklmnopqrstuvwxyz_12345678';
+      const normalText = 'This is a normal log message with no token.';
+
+      expect(maskToken(classicPat)).toBe('ghp_****wxyz');
+      expect(maskToken(finePat)).toBe('github_pat_****5678');
+      expect(maskToken(normalText)).toBe(normalText);
+
+      const mixedText = `An error occurred: token ${classicPat} is invalid.`;
+      expect(maskToken(mixedText)).toContain('ghp_****wxyz');
+    });
+
+    it('should handle piped non-TTY stdin input in handleLogin', async () => {
+      const mockUser = {
+        login: 'pipeduser',
+        id: 777,
+        name: 'Piped User',
+        email: 'piped@github.mock',
+      };
+
+      const originalFetch = global.fetch;
+      global.fetch = jest.fn().mockImplementation((url) => {
+        if (url.endsWith('/user')) {
+          return Promise.resolve({
+            ok: true,
+            json: () => Promise.resolve(mockUser),
+          });
+        }
+        return Promise.reject(new Error('Unknown url'));
+      }) as any;
+
+      // Mock process.stdin.isTTY to false and stub 'on' event handlers to simulate piped input
+      const originalIsTTY = process.stdin.isTTY;
+      process.stdin.isTTY = false;
+
+      const mockStdinOn = jest
+        .spyOn(process.stdin, 'on')
+        .mockImplementation((event: any, callback: any) => {
+          if (event === 'data') {
+            callback(Buffer.from('piped_pat_token\n'));
+          }
+          if (event === 'end') {
+            callback();
+          }
+          return process.stdin;
+        });
+
+      const exitCode = await handleLogin({
+        nonInteractive: false,
+      });
+
+      expect(exitCode).toBe(0);
+
+      const loaded = loadCredentials();
+      expect(loaded.github_token).toBe('piped_pat_token');
+
+      mockStdinOn.mockRestore();
+      process.stdin.isTTY = originalIsTTY;
       global.fetch = originalFetch;
     });
   });

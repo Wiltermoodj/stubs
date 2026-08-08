@@ -8,6 +8,7 @@ import { PortalServer } from '../server/portal';
 import { loadConfig } from '../config/schema';
 import { SandingEngine, SyncResult } from '../sanding/engine';
 import { MaterializerEngine } from '../materializer/engine';
+import { applyGlobalConsoleMasking } from '../storage/credentials';
 
 export interface CliContext {
   configPath?: string;
@@ -22,6 +23,7 @@ export class CliRouter {
    */
   public async route(argv: string[]): Promise<number> {
     try {
+      applyGlobalConsoleMasking();
       const context = this.parseArgs(argv);
 
       // Handle help/version flags early
@@ -124,7 +126,7 @@ Options:
   -c, --config <path>  Specify path to stubs configuration file (default: .stubs/config.json)
   --depth <depth>      Specify grill depth (light_probe | standard_drill | deep_interrogation)
   --non-interactive    Run the grill engine in non-interactive (automated) mode
-  --token <pat>        Provide a GitHub Personal Access Token directly (auth login)
+  --token <pat>        [DEPRECATED] Provide a GitHub Personal Access Token directly (auth login). Prefer STDIN pipe or environment variables.
   --provider <name>    Specify auth provider (default: github) (auth login)
   --repo <owner/repo>  Override default target repo (Defaults to Wiltermoodj/stubs)
   --branch <name>      Specify a git branch or tag (Defaults to main)
