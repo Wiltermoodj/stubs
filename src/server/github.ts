@@ -1,7 +1,5 @@
-import * as fs from 'fs';
-import * as path from 'path';
-import * as os from 'os';
 import { loadConfig } from '../config/schema';
+import { loadCredentials } from '../storage/credentials';
 
 export interface GitHubUser {
   login: string;
@@ -76,14 +74,10 @@ export function resolveToken(configPath?: string): string {
 
   // 3. ~/.stubs/credentials.json
   try {
-    const credsPath = path.join(os.homedir(), '.stubs', 'credentials.json');
-    if (fs.existsSync(credsPath)) {
-      const rawCreds = fs.readFileSync(credsPath, 'utf8');
-      const creds = JSON.parse(rawCreds);
-      const token = creds['github.com']?.token || creds.github_token;
-      if (token) {
-        return token;
-      }
+    const creds = loadCredentials();
+    const token = creds['github.com']?.token || creds.github_token;
+    if (token) {
+      return token;
     }
   } catch {
     // Ignore
