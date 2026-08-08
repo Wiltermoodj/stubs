@@ -309,6 +309,79 @@ export function verify();
     expect(provisionalAfter).toBeUndefined();
   });
 
+  test('GET /api/v1/bootstrap/scan should scan and find un-bootstrapped .ts files in the workspace', async () => {
+    // Write an un-bootstrapped .ts file
+    const tsPath = path.join(specsDir, 'unbootstrapped.ts');
+    fs.writeFileSync(tsPath, 'export function hello() {}', 'utf8');
+
+    const res = await fetch(getUrl('/api/v1/bootstrap/scan'));
+    expect(res.status).toBe(200);
+    const data = (await res.json()) as any;
+    expect(data.files).toBeDefined();
+    // It should find 'tests/temp_specs_dir/unbootstrapped.ts' as un-bootstrapped because there is no 'tests/temp_specs_dir/unbootstrapped.ts.md'
+    expect(data.files.some((f: string) => f.includes('unbootstrapped.ts'))).toBe(true);
+
+    // Clean up
+    fs.unlinkSync(tsPath);
+  });
+
+  test('POST /api/v1/bootstrap/preview should generate OKF skeleton markdown and extract exports', async () => {
+    const tsPath = path.join(specsDir, 'unbootstrapped.ts');
+    fs.writeFileSync(tsPath, 'export function hello() {} \n export class World {}', 'utf8');
+
+    const payload = {
+      filePath: path.relative(process.cwd(), tsPath).replace(/\\/g, '/'),
+    };
+
+    const res = await fetch(getUrl('/api/v1/bootstrap/preview'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+
+    expect(res.status).toBe(200);
+    const data = (await res.json()) as any;
+    expect(data.content).toBeDefined();
+    expect(data.content).toContain('exports:');
+    expect(data.content).toContain('- hello');
+    expect(data.content).toContain('- World');
+
+    fs.unlinkSync(tsPath);
+  });
+
+  test('POST /api/v1/bootstrap/commit should batch commit and write files', async () => {
+    const tsPath = path.join(specsDir, 'test-bootstrap.ts');
+    fs.writeFileSync(tsPath, 'export const testVal = 42;', 'utf8');
+
+    const mdPath = path.relative(process.cwd(), tsPath).replace(/\\/g, '/');
+
+    const commitPayload = {
+      files: [
+        {
+          filePath: mdPath,
+          content: '---\ntitle: "Test Bootstrap Spec"\nstatus: "skeleton"\n---',
+        },
+      ],
+    };
+
+    const res = await fetch(getUrl('/api/v1/bootstrap/commit'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(commitPayload),
+    });
+
+    expect(res.status).toBe(200);
+    const data = (await res.json()) as any;
+    expect(data.success).toBe(true);
+
+    // Verify file exists on disk
+    expect(fs.existsSync(path.resolve(process.cwd(), `${mdPath}.md`))).toBe(true);
+
+    // Clean up
+    fs.unlinkSync(tsPath);
+    fs.unlinkSync(path.resolve(process.cwd(), `${mdPath}.md`));
+  });
+
   describe('GitHub Dual-Mode Portal Integration Endpoints', () => {
     let originalFetch: typeof global.fetch;
     let mockFetchQueue: any[] = [];
