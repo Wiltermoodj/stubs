@@ -143,6 +143,9 @@ function renderApp() {
 
       <!-- Action Buttons -->
       <div class="flex items-center space-x-2">
+        <button onclick="openBootstrapModal()" class="text-[11px] font-semibold text-white bg-indigo-600 hover:bg-indigo-500 border border-indigo-500/20 px-2.5 py-1.5 rounded-lg transition-all active:scale-95">
+          ⚡ Bootstrap Codebase
+        </button>
         <button onclick="showPatModal()" class="text-[11px] font-semibold text-slate-400 bg-slate-800/80 hover:bg-slate-700/80 border border-slate-700/50 px-2.5 py-1.5 rounded-lg transition-all active:scale-95">
           🔑 PAT Setup
         </button>
@@ -264,6 +267,80 @@ function renderApp() {
           </button>
         </div>
         <p id="pat-error" class="text-[11px] text-rose-400 hidden italic text-center"></p>
+      </div>
+    </div>
+
+    <!-- Bootstrap Codebase Modal -->
+    <div id="bootstrap-modal" class="fixed inset-0 bg-black/80 z-50 flex items-center justify-center hidden px-4">
+      <div class="bg-slate-900 border border-slate-800 w-full max-w-4xl h-[85vh] p-6 rounded-2xl shadow-2xl flex flex-col space-y-4">
+        <div class="flex items-center justify-between border-b border-slate-800 pb-3 shrink-0">
+          <div class="flex items-center space-x-2.5">
+            <span class="text-xl">⚡</span>
+            <div>
+              <h2 class="text-base font-semibold text-white tracking-tight">Bootstrap Specification Sidecars</h2>
+              <p class="text-xs text-slate-400">Generate OKF skeleton sidecars for TypeScript files missing specs.</p>
+            </div>
+          </div>
+          <button onclick="closeBootstrapModal()" class="text-slate-500 hover:text-slate-300 text-sm p-1">✕</button>
+        </div>
+
+        <!-- Main Columns Split -->
+        <div class="flex-1 flex overflow-hidden gap-4 min-h-0">
+          <!-- Left Pane: Checklist of un-bootstrapped files -->
+          <div class="w-1/2 flex flex-col space-y-3 border-r border-slate-800 pr-4">
+            <div class="flex items-center justify-between">
+              <h3 class="text-xs font-semibold text-slate-200">Un-bootstrapped TS Files</h3>
+              <div class="flex space-x-3">
+                <button onclick="toggleAllBootstrapCheckboxes(true)" class="text-[10px] text-indigo-400 hover:underline">Select All</button>
+                <button onclick="toggleAllBootstrapCheckboxes(false)" class="text-[10px] text-slate-500 hover:underline">Deselect All</button>
+              </div>
+            </div>
+
+            <!-- Checklist container -->
+            <div id="bootstrap-files-list" class="flex-1 overflow-y-auto custom-scroll space-y-2 bg-slate-950/40 p-3 rounded-xl border border-slate-800/80">
+              <p class="text-xs text-slate-500 italic">No files scanned yet.</p>
+            </div>
+          </div>
+
+          <!-- Right Pane: Generation Configuration and Preview -->
+          <div class="w-1/2 flex flex-col space-y-4">
+            <!-- Template selector -->
+            <div class="space-y-1.5 shrink-0">
+              <label for="bootstrap-template-select" class="block text-[11px] font-medium text-slate-400">Base Template Mold</label>
+              <select
+                id="bootstrap-template-select"
+                onchange="onBootstrapTemplateChange()"
+                class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-300 focus:outline-none focus:border-indigo-500"
+              >
+                <option value="">-- Use Default OKF Skeleton --</option>
+              </select>
+            </div>
+
+            <!-- Preview container -->
+            <div class="flex-1 flex flex-col min-h-0">
+              <div class="flex items-center justify-between mb-1.5 shrink-0">
+                <h3 class="text-xs font-semibold text-slate-200">Specification Preview</h3>
+                <span id="preview-filename-badge" class="text-[10px] font-mono text-indigo-400 truncate max-w-[200px]">None selected</span>
+              </div>
+              <div class="flex-1 bg-slate-950 border border-slate-800 rounded-xl overflow-hidden flex flex-col">
+                <pre class="flex-1 p-3 text-[10px] text-slate-300 font-mono overflow-y-auto custom-scroll whitespace-pre-wrap select-all leading-relaxed" id="bootstrap-preview-text">Select a file on the left to preview generated specification content...</pre>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Footer Buttons -->
+        <div class="flex items-center justify-between border-t border-slate-800 pt-3 shrink-0">
+          <span id="bootstrap-status-info" class="text-xs text-slate-500 italic">0 files selected for bootstrapping.</span>
+          <div class="flex space-x-2">
+            <button onclick="commitBootstrapSidecars()" id="bootstrap-commit-btn" class="bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs px-5 py-2.5 rounded-lg active:scale-95 transition-all shadow-sm" disabled>
+              Commit Specifications
+            </button>
+            <button onclick="closeBootstrapModal()" class="bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold text-xs px-4 py-2.5 rounded-lg active:scale-95 transition-all">
+              Cancel
+            </button>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -1265,3 +1342,247 @@ function escapeHtml(text: string): string {
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#039;');
 }
+
+// Interactive Sidecar Bootstrapping Tool State and Logic
+let bootstrapFiles: string[] = [];
+let bootstrapSelectedFile: string | null = null;
+
+async function openBootstrapModal() {
+  const modal = document.getElementById('bootstrap-modal');
+  if (modal) modal.classList.remove('hidden');
+
+  const listContainer = document.getElementById('bootstrap-files-list');
+  if (listContainer) listContainer.innerHTML = '<p class="text-xs text-slate-500 italic p-2">Scanning workspace for unbootstrapped files...</p>';
+
+  function getQueryParams() {
+    if (currentRepo) {
+      return `?mode=remote&repo=${encodeURIComponent(currentRepo)}&branch=${encodeURIComponent(currentBranch)}`;
+    }
+    return '';
+  }
+
+  try {
+    const scanRes = await fetch('/api/v1/bootstrap/scan' + getQueryParams());
+    const scanData = await scanRes.json();
+    bootstrapFiles = scanData.files || [];
+
+    if (listContainer) {
+      if (bootstrapFiles.length === 0) {
+        listContainer.innerHTML = '<p class="text-xs text-slate-500 italic p-2">All TypeScript files in the codebase have corresponding sidecar specifications!</p>';
+      } else {
+        listContainer.innerHTML = bootstrapFiles.map((file) => `
+          <div class="flex items-center justify-between p-2 hover:bg-slate-900/50 rounded-lg transition-all">
+            <label class="flex items-center space-x-2.5 cursor-pointer truncate mr-2">
+              <input
+                type="checkbox"
+                class="bootstrap-file-chk rounded border-slate-800 bg-slate-950 text-indigo-600 focus:ring-indigo-500"
+                value="${file}"
+                onchange="onBootstrapCheckboxChange()"
+              />
+              <span class="text-xs text-slate-300 font-medium truncate">${file}</span>
+            </label>
+            <button
+              onclick="previewBootstrapFile('${file}')"
+              class="text-[10px] text-indigo-400 hover:underline cursor-pointer shrink-0 font-medium px-2 py-1 bg-slate-900 border border-slate-800/80 rounded"
+            >
+              Preview
+            </button>
+          </div>
+        `).join('');
+      }
+    }
+  } catch (err) {
+    if (listContainer) listContainer.innerHTML = '<p class="text-xs text-rose-400 font-semibold p-2">Failed to scan workspace.</p>';
+  }
+
+  // 2. Load templates dropdown
+  const templateSelect = document.getElementById('bootstrap-template-select') as HTMLSelectElement;
+  if (templateSelect) {
+    templateSelect.innerHTML = '<option value="">-- Use Default OKF Skeleton --</option>';
+
+    try {
+      const templatesRes = await fetch('/api/v1/templates' + getQueryParams());
+      const templatesData = await templatesRes.json();
+      const tpls = templatesData.templates || [];
+
+      tpls.forEach((t: any) => {
+        const opt = document.createElement('option');
+        opt.value = t.name;
+        opt.textContent = t.name + (t.isDraft ? ' (draft)' : '');
+        templateSelect.appendChild(opt);
+      });
+    } catch (err) {
+      console.error('Failed to load templates:', err);
+    }
+  }
+
+  bootstrapSelectedFile = null;
+  const previewText = document.getElementById('bootstrap-preview-text');
+  if (previewText) previewText.textContent = 'Select a file on the left to preview generated specification content...';
+  const previewBadge = document.getElementById('preview-filename-badge');
+  if (previewBadge) previewBadge.textContent = 'None selected';
+  updateBootstrapStatus();
+}
+
+(window as any).openBootstrapModal = openBootstrapModal;
+
+function closeBootstrapModal() {
+  const modal = document.getElementById('bootstrap-modal');
+  if (modal) modal.classList.add('hidden');
+}
+
+(window as any).closeBootstrapModal = closeBootstrapModal;
+
+function toggleAllBootstrapCheckboxes(checked: boolean) {
+  const chks = document.querySelectorAll('.bootstrap-file-chk') as NodeListOf<HTMLInputElement>;
+  chks.forEach(chk => chk.checked = checked);
+  updateBootstrapStatus();
+}
+
+(window as any).toggleAllBootstrapCheckboxes = toggleAllBootstrapCheckboxes;
+
+function onBootstrapCheckboxChange() {
+  updateBootstrapStatus();
+}
+
+(window as any).onBootstrapCheckboxChange = onBootstrapCheckboxChange;
+
+async function previewBootstrapFile(filePath: string) {
+  bootstrapSelectedFile = filePath;
+  const previewBadge = document.getElementById('preview-filename-badge');
+  if (previewBadge) previewBadge.textContent = filePath;
+  const previewText = document.getElementById('bootstrap-preview-text');
+  if (previewText) previewText.textContent = 'Generating preview...';
+
+  const templateSelect = document.getElementById('bootstrap-template-select') as HTMLSelectElement;
+  const templateName = templateSelect ? templateSelect.value : '';
+
+  function getQueryParams() {
+    if (currentRepo) {
+      return `?mode=remote&repo=${encodeURIComponent(currentRepo)}&branch=${encodeURIComponent(currentBranch)}`;
+    }
+    return '';
+  }
+
+  try {
+    const res = await fetch('/api/v1/bootstrap/preview' + getQueryParams(), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ filePath, templateName })
+    });
+    const data = await res.json();
+    if (previewText) {
+      if (data.content) {
+        previewText.textContent = data.content;
+      } else {
+        previewText.textContent = 'Error generating preview: ' + (data.error || 'unknown');
+      }
+    }
+  } catch (err) {
+    if (previewText) previewText.textContent = 'Failed to fetch generation preview.';
+  }
+}
+
+(window as any).previewBootstrapFile = previewBootstrapFile;
+
+function onBootstrapTemplateChange() {
+  if (bootstrapSelectedFile) {
+    previewBootstrapFile(bootstrapSelectedFile);
+  }
+}
+
+(window as any).onBootstrapTemplateChange = onBootstrapTemplateChange;
+
+function updateBootstrapStatus() {
+  const chks = document.querySelectorAll('.bootstrap-file-chk:checked') as NodeListOf<HTMLInputElement>;
+  const count = chks.length;
+  const info = document.getElementById('bootstrap-status-info');
+  if (info) info.textContent = `${count} file(s) selected for bootstrapping.`;
+  const btn = document.getElementById('bootstrap-commit-btn') as HTMLButtonElement;
+  if (btn) btn.disabled = (count === 0);
+}
+
+async function commitBootstrapSidecars() {
+  const chks = document.querySelectorAll('.bootstrap-file-chk:checked') as NodeListOf<HTMLInputElement>;
+  if (chks.length === 0) return;
+
+  const commitBtn = document.getElementById('bootstrap-commit-btn') as HTMLButtonElement;
+  if (commitBtn) {
+    commitBtn.disabled = true;
+    commitBtn.textContent = 'Committing...';
+  }
+
+  const filesToCommit: { filePath: string; content: string }[] = [];
+  const templateSelect = document.getElementById('bootstrap-template-select') as HTMLSelectElement;
+  const templateName = templateSelect ? templateSelect.value : '';
+
+  showToast(`Generating sidecars for ${chks.length} files...`, "info");
+
+  function getQueryParams() {
+    if (currentRepo) {
+      return `?mode=remote&repo=${encodeURIComponent(currentRepo)}&branch=${encodeURIComponent(currentBranch)}`;
+    }
+    return '';
+  }
+
+  for (let i = 0; i < chks.length; i++) {
+    const filePath = chks[i].value;
+    try {
+      const res = await fetch('/api/v1/bootstrap/preview' + getQueryParams(), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ filePath, templateName })
+      });
+      const data = await res.json();
+      if (data.content) {
+        filesToCommit.push({ filePath, content: data.content });
+      } else {
+        showToast(`Skipped ${filePath}: generation failed.`, "error");
+      }
+    } catch (err) {
+      showToast(`Skipped ${filePath}: fetch failed.`, "error");
+    }
+  }
+
+  if (filesToCommit.length === 0) {
+    showToast("No valid files generated. Aborting commit.", "error");
+    if (commitBtn) {
+      commitBtn.textContent = 'Commit Specifications';
+      commitBtn.disabled = false;
+    }
+    return;
+  }
+
+  showToast(`Committing ${filesToCommit.length} sidecar files...`, "info");
+
+  try {
+    const commitRes = await fetch('/api/v1/bootstrap/commit' + getQueryParams(), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ files: filesToCommit })
+    });
+    const commitData = await commitRes.json();
+    if (commitData.success) {
+      showToast(`Successfully bootstrapped ${filesToCommit.length} sidecars!`, "success");
+      closeBootstrapModal();
+
+      // Refresh spec file lists
+      if (typeof (window as any).fetchSpecsFromGithub === 'function') {
+        await (window as any).fetchSpecsFromGithub();
+      } else if (typeof (window as any).loadWorkspace === 'function') {
+        await (window as any).loadWorkspace();
+      }
+    } else {
+      showToast("Commit failed: " + (commitData.error || 'unknown'), "error");
+    }
+  } catch (err) {
+    showToast("Error executing bootstrap commit.", "error");
+  } finally {
+    if (commitBtn) {
+      commitBtn.textContent = 'Commit Specifications';
+      commitBtn.disabled = false;
+    }
+  }
+}
+
+(window as any).commitBootstrapSidecars = commitBootstrapSidecars;

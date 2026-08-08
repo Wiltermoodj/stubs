@@ -2,7 +2,28 @@ import * as http from 'http';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as crypto from 'crypto';
+import * as yaml from 'js-yaml';
 import { GraphEngine } from '../graph/engine';
+
+export function extractExports(code: string): string[] {
+  const exports: string[] = [];
+  const regex = /^\s*export\s+(?:async\s+)?(?:function|class|const|let|var|interface|type|enum)\s+([a-zA-Z0-9_$]+)/gm;
+  let match;
+  while ((match = regex.exec(code)) !== null) {
+    if (match[1]) {
+      exports.push(match[1]);
+    }
+  }
+  const namedExportsRegex = /^\s*export\s*\{([^}]+)\}/gm;
+  while ((match = namedExportsRegex.exec(code)) !== null) {
+    const names = match[1].split(',').map(n => {
+      const parts = n.trim().split(/\s+as\s+/);
+      return parts[parts.length - 1].trim();
+    }).filter(Boolean);
+    exports.push(...names);
+  }
+  return Array.from(new Set(exports));
+}
 import { loadConfig, StubsConfig } from '../config/schema';
 import { maskToken } from '../storage/credentials';
 import { parseOkfSpec } from '../parser/okf';
@@ -900,6 +921,212 @@ Using EJS/Handlebars to render a standard service module.
         return;
       }
 
+      // GET /api/v1/bootstrap/scan
+      if (pathname === '/api/v1/bootstrap/scan' && req.method === 'GET') {
+        const { isRemote, repo, branch } = await this.resolveGraphEngine(parsedUrl);
+        let unbootstrapped: string[] = [];
+
+        if (isRemote) {
+          const [owner, name] = repo.split('/');
+          const client = new GitHubClient();
+          const tree = await client.fetchTree(owner, name, branch);
+
+          const tsFiles = tree.filter(entry =>
+            entry.type === 'blob' &&
+            entry.path.endsWith('.ts') &&
+            !entry.path.endsWith('.d.ts') &&
+            !entry.path.startsWith('node_modules/') &&
+            !entry.path.startsWith('.git/') &&
+            !entry.path.startsWith('.stubs/') &&
+            !entry.path.startsWith('dist/') &&
+            !entry.path.startsWith('build/')
+          ).map(e => e.path);
+
+          const mdFiles = new Set(
+            tree.filter(entry => entry.type === 'blob' && entry.path.endsWith('.ts.md')).map(e => e.path)
+          );
+
+          unbootstrapped = tsFiles.filter(tsFile => !mdFiles.has(`${tsFile}.md`));
+        } else {
+          const result = await this.scanLocalWorkspace();
+          unbootstrapped = result.unbootstrapped;
+        }
+
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ files: unbootstrapped }));
+        return;
+      }
+
+      // POST /api/v1/bootstrap/preview
+      if (pathname === '/api/v1/bootstrap/preview' && req.method === 'POST') {
+        const { isRemote, repo, branch } = await this.resolveGraphEngine(parsedUrl);
+        const body = await this.parseJsonBody(req);
+        const { filePath, templateName } = body;
+
+        if (!filePath) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Missing filePath in request body' }));
+          return;
+        }
+
+        let code = '';
+        if (isRemote) {
+          const [owner, name] = repo.split('/');
+          const client = new GitHubClient();
+          code = await client.fetchFileContents(owner, name, filePath, branch);
+        } else {
+          const fullPath = path.resolve(process.cwd(), filePath);
+          if (fs.existsSync(fullPath)) {
+            code = await fs.promises.readFile(fullPath, 'utf8');
+          }
+        }
+
+        // Extract public exports
+        const exportsList = extractExports(code);
+
+        // Fetch template content
+        let templateContent = '';
+        if (templateName) {
+          if (isRemote) {
+            // Find in remoteTemplates cache
+            const cached = this.remoteTemplates.get(`${repo}#${branch}`) || [];
+            const tpl = cached.find(t => t.name === templateName);
+            if (tpl) {
+              templateContent = tpl.content;
+            }
+          }
+          if (!templateContent) {
+            const templateEngine = new TemplateEngine(this.config.paths.templates_dir);
+            const templatePath = templateEngine.getTemplatePath(templateName);
+            if (fs.existsSync(templatePath)) {
+              templateContent = await fs.promises.readFile(templatePath, 'utf8');
+            }
+          }
+        }
+
+        if (!templateContent) {
+          templateContent = `# {{title}} Specification
+
+Generated skeleton specification for {{title}}.
+
+- Target Code File: {{target_code_file}}
+- Status: skeleton
+- Version: 1
+
+## Module Overview
+Provides lightweight, secure interfaces.
+
+## Interfaces
+No custom interfaces specified yet.
+`;
+        }
+
+        const filename = path.basename(filePath);
+        const title = filename.replace(/\.ts$/, '').split(/[-_]/).map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+
+        const templateData = {
+          project_name: this.config.project_name || 'stubs',
+          version: '1.0.0',
+          title: title,
+          target_code_file: `./${filename}`,
+          exports: exportsList
+        };
+
+        const templateEngine = new TemplateEngine(this.config.paths.templates_dir);
+        const rendered = templateEngine.renderString(templateContent, templateData);
+
+        const fm = {
+          title: `${title} Spec`,
+          type: 'sidecar-spec',
+          description: `Generated skeleton specification for ${title}.`,
+          tags: [],
+          status: 'skeleton',
+          version: 1,
+          target_code_file: `./${filename}`,
+          status_flag: 'clean',
+          exports: exportsList
+        };
+
+        const yamlHeader = `---\n${yaml.dump(fm)}---\n`;
+        const fullContent = yamlHeader + '\n' + rendered;
+
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ content: fullContent }));
+        return;
+      }
+
+      // POST /api/v1/bootstrap/commit
+      if (pathname === '/api/v1/bootstrap/commit' && req.method === 'POST') {
+        const { engine, isRemote, repo, branch } = await this.resolveGraphEngine(parsedUrl);
+        const body = await this.parseJsonBody(req);
+        const { files } = body; // Array of { filePath: string, content: string }
+
+        if (!files || !Array.isArray(files)) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Missing or invalid files array in request body' }));
+          return;
+        }
+
+        for (const fileItem of files) {
+          const { filePath, content } = fileItem;
+          const mdPath = `${filePath}.md`;
+
+          if (isRemote) {
+            const [owner, name] = repo.split('/');
+            const client = new GitHubClient();
+            await client.createOrUpdateFile(
+              owner,
+              name,
+              mdPath,
+              content,
+              `Bootstrap sidecar ${mdPath}`,
+              branch,
+            );
+
+            // Also upsert in-memory SQL for immediate UI updates
+            const parsed = parseOkfSpec(content);
+            if (parsed.isValid && parsed.frontmatter) {
+              const fileHash = crypto.createHash('sha256').update(content).digest('hex');
+              await engine.upsertSidecar({
+                filePath: mdPath,
+                frontmatter: parsed.frontmatter,
+                body: parsed.body,
+                fileHash,
+              });
+            }
+          } else {
+            const fullPath = path.resolve(process.cwd(), mdPath);
+            await fs.promises.mkdir(path.dirname(fullPath), { recursive: true });
+            await fs.promises.writeFile(fullPath, content, 'utf8');
+
+            // Index inside graphEngine
+            const parsed = parseOkfSpec(content);
+            if (parsed.isValid && parsed.frontmatter) {
+              const fileHash = crypto.createHash('sha256').update(content).digest('hex');
+              await this.graphEngine.upsertSidecar({
+                filePath: mdPath,
+                frontmatter: parsed.frontmatter,
+                body: parsed.body,
+                fileHash,
+              });
+            }
+          }
+        }
+
+        // Reindex local workspace to keep everything fully aligned
+        if (!isRemote) {
+          await this.graphEngine.indexWorkspace(this.config.paths.specs_dir);
+        }
+
+        // Broadcast sync & update events
+        this.broadcast('github:sync', { repo, branch, timestamp: new Date().toISOString() });
+        this.broadcast('graph:updated', { timestamp: new Date().toISOString() });
+
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ success: true }));
+        return;
+      }
+
       // 404 fallback
       res.writeHead(404, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: 'Not found' }));
@@ -1023,6 +1250,48 @@ Using EJS/Handlebars to render a standard service module.
     }, 150);
   }
 
+  private async scanLocalWorkspace(): Promise<{ unbootstrapped: string[] }> {
+    const tsFiles: string[] = [];
+    const mdFiles: Set<string> = new Set();
+
+    const recurse = async (currentDir: string) => {
+      if (!fs.existsSync(currentDir)) return;
+      const entries = await fs.promises.readdir(currentDir, { withFileTypes: true });
+      for (const entry of entries) {
+        const fullPath = path.join(currentDir, entry.name);
+        const relativePath = path.relative(process.cwd(), fullPath).replace(/\\/g, '/');
+
+        if (entry.isDirectory()) {
+          if (
+            entry.name === 'node_modules' ||
+            entry.name === '.git' ||
+            entry.name === '.stubs' ||
+            entry.name === 'dist' ||
+            entry.name === 'build'
+          ) {
+            continue;
+          }
+          await recurse(fullPath);
+        } else if (entry.isFile()) {
+          if (entry.name.endsWith('.ts') && !entry.name.endsWith('.d.ts')) {
+            tsFiles.push(relativePath);
+          } else if (entry.name.endsWith('.ts.md')) {
+            mdFiles.add(relativePath);
+          }
+        }
+      }
+    };
+
+    await recurse(process.cwd());
+
+    const unbootstrapped = tsFiles.filter(tsFile => {
+      const expectedMd = `${tsFile}.md`;
+      return !mdFiles.has(expectedMd);
+    });
+
+    return { unbootstrapped };
+  }
+
   /**
    * HTML Content for the stubs web dashboard portal.
    */
@@ -1126,6 +1395,13 @@ Using EJS/Handlebars to render a standard service module.
     </div>
 
     <div class="flex items-center space-x-4">
+      <!-- Bootstrap Codebase Button -->
+      <button
+        onclick="openBootstrapModal()"
+        class="bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs px-3 py-1.5 rounded-lg transition-all active:scale-95 shadow-sm"
+      >
+        ⚡ Bootstrap Codebase
+      </button>
       <!-- Connectivity Status Badge -->
       <div id="connection-badge" class="flex items-center space-x-2 px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors duration-300 connection-dead">
         <span class="h-2 w-2 rounded-full animate-pulse bg-current" id="connection-dot"></span>
@@ -1263,6 +1539,80 @@ Using EJS/Handlebars to render a standard service module.
 
   </div>
 
+  <!-- Bootstrap Codebase Modal -->
+  <div id="bootstrap-modal" class="fixed inset-0 bg-black/80 z-50 flex items-center justify-center hidden px-4">
+    <div class="bg-slate-900 border border-slate-800 w-full max-w-4xl h-[85vh] p-6 rounded-2xl shadow-2xl flex flex-col space-y-4">
+      <div class="flex items-center justify-between border-b border-slate-800 pb-3 shrink-0">
+        <div class="flex items-center space-x-2.5">
+          <span class="text-xl">⚡</span>
+          <div>
+            <h2 class="text-base font-semibold text-white tracking-tight">Bootstrap Specification Sidecars</h2>
+            <p class="text-xs text-slate-400">Generate OKF skeleton sidecars for TypeScript files missing specs.</p>
+          </div>
+        </div>
+        <button onclick="closeBootstrapModal()" class="text-slate-500 hover:text-slate-300 text-sm p-1">✕</button>
+      </div>
+
+      <!-- Main Columns Split -->
+      <div class="flex-1 flex overflow-hidden gap-4 min-h-0">
+        <!-- Left Pane: Checklist of un-bootstrapped files -->
+        <div class="w-1/2 flex flex-col space-y-3 border-r border-slate-800 pr-4">
+          <div class="flex items-center justify-between">
+            <h3 class="text-xs font-semibold text-slate-200">Un-bootstrapped TS Files</h3>
+            <div class="flex space-x-3">
+              <button onclick="toggleAllBootstrapCheckboxes(true)" class="text-[10px] text-indigo-400 hover:underline">Select All</button>
+              <button onclick="toggleAllBootstrapCheckboxes(false)" class="text-[10px] text-slate-500 hover:underline">Deselect All</button>
+            </div>
+          </div>
+
+          <!-- Checklist container -->
+          <div id="bootstrap-files-list" class="flex-1 overflow-y-auto custom-scroll space-y-2 bg-slate-950/40 p-3 rounded-xl border border-slate-800/80">
+            <p class="text-xs text-slate-500 italic">No files scanned yet.</p>
+          </div>
+        </div>
+
+        <!-- Right Pane: Generation Configuration and Preview -->
+        <div class="w-1/2 flex flex-col space-y-4">
+          <!-- Template selector -->
+          <div class="space-y-1.5 shrink-0">
+            <label for="bootstrap-template-select" class="block text-[11px] font-medium text-slate-400">Base Template Mold</label>
+            <select
+              id="bootstrap-template-select"
+              onchange="onBootstrapTemplateChange()"
+              class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-300 focus:outline-none focus:border-indigo-500"
+            >
+              <option value="">-- Use Default OKF Skeleton --</option>
+            </select>
+          </div>
+
+          <!-- Preview container -->
+          <div class="flex-1 flex flex-col min-h-0">
+            <div class="flex items-center justify-between mb-1.5 shrink-0">
+              <h3 class="text-xs font-semibold text-slate-200">Specification Preview</h3>
+              <span id="preview-filename-badge" class="text-[10px] font-mono text-indigo-400 truncate max-w-[200px]">None selected</span>
+            </div>
+            <div class="flex-1 bg-slate-950 border border-slate-800 rounded-xl overflow-hidden flex flex-col">
+              <pre class="flex-1 p-3 text-[10px] text-slate-300 font-mono overflow-y-auto custom-scroll whitespace-pre-wrap select-all leading-relaxed" id="bootstrap-preview-text">Select a file on the left to preview generated specification content...</pre>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Footer Buttons -->
+      <div class="flex items-center justify-between border-t border-slate-800 pt-3 shrink-0">
+        <span id="bootstrap-status-info" class="text-xs text-slate-500 italic">0 files selected for bootstrapping.</span>
+        <div class="flex space-x-2">
+          <button onclick="commitBootstrapSidecars()" id="bootstrap-commit-btn" class="bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs px-5 py-2.5 rounded-lg active:scale-95 transition-all shadow-sm" disabled>
+            Commit Specifications
+          </button>
+          <button onclick="closeBootstrapModal()" class="bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold text-xs px-4 py-2.5 rounded-lg active:scale-95 transition-all">
+            Cancel
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- Toast Overlay System (Max 3 visible) -->
   <div id="toast-container" class="fixed bottom-6 right-6 flex flex-col space-y-2 z-50 pointer-events-none"></div>
 
@@ -1279,6 +1629,191 @@ Using EJS/Handlebars to render a standard service module.
     let currentMode = 'local';
     let currentRepo = '';
     let currentBranch = 'main';
+
+    let bootstrapFiles = [];
+    let bootstrapSelectedFile = null;
+
+    async function openBootstrapModal() {
+      const modal = document.getElementById('bootstrap-modal');
+      modal.classList.remove('hidden');
+
+      // 1. Scan for un-bootstrapped files
+      const listContainer = document.getElementById('bootstrap-files-list');
+      listContainer.innerHTML = '<p class="text-xs text-slate-500 italic p-2">Scanning workspace for unbootstrapped files...</p>';
+
+      try {
+        const scanRes = await fetch('/api/v1/bootstrap/scan' + getQueryParams());
+        const scanData = await scanRes.json();
+        bootstrapFiles = scanData.files || [];
+
+        if (bootstrapFiles.length === 0) {
+          listContainer.innerHTML = '<p class="text-xs text-slate-500 italic p-2">All TypeScript files in the codebase have corresponding sidecar specifications!</p>';
+        } else {
+          listContainer.innerHTML = bootstrapFiles.map((file, idx) => \`
+            <div class="flex items-center justify-between p-2 hover:bg-slate-900/50 rounded-lg transition-all">
+              <label class="flex items-center space-x-2.5 cursor-pointer truncate mr-2">
+                <input
+                  type="checkbox"
+                  class="bootstrap-file-chk rounded border-slate-800 bg-slate-950 text-indigo-600 focus:ring-indigo-500"
+                  value="\${file}"
+                  onchange="onBootstrapCheckboxChange()"
+                />
+                <span class="text-xs text-slate-300 font-medium truncate">\${file}</span>
+              </label>
+              <button
+                onclick="previewBootstrapFile('\${file}')"
+                class="text-[10px] text-indigo-400 hover:underline cursor-pointer shrink-0 font-medium px-2 py-1 bg-slate-900 border border-slate-800/80 rounded"
+              >
+                Preview
+              </button>
+            </div>
+          \`).join('');
+        }
+      } catch (err) {
+        listContainer.innerHTML = '<p class="text-xs text-rose-400 font-semibold p-2">Failed to scan workspace.</p>';
+      }
+
+      // 2. Load templates dropdown
+      const templateSelect = document.getElementById('bootstrap-template-select');
+      templateSelect.innerHTML = '<option value="">-- Use Default OKF Skeleton --</option>';
+
+      try {
+        const templatesRes = await fetch('/api/v1/templates' + getQueryParams());
+        const templatesData = await templatesRes.json();
+        const tpls = templatesData.templates || [];
+
+        tpls.forEach(t => {
+          const opt = document.createElement('option');
+          opt.value = t.name;
+          opt.textContent = t.name + (t.isDraft ? ' (draft)' : '');
+          templateSelect.appendChild(opt);
+        });
+      } catch (err) {
+        console.error('Failed to load templates:', err);
+      }
+
+      // Reset preview and status
+      bootstrapSelectedFile = null;
+      document.getElementById('bootstrap-preview-text').textContent = 'Select a file on the left to preview generated specification content...';
+      document.getElementById('preview-filename-badge').textContent = 'None selected';
+      updateBootstrapStatus();
+    }
+
+    function closeBootstrapModal() {
+      document.getElementById('bootstrap-modal').classList.add('hidden');
+    }
+
+    function toggleAllBootstrapCheckboxes(checked) {
+      const chks = document.querySelectorAll('.bootstrap-file-chk');
+      chks.forEach(chk => chk.checked = checked);
+      updateBootstrapStatus();
+    }
+
+    function onBootstrapCheckboxChange() {
+      updateBootstrapStatus();
+    }
+
+    async function previewBootstrapFile(filePath) {
+      bootstrapSelectedFile = filePath;
+      document.getElementById('preview-filename-badge').textContent = filePath;
+      const previewText = document.getElementById('bootstrap-preview-text');
+      previewText.textContent = 'Generating preview...';
+
+      const templateName = document.getElementById('bootstrap-template-select').value;
+
+      try {
+        const res = await fetch('/api/v1/bootstrap/preview' + getQueryParams(), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ filePath, templateName })
+        });
+        const data = await res.json();
+        if (data.content) {
+          previewText.textContent = data.content;
+        } else {
+          previewText.textContent = 'Error generating preview: ' + (data.error || 'unknown');
+        }
+      } catch (err) {
+        previewText.textContent = 'Failed to fetch generation preview.';
+      }
+    }
+
+    function onBootstrapTemplateChange() {
+      if (bootstrapSelectedFile) {
+        previewBootstrapFile(bootstrapSelectedFile);
+      }
+    }
+
+    function updateBootstrapStatus() {
+      const chks = document.querySelectorAll('.bootstrap-file-chk:checked');
+      const count = chks.length;
+      document.getElementById('bootstrap-status-info').textContent = \`\${count} file(s) selected for bootstrapping.\`;
+      document.getElementById('bootstrap-commit-btn').disabled = (count === 0);
+    }
+
+    async function commitBootstrapSidecars() {
+      const chks = document.querySelectorAll('.bootstrap-file-chk:checked');
+      if (chks.length === 0) return;
+
+      const commitBtn = document.getElementById('bootstrap-commit-btn');
+      commitBtn.disabled = true;
+      commitBtn.textContent = 'Committing...';
+
+      const filesToCommit = [];
+      const templateName = document.getElementById('bootstrap-template-select').value;
+
+      showToast(\`Generating sidecars for \${chks.length} files...\`, "info");
+
+      // Generate preview/content for each selected file
+      for (const chk of chks) {
+        const filePath = chk.value;
+        try {
+          const res = await fetch('/api/v1/bootstrap/preview' + getQueryParams(), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ filePath, templateName })
+          });
+          const data = await res.json();
+          if (data.content) {
+            filesToCommit.push({ filePath, content: data.content });
+          } else {
+            showToast(\`Skipped \${filePath}: generation failed.\`, "error");
+          }
+        } catch (err) {
+          showToast(\`Skipped \${filePath}: fetch failed.\`, "error");
+        }
+      }
+
+      if (filesToCommit.length === 0) {
+        showToast("No valid files generated. Aborting commit.", "error");
+        commitBtn.textContent = 'Commit Specifications';
+        commitBtn.disabled = false;
+        return;
+      }
+
+      showToast(\`Committing \${filesToCommit.length} sidecar files...\`, "info");
+
+      try {
+        const commitRes = await fetch('/api/v1/bootstrap/commit' + getQueryParams(), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ files: filesToCommit })
+        });
+        const commitData = await commitRes.json();
+        if (commitData.success) {
+          showToast(\`Successfully bootstrapped \${filesToCommit.length} sidecars!\`, "success");
+          closeBootstrapModal();
+          initWorkspace(); // Refresh workspace specs list
+        } else {
+          showToast("Commit failed: " + (commitData.error || 'unknown'), "error");
+        }
+      } catch (err) {
+        showToast("Error executing bootstrap commit.", "error");
+      } finally {
+        commitBtn.textContent = 'Commit Specifications';
+        commitBtn.disabled = false;
+      }
+    }
 
     function getQueryParams() {
       if (currentMode === 'remote' && currentRepo) {
