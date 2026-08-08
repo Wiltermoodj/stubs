@@ -45,7 +45,9 @@ const graphEngine = new GraphEngine({
 async function loadCachedFilesForCurrentRepoBranch() {
   if (currentRepo && currentBranch) {
     try {
-      const cachedFiles = JSON.parse(localStorage.getItem(`STUBS_OFFLINE_FILES_${currentRepo}_${currentBranch}`) || '{}');
+      const cachedFiles = JSON.parse(
+        localStorage.getItem(`STUBS_OFFLINE_FILES_${currentRepo}_${currentBranch}`) || '{}',
+      );
       await graphEngine.clearIndex();
       for (const [filePath, content] of Object.entries(cachedFiles)) {
         await virtualFs.writeFile(filePath, content as string);
@@ -85,7 +87,9 @@ window.addEventListener('DOMContentLoaded', async () => {
   // Pre-load from local storage cache for instant offline startup
   if (currentRepo && currentBranch) {
     try {
-      const cachedFiles = JSON.parse(localStorage.getItem(`STUBS_OFFLINE_FILES_${currentRepo}_${currentBranch}`) || '{}');
+      const cachedFiles = JSON.parse(
+        localStorage.getItem(`STUBS_OFFLINE_FILES_${currentRepo}_${currentBranch}`) || '{}',
+      );
       for (const [filePath, content] of Object.entries(cachedFiles)) {
         await virtualFs.writeFile(filePath, content as string);
       }
@@ -109,7 +113,7 @@ window.addEventListener('DOMContentLoaded', async () => {
   if (!pat) {
     showPatModal();
   } else {
-    await loadWorkspace().catch(err => {
+    await loadWorkspace().catch((err) => {
       console.warn('Could not sync remote workspace on startup, using offline cache:', err);
       showToast('Offline mode active. Using cached specifications.', 'info');
     });
@@ -309,7 +313,7 @@ function renderApp() {
   document.getElementById('drawer-overlay')?.classList.add('hidden');
 };
 
-function showToast(message: string, type: 'success' | 'info' | 'error' = 'info') {
+function showToast(message: string, type: 'success' | 'info' | 'error' | 'warning' = 'info') {
   const container = document.getElementById('toast-wrapper');
   if (!container) return;
   const toast = document.createElement('div');
@@ -318,7 +322,9 @@ function showToast(message: string, type: 'success' | 'info' | 'error' = 'info')
       ? 'oklch(0.627 0.265 20)'
       : type === 'success'
         ? 'oklch(0.627 0.265 140)'
-        : 'oklch(0.5 0.2 240)';
+        : type === 'warning'
+          ? 'oklch(0.627 0.265 60)'
+          : 'oklch(0.5 0.2 240)';
   toast.className =
     'pointer-events-auto p-3.5 rounded-xl border bg-slate-900/95 shadow-xl max-w-xs text-xs flex flex-col space-y-1 transition-all';
   toast.style.borderColor = borderCol;
@@ -449,7 +455,10 @@ async function selectBranch(branch: string) {
 
   renderApp();
   await fetchSpecsFromGithub().catch(async (err) => {
-    showToast('Failed to fetch from branch, loading cached files instead: ' + err.message, 'warning');
+    showToast(
+      'Failed to fetch from branch, loading cached files instead: ' + err.message,
+      'warning',
+    );
     await loadCachedFilesForCurrentRepoBranch();
   });
 }
@@ -493,7 +502,10 @@ async function fetchSpecsFromGithub() {
     }
 
     // Save offline files cache for the current repo and branch
-    localStorage.setItem(`STUBS_OFFLINE_FILES_${currentRepo}_${currentBranch}`, JSON.stringify(cachedFiles));
+    localStorage.setItem(
+      `STUBS_OFFLINE_FILES_${currentRepo}_${currentBranch}`,
+      JSON.stringify(cachedFiles),
+    );
 
     // Force run workspace indexing in memory
     await graphEngine.indexWorkspace('/', { force: true });
@@ -1112,9 +1124,14 @@ async function submitDirective() {
 
     // Update offline cache
     try {
-      const cachedFiles = JSON.parse(localStorage.getItem(`STUBS_OFFLINE_FILES_${currentRepo}_${currentBranch}`) || '{}');
+      const cachedFiles = JSON.parse(
+        localStorage.getItem(`STUBS_OFFLINE_FILES_${currentRepo}_${currentBranch}`) || '{}',
+      );
       cachedFiles[filePath] = updatedContent;
-      localStorage.setItem(`STUBS_OFFLINE_FILES_${currentRepo}_${currentBranch}`, JSON.stringify(cachedFiles));
+      localStorage.setItem(
+        `STUBS_OFFLINE_FILES_${currentRepo}_${currentBranch}`,
+        JSON.stringify(cachedFiles),
+      );
     } catch (e) {
       console.warn('Failed to update cache on submitDirective:', e);
     }
@@ -1125,16 +1142,18 @@ async function submitDirective() {
     // 5. Commit to GitHub directly
     const [owner, name] = currentRepo.split('/');
     const client = new GitHubClient(pat);
-    await client.createOrUpdateFile(
-      owner,
-      name,
-      filePath,
-      updatedContent,
-      `Add user note ${noteId} via PWA`,
-      currentBranch,
-    ).catch((err) => {
-      showToast('Offline save succeeded locally. GitHub sync failed: ' + err.message, 'warning');
-    });
+    await client
+      .createOrUpdateFile(
+        owner,
+        name,
+        filePath,
+        updatedContent,
+        `Add user note ${noteId} via PWA`,
+        currentBranch,
+      )
+      .catch((err) => {
+        showToast('Offline save succeeded locally. GitHub sync failed: ' + err.message, 'warning');
+      });
 
     showToast('Successfully saved directive note!', 'success');
     textInput.value = '';
@@ -1180,9 +1199,14 @@ async function resolveDirective(filePath: string, noteId: string) {
 
     // Update offline cache
     try {
-      const cachedFiles = JSON.parse(localStorage.getItem(`STUBS_OFFLINE_FILES_${currentRepo}_${currentBranch}`) || '{}');
+      const cachedFiles = JSON.parse(
+        localStorage.getItem(`STUBS_OFFLINE_FILES_${currentRepo}_${currentBranch}`) || '{}',
+      );
       cachedFiles[filePath] = updatedContent;
-      localStorage.setItem(`STUBS_OFFLINE_FILES_${currentRepo}_${currentBranch}`, JSON.stringify(cachedFiles));
+      localStorage.setItem(
+        `STUBS_OFFLINE_FILES_${currentRepo}_${currentBranch}`,
+        JSON.stringify(cachedFiles),
+      );
     } catch (e) {
       console.warn('Failed to update cache on resolveDirective:', e);
     }
@@ -1191,16 +1215,21 @@ async function resolveDirective(filePath: string, noteId: string) {
 
     const [owner, name] = currentRepo.split('/');
     const client = new GitHubClient(pat);
-    await client.createOrUpdateFile(
-      owner,
-      name,
-      filePath,
-      updatedContent,
-      `Resolve user note ${noteId} via PWA`,
-      currentBranch,
-    ).catch((err) => {
-      showToast('Offline resolve succeeded locally. GitHub sync failed: ' + err.message, 'warning');
-    });
+    await client
+      .createOrUpdateFile(
+        owner,
+        name,
+        filePath,
+        updatedContent,
+        `Resolve user note ${noteId} via PWA`,
+        currentBranch,
+      )
+      .catch((err) => {
+        showToast(
+          'Offline resolve succeeded locally. GitHub sync failed: ' + err.message,
+          'warning',
+        );
+      });
 
     showToast('Successfully resolved directive note!', 'success');
     await loadAndRenderSidecarDetail(filePath);
