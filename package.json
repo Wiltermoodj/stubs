@@ -2,19 +2,19 @@
   "name": "stubs",
   "version": "1.0.0",
   "description": "stubs AI Agent Skill",
-  "main": ".agents/skills/stubs/dist/cli.js",
+  "main": ".agents/skills/stubs/dist/cli.cjs",
   "bin": {
-    "stubs": ".agents/skills/stubs/dist/cli.js"
+    "stubs": ".agents/skills/stubs/dist/cli.cjs"
   },
   "scripts": {
-    "build": "esbuild src/cli.ts --bundle --platform=node --target=node18 --outfile=.agents/skills/stubs/dist/cli.js --banner:js=\"#!/usr/bin/env node\" --external:sqlite3",
+    "build": "esbuild src/cli.ts --bundle --platform=node --target=node18 --outfile=.agents/skills/stubs/dist/cli.cjs --banner:js=\"#!/usr/bin/env node\" --external:sqlite3 && node -e \"fs.mkdirSync('.agents/skills/stubs/dist', { recursive: true }); fs.copyFileSync('node_modules/sql.js/dist/sql-wasm.wasm', '.agents/skills/stubs/dist/sql-wasm.wasm')\"",
     "build:web": "node scripts/build-web.js",
     "predeploy:pages": "npm run build:web",
     "deploy:pages": "gh-pages -d dist/web",
     "test": "jest",
     "lint": "eslint .",
     "format": "prettier --write .",
-    "start": "node .agents/skills/stubs/dist/cli.js"
+    "start": "node .agents/skills/stubs/dist/cli.cjs"
   },
   "repository": {
     "type": "git",

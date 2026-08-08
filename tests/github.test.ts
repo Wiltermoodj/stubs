@@ -8,6 +8,7 @@ import {
   fetchTree,
   fetchFileContents,
   createOrUpdateFile,
+  decryptToken,
 } from '../src/server/github';
 import { handleLogin } from '../src/cli/auth';
 import {
@@ -315,13 +316,8 @@ describe('GitHub Client API and Auth Credentials Manager', () => {
       // Verify file written to ~/.stubs/credentials.json (encrypted format)
       expect(fs.existsSync(mockCredsPath)).toBe(true);
       const raw = fs.readFileSync(mockCredsPath, 'utf8');
-      const rawJson = JSON.parse(raw);
-      expect(rawJson.encrypted).toBe(true);
-      expect(rawJson.ciphertext).toBeDefined();
-
-      // Verify loadCredentials successfully decrypts it
-      const creds = loadCredentials();
-      expect(creds['github.com'].token).toBe('cli_valid_token');
+      const creds = JSON.parse(raw);
+      expect(decryptToken(creds['github.com'].token)).toBe('cli_valid_token');
       expect(creds['github.com'].login).toBe('testlogin');
 
       // Verify mode is secured (chmod 600 - on unix systems)

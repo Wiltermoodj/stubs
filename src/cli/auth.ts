@@ -1,6 +1,7 @@
 import * as path from 'path';
 import * as os from 'os';
-import { GitHubClient } from '../server/github';
+import * as readline from 'readline';
+import { GitHubClient, encryptToken } from '../server/github';
 import { loadCredentials, saveCredentials } from '../storage/credentials';
 
 /**
@@ -88,9 +89,9 @@ export async function handleLogin(
 
   let token = options.token;
 
-  if (options.token) {
+  if (token) {
     console.warn(
-      'Warning: The --token flag is deprecated to prevent credential exposure in shell history and process listings. Use piped input (echo $PAT | stubs auth login) or interactive prompt instead.',
+      'Warning: The --token <pat> command-line argument is deprecated to prevent token leaks in shell history. Please use interactive login or define the STUBS_GITHUB_PAT environment variable instead.',
     );
   }
 
@@ -100,8 +101,36 @@ export async function handleLogin(
       return 1;
     }
 
-    // Prompt user securely for GitHub Personal Access Token via CLI
-    token = await askTokenMasked('Please enter your GitHub Personal Access Token (PAT):\n> ');
+    // Prompt user for GitHub Personal Access Token via CLI with masking
+    const rl = readline.createInterface({
+      input: process.stdin as any,
+      output: process.stdout as any,
+    }) as any;
+
+    rl.muted = false;
+    rl._writeToOutput = function _writeToOutput(stringToWrite: string) {
+      if (!rl.muted) {
+        process.stdout.write(stringToWrite);
+      } else {
+        if (stringToWrite === '\r\n' || stringToWrite === '\n' || stringToWrite === '\r') {
+          process.stdout.write(stringToWrite);
+        } else {
+          process.stdout.write('*');
+        }
+      }
+    };
+
+    const askToken = (): Promise<string> => {
+      return new Promise((resolve) => {
+        rl.question('Please enter your GitHub Personal Access Token (PAT):\n> ', (answer: string) => {
+          resolve(answer.trim());
+        });
+        rl.muted = true;
+      });
+    };
+
+    token = await askToken();
+    rl.close();
   }
 
   if (!token) {
@@ -125,13 +154,13 @@ export async function handleLogin(
       // Ignore and write a new one
     }
 
-    // Save token mapped to host 'github.com' and globally
+    // Save token mapped to host 'github.com' and globally (encrypted at rest)
     credentials['github.com'] = {
-      token,
+      token: encryptToken(token),
       login: user.login,
       updatedAt: new Date().toISOString(),
     };
-    credentials.github_token = token;
+    credentials.github_token = encryptToken(token);
 
     saveCredentials(credentials);
 

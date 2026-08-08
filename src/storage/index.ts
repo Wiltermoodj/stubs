@@ -1,8 +1,14 @@
 import * as fs from 'fs/promises';
 import * as fsSync from 'fs';
 import * as path from 'path';
-import sqlite3 from 'sqlite3';
 import initSqlJs, { Database } from 'sql.js';
+
+let sqlite3: any;
+try {
+  sqlite3 = require('sqlite3');
+} catch {
+  // Ignored, fallback handles loading
+}
 
 // --- Interfaces ---
 
@@ -117,7 +123,7 @@ export class NodeFileSystem implements FileSystemDriver {
 export class NodeFileSystemDriver extends NodeFileSystem implements FileStorageDriver {}
 
 export class BetterSqliteDriver implements DatabaseDriver {
-  private db: sqlite3.Database | null = null;
+  private db: any = null;
   private dbPath: string;
 
   constructor(dbPath: string) {
@@ -126,6 +132,9 @@ export class BetterSqliteDriver implements DatabaseDriver {
 
   public async initialize(): Promise<void> {
     if (this.db) return;
+    if (!sqlite3) {
+      throw new Error('Native sqlite3 module is not available.');
+    }
 
     const dir = path.dirname(this.dbPath);
     if (!fsSync.existsSync(dir)) {
@@ -133,7 +142,7 @@ export class BetterSqliteDriver implements DatabaseDriver {
     }
 
     return new Promise((resolve, reject) => {
-      this.db = new sqlite3.Database(this.dbPath, (err) => {
+      this.db = new sqlite3.Database(this.dbPath, (err: any) => {
         if (err) {
           reject(err);
         } else {
@@ -146,7 +155,7 @@ export class BetterSqliteDriver implements DatabaseDriver {
   public async exec(sql: string): Promise<void> {
     if (!this.db) throw new Error('Database not initialized');
     return new Promise((resolve, reject) => {
-      this.db!.exec(sql, (err) => {
+      this.db!.exec(sql, (err: any) => {
         if (err) reject(err);
         else resolve();
       });
@@ -156,7 +165,7 @@ export class BetterSqliteDriver implements DatabaseDriver {
   public async run(sql: string, params: any[] = []): Promise<{ lastID: number; changes: number }> {
     if (!this.db) throw new Error('Database not initialized');
     return new Promise((resolve, reject) => {
-      this.db!.run(sql, params, function (this: sqlite3.RunResult, err: Error | null) {
+      this.db!.run(sql, params, function (this: any, err: Error | null) {
         if (err) {
           reject(err);
         } else {
@@ -169,7 +178,7 @@ export class BetterSqliteDriver implements DatabaseDriver {
   public async get<T = any>(sql: string, params: any[] = []): Promise<T | undefined> {
     if (!this.db) throw new Error('Database not initialized');
     return new Promise((resolve, reject) => {
-      this.db!.get(sql, params, (err, row) => {
+      this.db!.get(sql, params, (err: any, row: any) => {
         if (err) reject(err);
         else resolve(row as T | undefined);
       });
@@ -179,7 +188,7 @@ export class BetterSqliteDriver implements DatabaseDriver {
   public async all<T = any>(sql: string, params: any[] = []): Promise<T[]> {
     if (!this.db) throw new Error('Database not initialized');
     return new Promise((resolve, reject) => {
-      this.db!.all(sql, params, (err, rows) => {
+      this.db!.all(sql, params, (err: any, rows: any) => {
         if (err) reject(err);
         else resolve(rows as T[]);
       });
@@ -192,7 +201,7 @@ export class BetterSqliteDriver implements DatabaseDriver {
     return {
       run: (params: any[] = []) => {
         return new Promise((resolve, reject) => {
-          stmt.run(params, function (this: sqlite3.RunResult, err: Error | null) {
+          stmt.run(params, function (this: any, err: Error | null) {
             if (err) reject(err);
             else resolve({ lastID: this.lastID, changes: this.changes });
           });
@@ -200,7 +209,7 @@ export class BetterSqliteDriver implements DatabaseDriver {
       },
       get: <T = any>(params: any[] = []): Promise<T | undefined> => {
         return new Promise<T | undefined>((resolve, reject) => {
-          stmt.get(params, (err, row) => {
+          stmt.get(params, (err: any, row: any) => {
             if (err) reject(err);
             else resolve(row as T | undefined);
           });
@@ -208,7 +217,7 @@ export class BetterSqliteDriver implements DatabaseDriver {
       },
       all: <T = any>(params: any[] = []): Promise<T[]> => {
         return new Promise<T[]>((resolve, reject) => {
-          stmt.all(params, (err, rows) => {
+          stmt.all(params, (err: any, rows: any) => {
             if (err) reject(err);
             else resolve(rows as T[]);
           });
@@ -216,7 +225,7 @@ export class BetterSqliteDriver implements DatabaseDriver {
       },
       finalize: () => {
         return new Promise((resolve, reject) => {
-          stmt.finalize((err) => {
+          stmt.finalize((err: any) => {
             if (err) reject(err);
             else resolve();
           });
@@ -228,7 +237,7 @@ export class BetterSqliteDriver implements DatabaseDriver {
   public async close(): Promise<void> {
     if (!this.db) return;
     return new Promise((resolve, reject) => {
-      this.db!.close((err) => {
+      this.db!.close((err: any) => {
         if (err) reject(err);
         else {
           this.db = null;
@@ -350,7 +359,26 @@ export class WasmSqliteDriver implements DatabaseDriver {
 
   public async initialize(): Promise<void> {
     if (this.db) return;
-    const SQL = await initSqlJs();
+    const isNode = typeof process !== 'undefined' && process.versions && process.versions.node;
+    const SQL = await initSqlJs({
+      locateFile: (file) => {
+        if (isNode) {
+          const possiblePaths = [
+            path.join(__dirname, file),
+            path.join(__dirname, '../../node_modules/sql.js/dist', file),
+            path.join(process.cwd(), 'node_modules/sql.js/dist', file),
+            path.join(process.cwd(), '.agents/skills/stubs/dist', file)
+          ];
+          for (const p of possiblePaths) {
+            if (fsSync.existsSync(p)) {
+              return p;
+            }
+          }
+          return path.join(__dirname, file);
+        }
+        return file;
+      }
+    });
 
     let data: Uint8Array | undefined = this.initialData;
 
