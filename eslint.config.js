@@ -20,6 +20,9 @@ module.exports = tseslint.config(
       'node_modules/',
       'eslint.config.js',
       'jest.config.js',
+      '**/*.js',
+      '**/*.cjs',
+      'public/',
     ],
   },
 );
