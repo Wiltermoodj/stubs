@@ -1,3 +1,4 @@
+
 #!/usr/bin/env node
 "use strict";
 var __create = Object.create;
@@ -32,6 +33,149 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
   isNodeMode || !mod || !mod.__esModule ? __defProp(target, "default", { value: mod, enumerable: true }) : target,
   mod
 ));
+
+// src/storage/credentials.ts
+function getMachineUniqueKey() {
+  let userInfo2 = "unknown_user";
+  try {
+    userInfo2 = os.userInfo().username || "unknown_user";
+  } catch {
+  }
+  return `${os.hostname()}-${os.platform()}-${os.arch()}-${userInfo2}`;
+}
+function encrypt(plaintext) {
+  const password = getMachineUniqueKey();
+  const salt = crypto2.randomBytes(16);
+  const key = crypto2.pbkdf2Sync(password, salt, 1e5, 32, "sha256");
+  const iv = crypto2.randomBytes(12);
+  const cipher = crypto2.createCipheriv("aes-256-gcm", key, iv);
+  let ciphertext = cipher.update(plaintext, "utf8", "hex");
+  ciphertext += cipher.final("hex");
+  const tag = cipher.getAuthTag().toString("hex");
+  const payload = {
+    encrypted: true,
+    salt: salt.toString("hex"),
+    iv: iv.toString("hex"),
+    ciphertext,
+    tag
+  };
+  return JSON.stringify(payload, null, 2);
+}
+function decrypt(encryptedText) {
+  let payload;
+  try {
+    payload = JSON.parse(encryptedText);
+  } catch {
+    return encryptedText;
+  }
+  if (!payload || !payload.encrypted) {
+    return encryptedText;
+  }
+  const password = getMachineUniqueKey();
+  const salt = Buffer.from(payload.salt, "hex");
+  const iv = Buffer.from(payload.iv, "hex");
+  const tag = Buffer.from(payload.tag, "hex");
+  const ciphertext = payload.ciphertext;
+  const key = crypto2.pbkdf2Sync(password, salt, 1e5, 32, "sha256");
+  const decipher = crypto2.createDecipheriv("aes-256-gcm", key, iv);
+  decipher.setAuthTag(tag);
+  let decrypted = decipher.update(ciphertext, "hex", "utf8");
+  decrypted += decipher.final("utf8");
+  return decrypted;
+}
+function loadCredentials() {
+  if (!fs.existsSync(credsPath)) {
+    return {};
+  }
+  if (process.platform !== "win32") {
+    try {
+      const stat = fs.statSync(credsPath);
+      const isGroupOrWorldReadable = (stat.mode & 63) !== 0;
+      if (isGroupOrWorldReadable) {
+        throw new Error(
+          `Security Error: Credentials file ${credsPath} has insecure permissions (world/group readable). Enforce 0600 permissions.`
+        );
+      }
+    } catch (err) {
+      if (err.message.includes("Security Error")) {
+        throw err;
+      }
+    }
+  }
+  const raw = fs.readFileSync(credsPath, "utf8").trim();
+  if (!raw) return {};
+  try {
+    const decrypted = decrypt(raw);
+    return JSON.parse(decrypted);
+  } catch (err) {
+    try {
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === "object" && !parsed.encrypted) {
+        return parsed;
+      }
+    } catch {
+    }
+    throw new Error(`Failed to load and decrypt credentials: ${err.message}`, { cause: err });
+  }
+}
+function saveCredentials(credentials) {
+  if (!fs.existsSync(credsDir)) {
+    fs.mkdirSync(credsDir, { recursive: true });
+  }
+  const plaintext = JSON.stringify(credentials, null, 2);
+  const encrypted = encrypt(plaintext);
+  fs.writeFileSync(credsPath, encrypted, "utf8");
+  if (process.platform !== "win32") {
+    try {
+      fs.chmodSync(credsPath, 384);
+    } catch (chmodErr) {
+      console.warn(
+        `Warning: Could not set secure file permissions (600) on credentials file: ${chmodErr.message}`
+      );
+    }
+  }
+}
+function maskToken(text) {
+  if (typeof text !== "string") return text;
+  return text.replace(/(ghp_[A-Za-z0-9_]{8,}|github_pat_[A-Za-z0-9_]{8,})/g, (match) => {
+    const isClassic = match.startsWith("ghp_");
+    const prefix = isClassic ? "ghp_" : "github_pat_";
+    const suffix = match.slice(-4);
+    return `${prefix}****${suffix}`;
+  });
+}
+function applyGlobalConsoleMasking() {
+  if (isConsoleMasked) return;
+  isConsoleMasked = true;
+  const originalLog = console.log;
+  const originalError = console.error;
+  const originalWarn = console.warn;
+  console.log = function(...args) {
+    const sanitized = args.map((arg) => typeof arg === "string" ? maskToken(arg) : arg);
+    originalLog.apply(console, sanitized);
+  };
+  console.error = function(...args) {
+    const sanitized = args.map((arg) => typeof arg === "string" ? maskToken(arg) : arg);
+    originalError.apply(console, sanitized);
+  };
+  console.warn = function(...args) {
+    const sanitized = args.map((arg) => typeof arg === "string" ? maskToken(arg) : arg);
+    originalWarn.apply(console, sanitized);
+  };
+}
+var crypto2, os, fs, path, credsDir, credsPath, isConsoleMasked;
+var init_credentials = __esm({
+  "src/storage/credentials.ts"() {
+    "use strict";
+    crypto2 = __toESM(require("crypto"));
+    os = __toESM(require("os"));
+    fs = __toESM(require("fs"));
+    path = __toESM(require("path"));
+    credsDir = path.join(os.homedir(), ".stubs");
+    credsPath = path.join(credsDir, "credentials.json");
+    isConsoleMasked = false;
+  }
+});
 
 // node_modules/js-yaml/dist/js-yaml.mjs
 function defineScalarTag(tagName, options) {
@@ -3181,12 +3325,12 @@ __export(schema_exports, {
   loadConfig: () => loadConfig
 });
 function loadConfig(configPath) {
-  const resolvedPath = path.resolve(configPath || ".stubs/config.json");
+  const resolvedPath = path2.resolve(configPath || ".stubs/config.json");
   try {
-    if (!fs.existsSync(resolvedPath)) {
+    if (!fs2.existsSync(resolvedPath)) {
       return { ...DEFAULT_CONFIG };
     }
-    const content = fs.readFileSync(resolvedPath, "utf8");
+    const content = fs2.readFileSync(resolvedPath, "utf8");
     const parsed = JSON.parse(content);
     return sanitizeConfig(parsed);
   } catch {
@@ -3242,12 +3386,12 @@ function sanitizeConfig(raw) {
     remote
   };
 }
-var fs, path, DEFAULT_CONFIG;
+var fs2, path2, DEFAULT_CONFIG;
 var init_schema = __esm({
   "src/config/schema.ts"() {
     "use strict";
-    fs = __toESM(require("fs"));
-    path = __toESM(require("path"));
+    fs2 = __toESM(require("fs"));
+    path2 = __toESM(require("path"));
     DEFAULT_CONFIG = {
       project_name: "stubs-project",
       autonomy_level: "strict_gate",
@@ -3799,15 +3943,15 @@ var require_sql_wasm = __commonJS({
         "undefined" != typeof __filename ? ya = __filename : ba && (ya = self.location.href);
         var za = "", Aa, Ba;
         if (ca) {
-          var fs13 = require("node:fs");
+          var fs12 = require("node:fs");
           za = __dirname + "/";
           Ba = (a) => {
             a = Ca(a) ? new URL(a) : a;
-            return fs13.readFileSync(a);
+            return fs12.readFileSync(a);
           };
           Aa = async (a) => {
             a = Ca(a) ? new URL(a) : a;
-            return fs13.readFileSync(a, void 0);
+            return fs12.readFileSync(a, void 0);
           };
           1 < process.argv.length && (wa = process.argv[1].replace(/\\/g, "/"));
           process.argv.slice(2);
@@ -4089,7 +4233,7 @@ var require_sql_wasm = __commonJS({
               if (ca) {
                 var b = Buffer.alloc(256), c = 0, d = process.stdin.fd;
                 try {
-                  c = fs13.readSync(d, b, 0, 256);
+                  c = fs12.readSync(d, b, 0, 256);
                 } catch (e) {
                   if (e.toString().includes("EOF")) c = 0;
                   else throw e;
@@ -5411,34 +5555,34 @@ var require_sql_wasm = __commonJS({
 });
 
 // src/storage/index.ts
-var fs2, fsSync, path2, import_sqlite3, import_sql, NodeFileSystem, BetterSqliteDriver;
+var fs3, fsSync, path3, import_sqlite3, import_sql, NodeFileSystem, BetterSqliteDriver;
 var init_storage = __esm({
   "src/storage/index.ts"() {
     "use strict";
-    fs2 = __toESM(require("fs/promises"));
+    fs3 = __toESM(require("fs/promises"));
     fsSync = __toESM(require("fs"));
-    path2 = __toESM(require("path"));
+    path3 = __toESM(require("path"));
     import_sqlite3 = __toESM(require("sqlite3"));
     import_sql = __toESM(require_sql_wasm());
     NodeFileSystem = class {
       async readFile(filePath) {
-        return await fs2.readFile(filePath, "utf8");
+        return await fs3.readFile(filePath, "utf8");
       }
       async writeFile(filePath, content) {
-        const dir = path2.dirname(filePath);
-        await fs2.mkdir(dir, { recursive: true });
-        await fs2.writeFile(filePath, content, "utf8");
+        const dir = path3.dirname(filePath);
+        await fs3.mkdir(dir, { recursive: true });
+        await fs3.writeFile(filePath, content, "utf8");
       }
       async exists(filePath) {
         try {
-          await fs2.access(filePath);
+          await fs3.access(filePath);
           return true;
         } catch {
           return false;
         }
       }
       async readDir(dirPath) {
-        return await fs2.readdir(dirPath);
+        return await fs3.readdir(dirPath);
       }
       async glob(pattern) {
         const results = [];
@@ -5455,13 +5599,13 @@ var init_storage = __esm({
             baseDir = ".";
           }
         }
-        const absBaseDir = path2.resolve(baseDir);
+        const absBaseDir = path3.resolve(baseDir);
         const recurse = async (currDir) => {
           try {
-            const entries = await fs2.readdir(currDir, { withFileTypes: true });
+            const entries = await fs3.readdir(currDir, { withFileTypes: true });
             for (const entry of entries) {
-              const fullPath = path2.join(currDir, entry.name);
-              const relativePath = path2.relative(process.cwd(), fullPath).replace(/\\/g, "/");
+              const fullPath = path3.join(currDir, entry.name);
+              const relativePath = path3.relative(process.cwd(), fullPath).replace(/\\/g, "/");
               if (entry.isDirectory()) {
                 if (entry.name === "node_modules" || entry.name === ".git" || entry.name === ".stubs" || entry.name === "dist" || entry.name === "build") {
                   continue;
@@ -5490,7 +5634,7 @@ var init_storage = __esm({
       }
       async initialize() {
         if (this.db) return;
-        const dir = path2.dirname(this.dbPath);
+        const dir = path3.dirname(this.dbPath);
         if (!fsSync.existsSync(dir)) {
           fsSync.mkdirSync(dir, { recursive: true });
         }
@@ -5957,11 +6101,11 @@ async function fallbackGlob(fsDriver, pattern) {
   await recurse(baseDir);
   return results;
 }
-var crypto2, GraphEngine;
+var crypto3, GraphEngine;
 var init_engine = __esm({
   "src/graph/engine.ts"() {
     "use strict";
-    crypto2 = __toESM(require("crypto"));
+    crypto3 = __toESM(require("crypto"));
     init_okf();
     init_schema();
     init_storage();
@@ -6623,7 +6767,7 @@ Decisions: ${decisionsText}
        * Calculates a SHA-256 hash of the content string.
        */
       calculateHash(content) {
-        return crypto2.createHash("sha256").update(content).digest("hex");
+        return crypto3.createHash("sha256").update(content).digest("hex");
       }
       /**
        * Scans, parses, and indexes the specified workspace specifications directory recursively.
@@ -8581,11 +8725,11 @@ var require_source_map_support = __commonJS({
   "node_modules/source-map-support/source-map-support.js"(exports2) {
     var SourceMapConsumer = require_source_map().SourceMapConsumer;
     var path14 = require("path");
-    var fs13;
+    var fs12;
     try {
-      fs13 = require("fs");
-      if (!fs13.existsSync || !fs13.readFileSync) {
-        fs13 = null;
+      fs12 = require("fs");
+      if (!fs12.existsSync || !fs12.readFileSync) {
+        fs12 = null;
       }
     } catch (err) {
     }
@@ -8636,7 +8780,7 @@ var require_source_map_support = __commonJS({
       }
       var contents = "";
       try {
-        if (!fs13) {
+        if (!fs12) {
           var xhr = new XMLHttpRequest();
           xhr.open(
             "GET",
@@ -8648,8 +8792,8 @@ var require_source_map_support = __commonJS({
           if (xhr.readyState === 4 && xhr.status === 200) {
             contents = xhr.responseText;
           }
-        } else if (fs13.existsSync(path15)) {
-          contents = fs13.readFileSync(path15, "utf8");
+        } else if (fs12.existsSync(path15)) {
+          contents = fs12.readFileSync(path15, "utf8");
         }
       } catch (er) {
       }
@@ -8899,9 +9043,9 @@ var require_source_map_support = __commonJS({
         var line = +match[2];
         var column = +match[3];
         var contents = fileContentsCache[source];
-        if (!contents && fs13 && fs13.existsSync(source)) {
+        if (!contents && fs12 && fs12.existsSync(source)) {
           try {
-            contents = fs13.readFileSync(source, "utf8");
+            contents = fs12.readFileSync(source, "utf8");
           } catch (er) {
             contents = "";
           }
@@ -12821,10 +12965,10 @@ var require_typescript = __commonJS({
       function and(f, g) {
         return (arg) => f(arg) && g(arg);
       }
-      function or(...fs13) {
+      function or(...fs12) {
         return (...args) => {
           let lastResult;
-          for (const f of fs13) {
+          for (const f of fs12) {
             lastResult = f(...args);
             if (lastResult) {
               return lastResult;
@@ -14407,7 +14551,7 @@ ${lanes.join("\n")}
       var tracing;
       var tracingEnabled;
       ((tracingEnabled2) => {
-        let fs13;
+        let fs12;
         let traceCount = 0;
         let traceFd = 0;
         let mode;
@@ -14416,9 +14560,9 @@ ${lanes.join("\n")}
         const legend = [];
         function startTracing2(tracingMode, traceDir, configFilePath) {
           Debug.assert(!tracing, "Tracing already started");
-          if (fs13 === void 0) {
+          if (fs12 === void 0) {
             try {
-              fs13 = require("fs");
+              fs12 = require("fs");
             } catch (e) {
               throw new Error(`tracing requires having fs
 (original error: ${e.message || e})`);
@@ -14429,8 +14573,8 @@ ${lanes.join("\n")}
           if (legendPath === void 0) {
             legendPath = combinePaths(traceDir, "legend.json");
           }
-          if (!fs13.existsSync(traceDir)) {
-            fs13.mkdirSync(traceDir, { recursive: true });
+          if (!fs12.existsSync(traceDir)) {
+            fs12.mkdirSync(traceDir, { recursive: true });
           }
           const countPart = mode === "build" ? `.${process.pid}-${++traceCount}` : mode === "server" ? `.${process.pid}` : ``;
           const tracePath = combinePaths(traceDir, `trace${countPart}.json`);
@@ -14440,10 +14584,10 @@ ${lanes.join("\n")}
             tracePath,
             typesPath
           });
-          traceFd = fs13.openSync(tracePath, "w");
+          traceFd = fs12.openSync(tracePath, "w");
           tracing = tracingEnabled2;
           const meta = { cat: "__metadata", ph: "M", ts: 1e3 * timestamp(), pid: 1, tid: 1 };
-          fs13.writeSync(
+          fs12.writeSync(
             traceFd,
             "[\n" + [{ name: "process_name", args: { name: "tsc" }, ...meta }, { name: "thread_name", args: { name: "Main" }, ...meta }, { name: "TracingStartedInBrowser", ...meta, cat: "disabled-by-default-devtools.timeline" }].map((v) => JSON.stringify(v)).join(",\n")
           );
@@ -14452,10 +14596,10 @@ ${lanes.join("\n")}
         function stopTracing() {
           Debug.assert(tracing, "Tracing is not in progress");
           Debug.assert(!!typeCatalog.length === (mode !== "server"));
-          fs13.writeSync(traceFd, `
+          fs12.writeSync(traceFd, `
 ]
 `);
-          fs13.closeSync(traceFd);
+          fs12.closeSync(traceFd);
           tracing = void 0;
           if (typeCatalog.length) {
             dumpTypes(typeCatalog);
@@ -14527,11 +14671,11 @@ ${lanes.join("\n")}
         function writeEvent(eventType, phase, name, args, extras, time = 1e3 * timestamp()) {
           if (mode === "server" && phase === "checkTypes") return;
           mark("beginTracing");
-          fs13.writeSync(traceFd, `,
+          fs12.writeSync(traceFd, `,
 {"pid":1,"tid":1,"ph":"${eventType}","cat":"${phase}","ts":${time},"name":"${name}"`);
-          if (extras) fs13.writeSync(traceFd, `,${extras}`);
-          if (args) fs13.writeSync(traceFd, `,"args":${JSON.stringify(args)}`);
-          fs13.writeSync(traceFd, `}`);
+          if (extras) fs12.writeSync(traceFd, `,${extras}`);
+          if (args) fs12.writeSync(traceFd, `,"args":${JSON.stringify(args)}`);
+          fs12.writeSync(traceFd, `}`);
           mark("endTracing");
           measure("Tracing", "beginTracing", "endTracing");
         }
@@ -14553,9 +14697,9 @@ ${lanes.join("\n")}
           var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o, _p, _q, _r, _s;
           mark("beginDumpTypes");
           const typesPath = legend[legend.length - 1].typesPath;
-          const typesFd = fs13.openSync(typesPath, "w");
+          const typesFd = fs12.openSync(typesPath, "w");
           const recursionIdentityMap = /* @__PURE__ */ new Map();
-          fs13.writeSync(typesFd, "[");
+          fs12.writeSync(typesFd, "[");
           const numTypes = types.length;
           for (let i = 0; i < numTypes; i++) {
             const type = types[i];
@@ -14651,13 +14795,13 @@ ${lanes.join("\n")}
               flags: Debug.formatTypeFlags(type.flags).split("|"),
               display
             };
-            fs13.writeSync(typesFd, JSON.stringify(descriptor));
+            fs12.writeSync(typesFd, JSON.stringify(descriptor));
             if (i < numTypes - 1) {
-              fs13.writeSync(typesFd, ",\n");
+              fs12.writeSync(typesFd, ",\n");
             }
           }
-          fs13.writeSync(typesFd, "]\n");
-          fs13.closeSync(typesFd);
+          fs12.writeSync(typesFd, "]\n");
+          fs12.closeSync(typesFd);
           mark("endDumpTypes");
           measure("Dump types", "beginDumpTypes", "endDumpTypes");
         }
@@ -14665,7 +14809,7 @@ ${lanes.join("\n")}
           if (!legendPath) {
             return;
           }
-          fs13.writeFileSync(legendPath, JSON.stringify(legend));
+          fs12.writeFileSync(legendPath, JSON.stringify(legend));
         }
         tracingEnabled2.dumpLegend = dumpLegend;
       })(tracingEnabled || (tracingEnabled = {}));
@@ -17813,7 +17957,7 @@ ${lanes.join("\n")}
           let profilePath = "./profile.cpuprofile";
           const isMacOs = process.platform === "darwin";
           const isLinuxOrMacOs = process.platform === "linux" || isMacOs;
-          const platform = _os.platform();
+          const platform2 = _os.platform();
           const useCaseSensitiveFileNames2 = isFileSystemCaseSensitive();
           const fsRealpath = !!_fs.realpathSync.native ? process.platform === "win32" ? fsRealPathHandlingLongPath : _fs.realpathSync.native : _fs.realpathSync;
           const executingFilePath = __filename.endsWith("sys.js") ? _path.join(_path.dirname(__dirname), "__fake__.js") : __filename;
@@ -17894,7 +18038,7 @@ ${lanes.join("\n")}
             },
             getFileSize(path14) {
               try {
-                const stat = statSync2(path14);
+                const stat = statSync3(path14);
                 if (stat == null ? void 0 : stat.isFile()) {
                   return stat.size;
                 }
@@ -17940,7 +18084,7 @@ ${lanes.join("\n")}
             }
           };
           return nodeSystem;
-          function statSync2(path14) {
+          function statSync3(path14) {
             return _fs.statSync(path14, { throwIfNoEntry: false });
           }
           function enableCPUProfiler(path14, cb) {
@@ -17996,7 +18140,7 @@ ${lanes.join("\n")}
                 var _a;
                 if (!err) {
                   try {
-                    if ((_a = statSync2(profilePath)) == null ? void 0 : _a.isDirectory()) {
+                    if ((_a = statSync3(profilePath)) == null ? void 0 : _a.isDirectory()) {
                       profilePath = _path.join(profilePath, `${(/* @__PURE__ */ new Date()).toISOString().replace(/:/g, "-")}+P${process.pid}.cpuprofile`);
                     }
                   } catch {
@@ -18019,7 +18163,7 @@ ${lanes.join("\n")}
             }
           }
           function isFileSystemCaseSensitive() {
-            if (platform === "win32" || platform === "win64") {
+            if (platform2 === "win32" || platform2 === "win64") {
               return false;
             }
             return !fileExists(swapCase(__filename));
@@ -18130,7 +18274,7 @@ ${lanes.join("\n")}
                 if (typeof dirent === "string" || dirent.isSymbolicLink()) {
                   const name = combinePaths(path14, entry);
                   try {
-                    stat = statSync2(name);
+                    stat = statSync3(name);
                     if (!stat) {
                       continue;
                     }
@@ -18160,7 +18304,7 @@ ${lanes.join("\n")}
             const originalStackTraceLimit = Error.stackTraceLimit;
             Error.stackTraceLimit = 0;
             try {
-              const stat = statSync2(path14);
+              const stat = statSync3(path14);
               if (!stat) {
                 return false;
               }
@@ -18210,7 +18354,7 @@ ${lanes.join("\n")}
             const originalStackTraceLimit = Error.stackTraceLimit;
             Error.stackTraceLimit = 0;
             try {
-              return (_a = statSync2(path14)) == null ? void 0 : _a.mtime;
+              return (_a = statSync3(path14)) == null ? void 0 : _a.mtime;
             } catch (e) {
               return void 0;
             } finally {
@@ -214374,14 +214518,10 @@ function resolveToken(configPath) {
   } catch {
   }
   try {
-    const credsPath = path7.join(os.homedir(), ".stubs", "credentials.json");
-    if (fs7.existsSync(credsPath)) {
-      const rawCreds = fs7.readFileSync(credsPath, "utf8");
-      const creds = JSON.parse(rawCreds);
-      const token = creds["github.com"]?.token || creds.github_token;
-      if (token) {
-        return token;
-      }
+    const creds = loadCredentials();
+    const token = creds["github.com"]?.token || creds.github_token;
+    if (token) {
+      return token;
     }
   } catch {
   }
@@ -214407,14 +214547,12 @@ async function createOrUpdateFile(owner, repo, path14, content, message, branch,
   const client = new GitHubClient(token);
   return await client.createOrUpdateFile(owner, repo, path14, content, message, branch);
 }
-var fs7, path7, os, GitHubClient;
+var GitHubClient;
 var init_github = __esm({
   "src/server/github.ts"() {
     "use strict";
-    fs7 = __toESM(require("fs"));
-    path7 = __toESM(require("path"));
-    os = __toESM(require("os"));
     init_schema();
+    init_credentials();
     GitHubClient = class {
       token;
       baseUrl;
@@ -214799,30 +214937,80 @@ var auth_exports = {};
 __export(auth_exports, {
   handleLogin: () => handleLogin
 });
+async function askTokenMasked(promptMessage) {
+  if (!process.stdin.isTTY) {
+    return new Promise((resolve12) => {
+      let data = "";
+      process.stdin.on("data", (chunk) => {
+        data += chunk;
+      });
+      process.stdin.on("end", () => {
+        resolve12(data.trim());
+      });
+    });
+  }
+  return new Promise((resolve12) => {
+    process.stdout.write(promptMessage);
+    const stdin = process.stdin;
+    stdin.setRawMode(true);
+    stdin.resume();
+    stdin.setEncoding("utf8");
+    let input = "";
+    const onData = (char) => {
+      if (char === "\n" || char === "\r" || char === "") {
+        stdin.setRawMode(false);
+        stdin.pause();
+        stdin.removeListener("data", onData);
+        process.stdout.write("\n");
+        if (char === "") {
+          process.exit(130);
+        }
+        resolve12(input.trim());
+        return;
+      }
+      if (char === "\x7F" || char === "\b") {
+        if (input.length > 0) {
+          input = input.slice(0, -1);
+          process.stdout.write("\b \b");
+        }
+      } else {
+        input += char;
+        process.stdout.write("*");
+      }
+    };
+    stdin.on("data", onData);
+  });
+}
 async function handleLogin(options = {}) {
-  const credsDir = path12.join(os2.homedir(), ".stubs");
-  const credsPath = path12.join(credsDir, "credentials.json");
-  let token = options.token;
-  if (!token) {
-    if (options.nonInteractive) {
-      console.error(
-        "Error: Token must be provided with --token when running in non-interactive mode."
+  const credsDir2 = path12.join(os2.homedir(), ".stubs");
+  const credsPath2 = path12.join(credsDir2, "credentials.json");
+  const envToken = process.env.STUBS_GITHUB_PAT || process.env.GITHUB_TOKEN;
+  if (envToken) {
+    console.log("Validating environment token (STUBS_GITHUB_PAT/GITHUB_TOKEN)...");
+    try {
+      const client = new GitHubClient(envToken);
+      const user = await client.validateToken();
+      console.log(
+        `Successfully authenticated as GitHub user: ${user.login} (${user.name || "No Name"}) via environment variable.`
       );
+      return 0;
+    } catch (error) {
+      console.error(`Validation of environment token failed: ${error.message || error}`);
       return 1;
     }
-    const rl = readline2.createInterface({
-      input: process.stdin,
-      output: process.stdout
-    });
-    const askToken = () => {
-      return new Promise((resolve12) => {
-        rl.question("Please enter your GitHub Personal Access Token (PAT):\n> ", (answer) => {
-          resolve12(answer.trim());
-        });
-      });
-    };
-    token = await askToken();
-    rl.close();
+  }
+  let token = options.token;
+  if (options.token) {
+    console.warn(
+      "Warning: The --token flag is deprecated to prevent credential exposure in shell history and process listings. Use piped input (echo $PAT | stubs auth login) or interactive prompt instead."
+    );
+  }
+  if (!token) {
+    if (options.nonInteractive) {
+      console.error("Error: STDIN pipe or interactive prompt is required for token submission.");
+      return 1;
+    }
+    token = await askTokenMasked("Please enter your GitHub Personal Access Token (PAT):\n> ");
   }
   if (!token) {
     console.error("Error: GitHub Personal Access Token is required.");
@@ -214835,16 +215023,10 @@ async function handleLogin(options = {}) {
     console.log(
       `Successfully authenticated as GitHub user: ${user.login} (${user.name || "No Name"})`
     );
-    if (!fs11.existsSync(credsDir)) {
-      fs11.mkdirSync(credsDir, { recursive: true });
-    }
     let credentials = {};
-    if (fs11.existsSync(credsPath)) {
-      try {
-        const raw = fs11.readFileSync(credsPath, "utf8");
-        credentials = JSON.parse(raw);
-      } catch {
-      }
+    try {
+      credentials = loadCredentials();
+    } catch {
     }
     credentials["github.com"] = {
       token,
@@ -214852,32 +215034,37 @@ async function handleLogin(options = {}) {
       updatedAt: (/* @__PURE__ */ new Date()).toISOString()
     };
     credentials.github_token = token;
-    fs11.writeFileSync(credsPath, JSON.stringify(credentials, null, 2), "utf8");
-    try {
-      fs11.chmodSync(credsPath, 384);
-    } catch (chmodErr) {
-      console.warn(
-        `Warning: Could not set secure file permissions (600) on credentials file: ${chmodErr.message}`
-      );
+    saveCredentials(credentials);
+    if (token) {
+      const tokenBuf = Buffer.from(token);
+      tokenBuf.fill(0);
     }
-    console.log(`Global credentials securely stored in ${credsPath}`);
+    token = "";
+    console.log(`Global credentials securely stored in ${credsPath2}`);
     return 0;
   } catch (error) {
+    if (token) {
+      const tokenBuf = Buffer.from(token);
+      tokenBuf.fill(0);
+    }
+    token = "";
     console.error(`Authentication/Validation failed: ${error.message || error}`);
     return 1;
   }
 }
-var fs11, path12, os2, readline2;
+var path12, os2;
 var init_auth = __esm({
   "src/cli/auth.ts"() {
     "use strict";
-    fs11 = __toESM(require("fs"));
     path12 = __toESM(require("path"));
     os2 = __toESM(require("os"));
-    readline2 = __toESM(require("readline"));
     init_github();
+    init_credentials();
   }
 });
+
+// src/cli.ts
+init_credentials();
 
 // src/cli/router.ts
 var import_fs3 = require("fs");
@@ -214886,8 +215073,8 @@ init_okf();
 init_engine();
 
 // src/templates/engine.ts
-var fs3 = __toESM(require("fs"));
-var path3 = __toESM(require("path"));
+var fs4 = __toESM(require("fs"));
+var path4 = __toESM(require("path"));
 init_schema();
 function translateHandlebarsToEjs(templateText) {
   let t = templateText;
@@ -214944,10 +215131,10 @@ var TemplateEngine = class {
   templatesDir;
   constructor(customTemplatesDir) {
     if (customTemplatesDir) {
-      this.templatesDir = path3.resolve(customTemplatesDir);
+      this.templatesDir = path4.resolve(customTemplatesDir);
     } else {
       const config = loadConfig();
-      this.templatesDir = path3.resolve(config.paths.templates_dir || ".stubs/templates");
+      this.templatesDir = path4.resolve(config.paths.templates_dir || ".stubs/templates");
     }
   }
   /**
@@ -214955,18 +215142,18 @@ var TemplateEngine = class {
    * Returns empty array if directory doesn't exist, defining error out of existence.
    */
   async listTemplates() {
-    if (!fs3.existsSync(this.templatesDir)) {
+    if (!fs4.existsSync(this.templatesDir)) {
       return [];
     }
     const files = [];
     const scan = async (dir) => {
-      const entries = await fs3.promises.readdir(dir, { withFileTypes: true });
+      const entries = await fs4.promises.readdir(dir, { withFileTypes: true });
       for (const entry of entries) {
-        const fullPath = path3.join(dir, entry.name);
+        const fullPath = path4.join(dir, entry.name);
         if (entry.isDirectory()) {
           await scan(fullPath);
         } else if (entry.isFile()) {
-          files.push(path3.relative(this.templatesDir, fullPath).replace(/\\/g, "/"));
+          files.push(path4.relative(this.templatesDir, fullPath).replace(/\\/g, "/"));
         }
       }
     };
@@ -214978,14 +215165,14 @@ var TemplateEngine = class {
    * Supports name with/without extensions.
    */
   getTemplatePath(templateName) {
-    const filePath = path3.resolve(this.templatesDir, templateName);
-    if (fs3.existsSync(filePath)) {
+    const filePath = path4.resolve(this.templatesDir, templateName);
+    if (fs4.existsSync(filePath)) {
       return filePath;
     }
     const extensions = [".ts.md.tpl", ".md.tpl", ".tpl", ".ts.md", ".md"];
     for (const ext of extensions) {
-      const testPath = path3.resolve(this.templatesDir, `${templateName}${ext}`);
-      if (fs3.existsSync(testPath)) {
+      const testPath = path4.resolve(this.templatesDir, `${templateName}${ext}`);
+      if (fs4.existsSync(testPath)) {
         return testPath;
       }
     }
@@ -214996,10 +215183,10 @@ var TemplateEngine = class {
    */
   async renderTemplate(templateName, data) {
     const filePath = this.getTemplatePath(templateName);
-    if (!fs3.existsSync(filePath)) {
+    if (!fs4.existsSync(filePath)) {
       throw new Error(`Template not found: "${templateName}" in directory "${this.templatesDir}"`);
     }
-    const content = await fs3.promises.readFile(filePath, "utf8");
+    const content = await fs4.promises.readFile(filePath, "utf8");
     return this.renderString(content, data);
   }
   /**
@@ -215012,9 +215199,9 @@ var TemplateEngine = class {
 };
 
 // src/autonomy/protocol.ts
-var fs4 = __toESM(require("fs"));
-var path4 = __toESM(require("path"));
-var crypto3 = __toESM(require("crypto"));
+var fs5 = __toESM(require("fs"));
+var path5 = __toESM(require("path"));
+var crypto4 = __toESM(require("crypto"));
 init_js_yaml();
 init_schema();
 init_okf();
@@ -215067,15 +215254,15 @@ var AutonomyProtocol = class {
    * Runs the 5-Phase Retroactive Reconciliation Engine on a target spec file and its corresponding code/template.
    */
   async reconcile(sidecarRelativePath, options = {}) {
-    const sidecarPath = path4.resolve(sidecarRelativePath);
-    if (!fs4.existsSync(sidecarPath)) {
+    const sidecarPath = path5.resolve(sidecarRelativePath);
+    if (!fs5.existsSync(sidecarPath)) {
       return {
         phase: 1,
         success: false,
         message: `Sidecar file not found: ${sidecarRelativePath}`
       };
     }
-    const sidecarContent = await fs4.promises.readFile(sidecarPath, "utf8");
+    const sidecarContent = await fs5.promises.readFile(sidecarPath, "utf8");
     const parsed = parseOkfSpec(sidecarContent);
     if (!parsed.isValid || !parsed.frontmatter) {
       return {
@@ -215087,7 +215274,7 @@ var AutonomyProtocol = class {
     }
     const fm = parsed.frontmatter;
     const codeRelativePath = fm.target_code_file;
-    const codePath = path4.resolve(path4.dirname(sidecarPath), codeRelativePath);
+    const codePath = path5.resolve(path5.dirname(sidecarPath), codeRelativePath);
     const report = await this.detectDrift(
       sidecarRelativePath,
       sidecarContent,
@@ -215131,10 +215318,10 @@ var AutonomyProtocol = class {
       };
     }
     try {
-      await fs4.promises.writeFile(sidecarPath, mergedProposal.proposedSidecarContent, "utf8");
+      await fs5.promises.writeFile(sidecarPath, mergedProposal.proposedSidecarContent, "utf8");
       if (mergedProposal.proposedCodeContent) {
-        await fs4.promises.mkdir(path4.dirname(codePath), { recursive: true });
-        await fs4.promises.writeFile(codePath, mergedProposal.proposedCodeContent, "utf8");
+        await fs5.promises.mkdir(path5.dirname(codePath), { recursive: true });
+        await fs5.promises.writeFile(codePath, mergedProposal.proposedCodeContent, "utf8");
       }
       const updatedSidecarContent = mergedProposal.proposedSidecarContent;
       const updatedCodeContent = mergedProposal.proposedCodeContent;
@@ -215151,7 +215338,7 @@ var AutonomyProtocol = class {
           reParsed.frontmatter,
           reParsed.body
         );
-        await fs4.promises.writeFile(sidecarPath, finalSidecarContentWithHashes, "utf8");
+        await fs5.promises.writeFile(sidecarPath, finalSidecarContentWithHashes, "utf8");
         await this.graphEngine.upsertSidecar({
           filePath: sidecarRelativePath,
           frontmatter: reParsed.frontmatter,
@@ -215197,8 +215384,8 @@ var AutonomyProtocol = class {
     const savedCodeHash = fm?.sync_state?.code_hash || "";
     const actualSidecarHash = this.getSidecarHashWithoutSyncState(sidecarContent);
     let actualCodeHash = "";
-    if (fs4.existsSync(codePath)) {
-      const codeContent = await fs4.promises.readFile(codePath, "utf8");
+    if (fs5.existsSync(codePath)) {
+      const codeContent = await fs5.promises.readFile(codePath, "utf8");
       actualCodeHash = this.calculateHash(codeContent);
     }
     const sidecarChanged = actualSidecarHash !== savedSidecarHash;
@@ -215229,12 +215416,12 @@ var AutonomyProtocol = class {
     updatedFm.status_flag = "clean";
     const proposedSidecarContent = this.serializeOkfSpec(updatedFm, parsed.body);
     let originalCode = "";
-    if (fs4.existsSync(codePath)) {
-      originalCode = await fs4.promises.readFile(codePath, "utf8");
+    if (fs5.existsSync(codePath)) {
+      originalCode = await fs5.promises.readFile(codePath, "utf8");
     }
     return {
       filePath: sidecarRelativePath,
-      sidecarPath: path4.resolve(sidecarRelativePath),
+      sidecarPath: path5.resolve(sidecarRelativePath),
       codePath,
       proposedSidecarContent,
       proposedCodeContent: originalCode,
@@ -215290,7 +215477,7 @@ var AutonomyProtocol = class {
     };
   }
   calculateHash(content) {
-    return crypto3.createHash("sha256").update(content).digest("hex");
+    return crypto4.createHash("sha256").update(content).digest("hex");
   }
   serializeOkfSpec(frontmatter, body) {
     const fmYaml = dump(frontmatter);
@@ -215304,16 +215491,16 @@ ${body}`;
 var http = __toESM(require("http"));
 var fs8 = __toESM(require("fs"));
 var path8 = __toESM(require("path"));
-var crypto5 = __toESM(require("crypto"));
-init_js_yaml();
+var crypto6 = __toESM(require("crypto"));
 init_engine();
 init_schema();
+init_credentials();
 init_okf();
 
 // src/materializer/engine.ts
 var import_fs = require("fs");
-var path6 = __toESM(require("path"));
-var crypto4 = __toESM(require("crypto"));
+var path7 = __toESM(require("path"));
+var crypto5 = __toESM(require("crypto"));
 init_js_yaml();
 init_okf();
 
@@ -215396,14 +215583,14 @@ function extractImplementationCode(blocks) {
 
 // src/compiler/typechecker.ts
 var ts = __toESM(require_typescript());
-var fs5 = __toESM(require("fs"));
-var path5 = __toESM(require("path"));
+var fs6 = __toESM(require("fs"));
+var path6 = __toESM(require("path"));
 function typeCheckVirtualFile(targetFilePath, virtualContent, tsconfigPath) {
-  const absoluteTargetFilePath = path5.resolve(targetFilePath);
-  const resolvedTsconfigPath = tsconfigPath || path5.resolve(process.cwd(), "tsconfig.json");
+  const absoluteTargetFilePath = path6.resolve(targetFilePath);
+  const resolvedTsconfigPath = tsconfigPath || path6.resolve(process.cwd(), "tsconfig.json");
   let compilerOptions = {};
   let fileNames = [];
-  if (fs5.existsSync(resolvedTsconfigPath)) {
+  if (fs6.existsSync(resolvedTsconfigPath)) {
     const readResult = ts.readConfigFile(resolvedTsconfigPath, ts.sys.readFile);
     if (readResult.error) {
       return {
@@ -215416,7 +215603,7 @@ function typeCheckVirtualFile(targetFilePath, virtualContent, tsconfigPath) {
     const parsedConfig = ts.parseJsonConfigFileContent(
       readResult.config,
       ts.sys,
-      path5.dirname(resolvedTsconfigPath)
+      path6.dirname(resolvedTsconfigPath)
     );
     compilerOptions = parsedConfig.options;
     fileNames = parsedConfig.fileNames;
@@ -215435,7 +215622,7 @@ function typeCheckVirtualFile(targetFilePath, virtualContent, tsconfigPath) {
   const host = ts.createCompilerHost(compilerOptions);
   const originalReadFile = host.readFile;
   host.readFile = (fileName) => {
-    const resolvedPath = path5.resolve(fileName);
+    const resolvedPath = path6.resolve(fileName);
     if (resolvedPath === absoluteTargetFilePath) {
       return virtualContent;
     }
@@ -215443,7 +215630,7 @@ function typeCheckVirtualFile(targetFilePath, virtualContent, tsconfigPath) {
   };
   const originalFileExists = host.fileExists;
   host.fileExists = (fileName) => {
-    const resolvedPath = path5.resolve(fileName);
+    const resolvedPath = path6.resolve(fileName);
     if (resolvedPath === absoluteTargetFilePath) {
       return true;
     }
@@ -215451,7 +215638,7 @@ function typeCheckVirtualFile(targetFilePath, virtualContent, tsconfigPath) {
   };
   const originalGetSourceFile = host.getSourceFile;
   host.getSourceFile = (fileName, languageVersionOrOptions, onError, shouldCreateNewSourceFile) => {
-    const resolvedPath = path5.resolve(fileName);
+    const resolvedPath = path6.resolve(fileName);
     if (resolvedPath === absoluteTargetFilePath) {
       return ts.createSourceFile(
         fileName,
@@ -215515,14 +215702,14 @@ var MaterializerEngine = class {
    * Calculates the SHA-256 hash of a given string.
    */
   computeSha256(content) {
-    return crypto4.createHash("sha256").update(content).digest("hex");
+    return crypto5.createHash("sha256").update(content).digest("hex");
   }
   /**
    * Writes file content atomically by writing to a temporary file first, then renaming it.
    */
   async writeAtomic(filePath, content) {
-    const absolutePath = path6.resolve(filePath);
-    const dir = path6.dirname(absolutePath);
+    const absolutePath = path7.resolve(filePath);
+    const dir = path7.dirname(absolutePath);
     await import_fs.promises.mkdir(dir, { recursive: true });
     const tempPath = `${absolutePath}.tmp-${Date.now()}-${Math.random().toString(36).substring(2)}`;
     await import_fs.promises.writeFile(tempPath, content, "utf8");
@@ -215533,8 +215720,8 @@ var MaterializerEngine = class {
    * Orchestrates parsing, extracting, type-checking, hashing, atomic writing, and graph updates.
    */
   async materialize(sidecarPath) {
-    const absoluteSidecarPath = path6.resolve(sidecarPath);
-    const relativeSidecarPath = path6.relative(process.cwd(), absoluteSidecarPath).replace(/\\/g, "/");
+    const absoluteSidecarPath = path7.resolve(sidecarPath);
+    const relativeSidecarPath = path7.relative(process.cwd(), absoluteSidecarPath).replace(/\\/g, "/");
     try {
       await this.graphEngine.initialize();
     } catch (err) {
@@ -215567,8 +215754,8 @@ var MaterializerEngine = class {
         error: 'The sidecar frontmatter is missing "target_code_file" parameter.'
       };
     }
-    const sidecarDir = path6.dirname(absoluteSidecarPath);
-    const absoluteTargetFilePath = path6.resolve(sidecarDir, targetCodeFile);
+    const sidecarDir = path7.dirname(absoluteSidecarPath);
+    const absoluteTargetFilePath = path7.resolve(sidecarDir, targetCodeFile);
     const markdownBlocks = parseMarkdown(body);
     const extraction = extractImplementationCode(markdownBlocks);
     if (extraction.error || !extraction.code) {
@@ -215592,7 +215779,7 @@ var MaterializerEngine = class {
       };
     }
     const extractedCode = extraction.code;
-    const sidecarRelativeFromTarget = path6.relative(path6.dirname(absoluteTargetFilePath), absoluteSidecarPath).replace(/\\/g, "/");
+    const sidecarRelativeFromTarget = path7.relative(path7.dirname(absoluteTargetFilePath), absoluteSidecarPath).replace(/\\/g, "/");
     const sidecarRef = sidecarRelativeFromTarget.startsWith(".") ? sidecarRelativeFromTarget : `./${sidecarRelativeFromTarget}`;
     const sidecarHeader = `// @sidecar ${sidecarRef}
 
@@ -215678,25 +215865,6 @@ var MaterializerEngine = class {
 
 // src/server/portal.ts
 init_github();
-function extractExports(code) {
-  const exports2 = [];
-  const regex = /^\s*export\s+(?:async\s+)?(?:function|class|const|let|var|interface|type|enum)\s+([a-zA-Z0-9_$]+)/gm;
-  let match;
-  while ((match = regex.exec(code)) !== null) {
-    if (match[1]) {
-      exports2.push(match[1]);
-    }
-  }
-  const namedExportsRegex = /^\s*export\s*\{([^}]+)\}/gm;
-  while ((match = namedExportsRegex.exec(code)) !== null) {
-    const names = match[1].split(",").map((n) => {
-      const parts = n.trim().split(/\s+as\s+/);
-      return parts[parts.length - 1].trim();
-    }).filter(Boolean);
-    exports2.push(...names);
-  }
-  return Array.from(new Set(exports2));
-}
 var PortalServer = class {
   port;
   graphEngine;
@@ -215759,6 +215927,30 @@ Using EJS/Handlebars to render a standard service module.
       console.error(`[PortalServer] Default template setup failed: ${err.message || err}`);
     }
     this.server = http.createServer((req, res) => {
+      const originalWrite = res.write;
+      const originalEnd = res.end;
+      res.write = function(chunk, encoding, callback) {
+        if (typeof chunk === "string") {
+          chunk = maskToken(chunk);
+        } else if (Buffer.isBuffer(chunk)) {
+          const str = chunk.toString("utf8");
+          if (str.includes("ghp_") || str.includes("github_pat_")) {
+            chunk = Buffer.from(maskToken(str), "utf8");
+          }
+        }
+        return originalWrite.call(res, chunk, encoding, callback);
+      };
+      res.end = function(chunk, encoding, callback) {
+        if (typeof chunk === "string") {
+          chunk = maskToken(chunk);
+        } else if (Buffer.isBuffer(chunk)) {
+          const str = chunk.toString("utf8");
+          if (str.includes("ghp_") || str.includes("github_pat_")) {
+            chunk = Buffer.from(maskToken(str), "utf8");
+          }
+        }
+        return originalEnd.call(res, chunk, encoding, callback);
+      };
       this.handleRequest(req, res);
     });
     return new Promise((resolve12, reject) => {
@@ -215863,7 +216055,7 @@ Using EJS/Handlebars to render a standard service module.
           if (content.trim().startsWith("---")) {
             const parsed = parseOkfSpec(content);
             if (parsed.isValid && parsed.frontmatter) {
-              const fileHash = crypto5.createHash("sha256").update(content).digest("hex");
+              const fileHash = crypto6.createHash("sha256").update(content).digest("hex");
               await engine.upsertSidecar({
                 filePath: spec.path,
                 frontmatter: parsed.frontmatter,
@@ -216075,7 +216267,7 @@ Using EJS/Handlebars to render a standard service module.
         notes.push(newNote);
         parsed.frontmatter.user_notes = notes;
         const newContent = stringifyOkfSpec(parsed.frontmatter, parsed.body);
-        const fileHash = crypto5.createHash("sha256").update(newContent).digest("hex");
+        const fileHash = crypto6.createHash("sha256").update(newContent).digest("hex");
         if (isRemote) {
           const [owner, repoName] = repo.split("/");
           await createOrUpdateFile(
@@ -216148,7 +216340,7 @@ Using EJS/Handlebars to render a standard service module.
         }
         note.status = "resolved";
         const newContent = stringifyOkfSpec(parsed.frontmatter, parsed.body);
-        const fileHash = crypto5.createHash("sha256").update(newContent).digest("hex");
+        const fileHash = crypto6.createHash("sha256").update(newContent).digest("hex");
         if (isRemote) {
           const [owner, repoName] = repo.split("/");
           await createOrUpdateFile(
@@ -216390,170 +216582,6 @@ Using EJS/Handlebars to render a standard service module.
         res.end(JSON.stringify({ sidecar }));
         return;
       }
-      if (pathname === "/api/v1/bootstrap/scan" && req.method === "GET") {
-        const { isRemote, repo, branch } = await this.resolveGraphEngine(parsedUrl);
-        let unbootstrapped = [];
-        if (isRemote) {
-          const [owner, name] = repo.split("/");
-          const client = new GitHubClient();
-          const tree = await client.fetchTree(owner, name, branch);
-          const tsFiles = tree.filter(
-            (entry) => entry.type === "blob" && entry.path.endsWith(".ts") && !entry.path.endsWith(".d.ts") && !entry.path.startsWith("node_modules/") && !entry.path.startsWith(".git/") && !entry.path.startsWith(".stubs/") && !entry.path.startsWith("dist/") && !entry.path.startsWith("build/")
-          ).map((e) => e.path);
-          const mdFiles = new Set(
-            tree.filter((entry) => entry.type === "blob" && entry.path.endsWith(".ts.md")).map((e) => e.path)
-          );
-          unbootstrapped = tsFiles.filter((tsFile) => !mdFiles.has(`${tsFile}.md`));
-        } else {
-          const result = await this.scanLocalWorkspace();
-          unbootstrapped = result.unbootstrapped;
-        }
-        res.writeHead(200, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ files: unbootstrapped }));
-        return;
-      }
-      if (pathname === "/api/v1/bootstrap/preview" && req.method === "POST") {
-        const { isRemote, repo, branch } = await this.resolveGraphEngine(parsedUrl);
-        const body = await this.parseJsonBody(req);
-        const { filePath, templateName } = body;
-        if (!filePath) {
-          res.writeHead(400, { "Content-Type": "application/json" });
-          res.end(JSON.stringify({ error: "Missing filePath in request body" }));
-          return;
-        }
-        let code = "";
-        if (isRemote) {
-          const [owner, name] = repo.split("/");
-          const client = new GitHubClient();
-          code = await client.fetchFileContents(owner, name, filePath, branch);
-        } else {
-          const fullPath = path8.resolve(process.cwd(), filePath);
-          if (fs8.existsSync(fullPath)) {
-            code = await fs8.promises.readFile(fullPath, "utf8");
-          }
-        }
-        const exportsList = extractExports(code);
-        let templateContent = "";
-        if (templateName) {
-          if (isRemote) {
-            const cached = this.remoteTemplates.get(`${repo}#${branch}`) || [];
-            const tpl = cached.find((t) => t.name === templateName);
-            if (tpl) {
-              templateContent = tpl.content;
-            }
-          }
-          if (!templateContent) {
-            const templateEngine2 = new TemplateEngine(this.config.paths.templates_dir);
-            const templatePath = templateEngine2.getTemplatePath(templateName);
-            if (fs8.existsSync(templatePath)) {
-              templateContent = await fs8.promises.readFile(templatePath, "utf8");
-            }
-          }
-        }
-        if (!templateContent) {
-          templateContent = `# {{title}} Specification
-
-Generated skeleton specification for {{title}}.
-
-- Target Code File: {{target_code_file}}
-- Status: skeleton
-- Version: 1
-
-## Module Overview
-Provides lightweight, secure interfaces.
-
-## Interfaces
-No custom interfaces specified yet.
-`;
-        }
-        const filename = path8.basename(filePath);
-        const title = filename.replace(/\.ts$/, "").split(/[-_]/).map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
-        const templateData = {
-          project_name: this.config.project_name || "stubs",
-          version: "1.0.0",
-          title,
-          target_code_file: `./${filename}`,
-          exports: exportsList
-        };
-        const templateEngine = new TemplateEngine(this.config.paths.templates_dir);
-        const rendered = templateEngine.renderString(templateContent, templateData);
-        const fm = {
-          title: `${title} Spec`,
-          type: "sidecar-spec",
-          description: `Generated skeleton specification for ${title}.`,
-          tags: [],
-          status: "skeleton",
-          version: 1,
-          target_code_file: `./${filename}`,
-          status_flag: "clean",
-          exports: exportsList
-        };
-        const yamlHeader = `---
-${dump(fm)}---
-`;
-        const fullContent = yamlHeader + "\n" + rendered;
-        res.writeHead(200, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ content: fullContent }));
-        return;
-      }
-      if (pathname === "/api/v1/bootstrap/commit" && req.method === "POST") {
-        const { engine, isRemote, repo, branch } = await this.resolveGraphEngine(parsedUrl);
-        const body = await this.parseJsonBody(req);
-        const { files } = body;
-        if (!files || !Array.isArray(files)) {
-          res.writeHead(400, { "Content-Type": "application/json" });
-          res.end(JSON.stringify({ error: "Missing or invalid files array in request body" }));
-          return;
-        }
-        for (const fileItem of files) {
-          const { filePath, content } = fileItem;
-          const mdPath = `${filePath}.md`;
-          if (isRemote) {
-            const [owner, name] = repo.split("/");
-            const client = new GitHubClient();
-            await client.createOrUpdateFile(
-              owner,
-              name,
-              mdPath,
-              content,
-              `Bootstrap sidecar ${mdPath}`,
-              branch
-            );
-            const parsed = parseOkfSpec(content);
-            if (parsed.isValid && parsed.frontmatter) {
-              const fileHash = crypto5.createHash("sha256").update(content).digest("hex");
-              await engine.upsertSidecar({
-                filePath: mdPath,
-                frontmatter: parsed.frontmatter,
-                body: parsed.body,
-                fileHash
-              });
-            }
-          } else {
-            const fullPath = path8.resolve(process.cwd(), mdPath);
-            await fs8.promises.mkdir(path8.dirname(fullPath), { recursive: true });
-            await fs8.promises.writeFile(fullPath, content, "utf8");
-            const parsed = parseOkfSpec(content);
-            if (parsed.isValid && parsed.frontmatter) {
-              const fileHash = crypto5.createHash("sha256").update(content).digest("hex");
-              await this.graphEngine.upsertSidecar({
-                filePath: mdPath,
-                frontmatter: parsed.frontmatter,
-                body: parsed.body,
-                fileHash
-              });
-            }
-          }
-        }
-        if (!isRemote) {
-          await this.graphEngine.indexWorkspace(this.config.paths.specs_dir);
-        }
-        this.broadcast("github:sync", { repo, branch, timestamp: (/* @__PURE__ */ new Date()).toISOString() });
-        this.broadcast("graph:updated", { timestamp: (/* @__PURE__ */ new Date()).toISOString() });
-        res.writeHead(200, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ success: true }));
-        return;
-      }
       res.writeHead(404, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ error: "Not found" }));
     } catch (err) {
@@ -216662,36 +216690,6 @@ data: ${JSON.stringify(data)}
       }
     }, 150);
   }
-  async scanLocalWorkspace() {
-    const tsFiles = [];
-    const mdFiles = /* @__PURE__ */ new Set();
-    const recurse = async (currentDir) => {
-      if (!fs8.existsSync(currentDir)) return;
-      const entries = await fs8.promises.readdir(currentDir, { withFileTypes: true });
-      for (const entry of entries) {
-        const fullPath = path8.join(currentDir, entry.name);
-        const relativePath = path8.relative(process.cwd(), fullPath).replace(/\\/g, "/");
-        if (entry.isDirectory()) {
-          if (entry.name === "node_modules" || entry.name === ".git" || entry.name === ".stubs" || entry.name === "dist" || entry.name === "build") {
-            continue;
-          }
-          await recurse(fullPath);
-        } else if (entry.isFile()) {
-          if (entry.name.endsWith(".ts") && !entry.name.endsWith(".d.ts")) {
-            tsFiles.push(relativePath);
-          } else if (entry.name.endsWith(".ts.md")) {
-            mdFiles.add(relativePath);
-          }
-        }
-      }
-    };
-    await recurse(process.cwd());
-    const unbootstrapped = tsFiles.filter((tsFile) => {
-      const expectedMd = `${tsFile}.md`;
-      return !mdFiles.has(expectedMd);
-    });
-    return { unbootstrapped };
-  }
   /**
    * HTML Content for the stubs web dashboard portal.
    */
@@ -216795,13 +216793,6 @@ data: ${JSON.stringify(data)}
     </div>
 
     <div class="flex items-center space-x-4">
-      <!-- Bootstrap Codebase Button -->
-      <button
-        onclick="openBootstrapModal()"
-        class="bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs px-3 py-1.5 rounded-lg transition-all active:scale-95 shadow-sm"
-      >
-        \u26A1 Bootstrap Codebase
-      </button>
       <!-- Connectivity Status Badge -->
       <div id="connection-badge" class="flex items-center space-x-2 px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors duration-300 connection-dead">
         <span class="h-2 w-2 rounded-full animate-pulse bg-current" id="connection-dot"></span>
@@ -216939,80 +216930,6 @@ data: ${JSON.stringify(data)}
 
   </div>
 
-  <!-- Bootstrap Codebase Modal -->
-  <div id="bootstrap-modal" class="fixed inset-0 bg-black/80 z-50 flex items-center justify-center hidden px-4">
-    <div class="bg-slate-900 border border-slate-800 w-full max-w-4xl h-[85vh] p-6 rounded-2xl shadow-2xl flex flex-col space-y-4">
-      <div class="flex items-center justify-between border-b border-slate-800 pb-3 shrink-0">
-        <div class="flex items-center space-x-2.5">
-          <span class="text-xl">\u26A1</span>
-          <div>
-            <h2 class="text-base font-semibold text-white tracking-tight">Bootstrap Specification Sidecars</h2>
-            <p class="text-xs text-slate-400">Generate OKF skeleton sidecars for TypeScript files missing specs.</p>
-          </div>
-        </div>
-        <button onclick="closeBootstrapModal()" class="text-slate-500 hover:text-slate-300 text-sm p-1">\u2715</button>
-      </div>
-
-      <!-- Main Columns Split -->
-      <div class="flex-1 flex overflow-hidden gap-4 min-h-0">
-        <!-- Left Pane: Checklist of un-bootstrapped files -->
-        <div class="w-1/2 flex flex-col space-y-3 border-r border-slate-800 pr-4">
-          <div class="flex items-center justify-between">
-            <h3 class="text-xs font-semibold text-slate-200">Un-bootstrapped TS Files</h3>
-            <div class="flex space-x-3">
-              <button onclick="toggleAllBootstrapCheckboxes(true)" class="text-[10px] text-indigo-400 hover:underline">Select All</button>
-              <button onclick="toggleAllBootstrapCheckboxes(false)" class="text-[10px] text-slate-500 hover:underline">Deselect All</button>
-            </div>
-          </div>
-
-          <!-- Checklist container -->
-          <div id="bootstrap-files-list" class="flex-1 overflow-y-auto custom-scroll space-y-2 bg-slate-950/40 p-3 rounded-xl border border-slate-800/80">
-            <p class="text-xs text-slate-500 italic">No files scanned yet.</p>
-          </div>
-        </div>
-
-        <!-- Right Pane: Generation Configuration and Preview -->
-        <div class="w-1/2 flex flex-col space-y-4">
-          <!-- Template selector -->
-          <div class="space-y-1.5 shrink-0">
-            <label for="bootstrap-template-select" class="block text-[11px] font-medium text-slate-400">Base Template Mold</label>
-            <select
-              id="bootstrap-template-select"
-              onchange="onBootstrapTemplateChange()"
-              class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-300 focus:outline-none focus:border-indigo-500"
-            >
-              <option value="">-- Use Default OKF Skeleton --</option>
-            </select>
-          </div>
-
-          <!-- Preview container -->
-          <div class="flex-1 flex flex-col min-h-0">
-            <div class="flex items-center justify-between mb-1.5 shrink-0">
-              <h3 class="text-xs font-semibold text-slate-200">Specification Preview</h3>
-              <span id="preview-filename-badge" class="text-[10px] font-mono text-indigo-400 truncate max-w-[200px]">None selected</span>
-            </div>
-            <div class="flex-1 bg-slate-950 border border-slate-800 rounded-xl overflow-hidden flex flex-col">
-              <pre class="flex-1 p-3 text-[10px] text-slate-300 font-mono overflow-y-auto custom-scroll whitespace-pre-wrap select-all leading-relaxed" id="bootstrap-preview-text">Select a file on the left to preview generated specification content...</pre>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Footer Buttons -->
-      <div class="flex items-center justify-between border-t border-slate-800 pt-3 shrink-0">
-        <span id="bootstrap-status-info" class="text-xs text-slate-500 italic">0 files selected for bootstrapping.</span>
-        <div class="flex space-x-2">
-          <button onclick="commitBootstrapSidecars()" id="bootstrap-commit-btn" class="bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs px-5 py-2.5 rounded-lg active:scale-95 transition-all shadow-sm" disabled>
-            Commit Specifications
-          </button>
-          <button onclick="closeBootstrapModal()" class="bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold text-xs px-4 py-2.5 rounded-lg active:scale-95 transition-all">
-            Cancel
-          </button>
-        </div>
-      </div>
-    </div>
-  </div>
-
   <!-- Toast Overlay System (Max 3 visible) -->
   <div id="toast-container" class="fixed bottom-6 right-6 flex flex-col space-y-2 z-50 pointer-events-none"></div>
 
@@ -217029,191 +216946,6 @@ data: ${JSON.stringify(data)}
     let currentMode = 'local';
     let currentRepo = '';
     let currentBranch = 'main';
-
-    let bootstrapFiles = [];
-    let bootstrapSelectedFile = null;
-
-    async function openBootstrapModal() {
-      const modal = document.getElementById('bootstrap-modal');
-      modal.classList.remove('hidden');
-
-      // 1. Scan for un-bootstrapped files
-      const listContainer = document.getElementById('bootstrap-files-list');
-      listContainer.innerHTML = '<p class="text-xs text-slate-500 italic p-2">Scanning workspace for unbootstrapped files...</p>';
-
-      try {
-        const scanRes = await fetch('/api/v1/bootstrap/scan' + getQueryParams());
-        const scanData = await scanRes.json();
-        bootstrapFiles = scanData.files || [];
-
-        if (bootstrapFiles.length === 0) {
-          listContainer.innerHTML = '<p class="text-xs text-slate-500 italic p-2">All TypeScript files in the codebase have corresponding sidecar specifications!</p>';
-        } else {
-          listContainer.innerHTML = bootstrapFiles.map((file, idx) => \`
-            <div class="flex items-center justify-between p-2 hover:bg-slate-900/50 rounded-lg transition-all">
-              <label class="flex items-center space-x-2.5 cursor-pointer truncate mr-2">
-                <input
-                  type="checkbox"
-                  class="bootstrap-file-chk rounded border-slate-800 bg-slate-950 text-indigo-600 focus:ring-indigo-500"
-                  value="\${file}"
-                  onchange="onBootstrapCheckboxChange()"
-                />
-                <span class="text-xs text-slate-300 font-medium truncate">\${file}</span>
-              </label>
-              <button
-                onclick="previewBootstrapFile('\${file}')"
-                class="text-[10px] text-indigo-400 hover:underline cursor-pointer shrink-0 font-medium px-2 py-1 bg-slate-900 border border-slate-800/80 rounded"
-              >
-                Preview
-              </button>
-            </div>
-          \`).join('');
-        }
-      } catch (err) {
-        listContainer.innerHTML = '<p class="text-xs text-rose-400 font-semibold p-2">Failed to scan workspace.</p>';
-      }
-
-      // 2. Load templates dropdown
-      const templateSelect = document.getElementById('bootstrap-template-select');
-      templateSelect.innerHTML = '<option value="">-- Use Default OKF Skeleton --</option>';
-
-      try {
-        const templatesRes = await fetch('/api/v1/templates' + getQueryParams());
-        const templatesData = await templatesRes.json();
-        const tpls = templatesData.templates || [];
-
-        tpls.forEach(t => {
-          const opt = document.createElement('option');
-          opt.value = t.name;
-          opt.textContent = t.name + (t.isDraft ? ' (draft)' : '');
-          templateSelect.appendChild(opt);
-        });
-      } catch (err) {
-        console.error('Failed to load templates:', err);
-      }
-
-      // Reset preview and status
-      bootstrapSelectedFile = null;
-      document.getElementById('bootstrap-preview-text').textContent = 'Select a file on the left to preview generated specification content...';
-      document.getElementById('preview-filename-badge').textContent = 'None selected';
-      updateBootstrapStatus();
-    }
-
-    function closeBootstrapModal() {
-      document.getElementById('bootstrap-modal').classList.add('hidden');
-    }
-
-    function toggleAllBootstrapCheckboxes(checked) {
-      const chks = document.querySelectorAll('.bootstrap-file-chk');
-      chks.forEach(chk => chk.checked = checked);
-      updateBootstrapStatus();
-    }
-
-    function onBootstrapCheckboxChange() {
-      updateBootstrapStatus();
-    }
-
-    async function previewBootstrapFile(filePath) {
-      bootstrapSelectedFile = filePath;
-      document.getElementById('preview-filename-badge').textContent = filePath;
-      const previewText = document.getElementById('bootstrap-preview-text');
-      previewText.textContent = 'Generating preview...';
-
-      const templateName = document.getElementById('bootstrap-template-select').value;
-
-      try {
-        const res = await fetch('/api/v1/bootstrap/preview' + getQueryParams(), {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ filePath, templateName })
-        });
-        const data = await res.json();
-        if (data.content) {
-          previewText.textContent = data.content;
-        } else {
-          previewText.textContent = 'Error generating preview: ' + (data.error || 'unknown');
-        }
-      } catch (err) {
-        previewText.textContent = 'Failed to fetch generation preview.';
-      }
-    }
-
-    function onBootstrapTemplateChange() {
-      if (bootstrapSelectedFile) {
-        previewBootstrapFile(bootstrapSelectedFile);
-      }
-    }
-
-    function updateBootstrapStatus() {
-      const chks = document.querySelectorAll('.bootstrap-file-chk:checked');
-      const count = chks.length;
-      document.getElementById('bootstrap-status-info').textContent = \`\${count} file(s) selected for bootstrapping.\`;
-      document.getElementById('bootstrap-commit-btn').disabled = (count === 0);
-    }
-
-    async function commitBootstrapSidecars() {
-      const chks = document.querySelectorAll('.bootstrap-file-chk:checked');
-      if (chks.length === 0) return;
-
-      const commitBtn = document.getElementById('bootstrap-commit-btn');
-      commitBtn.disabled = true;
-      commitBtn.textContent = 'Committing...';
-
-      const filesToCommit = [];
-      const templateName = document.getElementById('bootstrap-template-select').value;
-
-      showToast(\`Generating sidecars for \${chks.length} files...\`, "info");
-
-      // Generate preview/content for each selected file
-      for (const chk of chks) {
-        const filePath = chk.value;
-        try {
-          const res = await fetch('/api/v1/bootstrap/preview' + getQueryParams(), {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ filePath, templateName })
-          });
-          const data = await res.json();
-          if (data.content) {
-            filesToCommit.push({ filePath, content: data.content });
-          } else {
-            showToast(\`Skipped \${filePath}: generation failed.\`, "error");
-          }
-        } catch (err) {
-          showToast(\`Skipped \${filePath}: fetch failed.\`, "error");
-        }
-      }
-
-      if (filesToCommit.length === 0) {
-        showToast("No valid files generated. Aborting commit.", "error");
-        commitBtn.textContent = 'Commit Specifications';
-        commitBtn.disabled = false;
-        return;
-      }
-
-      showToast(\`Committing \${filesToCommit.length} sidecar files...\`, "info");
-
-      try {
-        const commitRes = await fetch('/api/v1/bootstrap/commit' + getQueryParams(), {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ files: filesToCommit })
-        });
-        const commitData = await commitRes.json();
-        if (commitData.success) {
-          showToast(\`Successfully bootstrapped \${filesToCommit.length} sidecars!\`, "success");
-          closeBootstrapModal();
-          initWorkspace(); // Refresh workspace specs list
-        } else {
-          showToast("Commit failed: " + (commitData.error || 'unknown'), "error");
-        }
-      } catch (err) {
-        showToast("Error executing bootstrap commit.", "error");
-      } finally {
-        commitBtn.textContent = 'Commit Specifications';
-        commitBtn.disabled = false;
-      }
-    }
 
     function getQueryParams() {
       if (currentMode === 'remote' && currentRepo) {
@@ -217985,7 +217717,7 @@ init_schema();
 // src/sanding/engine.ts
 var import_fs2 = require("fs");
 var path10 = __toESM(require("path"));
-var crypto7 = __toESM(require("crypto"));
+var crypto8 = __toESM(require("crypto"));
 init_js_yaml();
 init_okf();
 
@@ -218105,7 +217837,7 @@ ${newCode}
 
 // src/sanding/ast.ts
 var ts2 = __toESM(require_typescript());
-var crypto6 = __toESM(require("crypto"));
+var crypto7 = __toESM(require("crypto"));
 var fs9 = __toESM(require("fs"));
 var path9 = __toESM(require("path"));
 function getAstStructuralHash(code) {
@@ -218123,7 +217855,7 @@ function getAstStructuralHash(code) {
   }
   visit2(sourceFile);
   const serialized = nodes.join(",");
-  return crypto6.createHash("sha256").update(serialized).digest("hex");
+  return crypto7.createHash("sha256").update(serialized).digest("hex");
 }
 function typeCheckCode(filePath, code) {
   const absoluteFilePath = path9.resolve(filePath);
@@ -218232,7 +217964,7 @@ function typeCheckCode(filePath, code) {
 
 // src/sanding/engine.ts
 function sha256(content) {
-  return crypto7.createHash("sha256").update(content).digest("hex");
+  return crypto8.createHash("sha256").update(content).digest("hex");
 }
 function stripSyncStateFromYaml(yamlText) {
   const lines = yamlText.split("\n");
@@ -218797,6 +218529,7 @@ ${body}`;
 };
 
 // src/cli/router.ts
+init_credentials();
 var CliRouter = class {
   /**
    * Main entry point to route the CLI command.
@@ -218804,6 +218537,7 @@ var CliRouter = class {
    */
   async route(argv) {
     try {
+      applyGlobalConsoleMasking();
       const context = this.parseArgs(argv);
       if (argv.includes("--help") || argv.includes("-h") || context.command === "help") {
         this.printHelp();
@@ -218900,7 +218634,7 @@ Options:
   -c, --config <path>  Specify path to stubs configuration file (default: .stubs/config.json)
   --depth <depth>      Specify grill depth (light_probe | standard_drill | deep_interrogation)
   --non-interactive    Run the grill engine in non-interactive (automated) mode
-  --token <pat>        Provide a GitHub Personal Access Token directly (auth login)
+  --token <pat>        [DEPRECATED] Provide a GitHub Personal Access Token directly (auth login). Prefer STDIN pipe or environment variables.
   --provider <name>    Specify auth provider (default: github) (auth login)
   --repo <owner/repo>  Override default target repo (Defaults to Wiltermoodj/stubs)
   --branch <name>      Specify a git branch or tag (Defaults to main)
@@ -219404,6 +219138,7 @@ Options:
 };
 
 // src/cli.ts
+applyGlobalConsoleMasking();
 async function main() {
   const router = new CliRouter();
   const exitCode = await router.route(process.argv.slice(2));
