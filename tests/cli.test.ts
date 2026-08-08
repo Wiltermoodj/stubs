@@ -154,7 +154,8 @@ title: "Temp Spec"
       expect(
         fs.existsSync(path.join(tempDir, '.agents/skills/stubs/sub-skills/auditing/SKILL.md')),
       ).toBe(true);
-      expect(fs.existsSync(path.join(tempDir, '.agents/skills/stubs/dist/cli.js'))).toBe(true);
+      expect(fs.existsSync(path.join(tempDir, '.agents/skills/stubs/dist/cli.cjs'))).toBe(true);
+      expect(fs.existsSync(path.join(tempDir, '.agents/skills/stubs/dist/sql-wasm.wasm'))).toBe(true);
       expect(fs.existsSync(path.join(tempDir, '.gitignore'))).toBe(true);
 
       const gitignore = fs.readFileSync(path.join(tempDir, '.gitignore'), 'utf8');

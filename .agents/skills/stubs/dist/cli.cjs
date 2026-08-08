@@ -5411,15 +5411,18 @@ var require_sql_wasm = __commonJS({
 });
 
 // src/storage/index.ts
-var fs2, fsSync, path2, import_sqlite3, import_sql, NodeFileSystem, BetterSqliteDriver;
+var fs2, fsSync, path2, import_sql, sqlite3, NodeFileSystem, BetterSqliteDriver, WasmSqliteDriver;
 var init_storage = __esm({
   "src/storage/index.ts"() {
     "use strict";
     fs2 = __toESM(require("fs/promises"));
     fsSync = __toESM(require("fs"));
     path2 = __toESM(require("path"));
-    import_sqlite3 = __toESM(require("sqlite3"));
     import_sql = __toESM(require_sql_wasm());
+    try {
+      sqlite3 = require("sqlite3");
+    } catch {
+    }
     NodeFileSystem = class {
       async readFile(filePath) {
         return await fs2.readFile(filePath, "utf8");
@@ -5490,12 +5493,15 @@ var init_storage = __esm({
       }
       async initialize() {
         if (this.db) return;
+        if (!sqlite3) {
+          throw new Error("Native sqlite3 module is not available.");
+        }
         const dir = path2.dirname(this.dbPath);
         if (!fsSync.existsSync(dir)) {
           fsSync.mkdirSync(dir, { recursive: true });
         }
         return new Promise((resolve12, reject) => {
-          this.db = new import_sqlite3.default.Database(this.dbPath, (err) => {
+          this.db = new sqlite3.Database(this.dbPath, (err) => {
             if (err) {
               reject(err);
             } else {
@@ -5592,6 +5598,212 @@ var init_storage = __esm({
             }
           });
         });
+      }
+    };
+    WasmSqliteDriver = class {
+      db = null;
+      isFts5Supported = false;
+      dbPath;
+      fsDriver;
+      initialData;
+      constructor(options) {
+        this.dbPath = options?.dbPath;
+        this.fsDriver = options?.fsDriver;
+        this.initialData = options?.initialData;
+      }
+      async initialize() {
+        if (this.db) return;
+        const isNode = typeof process !== "undefined" && process.versions && process.versions.node;
+        const SQL = await (0, import_sql.default)({
+          locateFile: (file) => {
+            if (isNode) {
+              const possiblePaths = [
+                path2.join(__dirname, file),
+                path2.join(__dirname, "../../node_modules/sql.js/dist", file),
+                path2.join(process.cwd(), "node_modules/sql.js/dist", file),
+                path2.join(process.cwd(), ".agents/skills/stubs/dist", file)
+              ];
+              for (const p of possiblePaths) {
+                if (fsSync.existsSync(p)) {
+                  return p;
+                }
+              }
+              return path2.join(__dirname, file);
+            }
+            return file;
+          }
+        });
+        let data = this.initialData;
+        if (!data && this.dbPath && this.fsDriver) {
+          try {
+            if (await this.fsDriver.exists(this.dbPath)) {
+              const content = await this.fsDriver.readFile(this.dbPath);
+              if (content) {
+                data = new Uint8Array(content.length);
+                for (let i = 0; i < content.length; i++) {
+                  data[i] = content.charCodeAt(i);
+                }
+              }
+            }
+          } catch {
+          }
+        }
+        if (data) {
+          this.db = new SQL.Database(data);
+        } else {
+          this.db = new SQL.Database();
+        }
+        try {
+          this.db.run("CREATE VIRTUAL TABLE fts_test USING fts5(x); DROP TABLE fts_test;");
+          this.isFts5Supported = true;
+        } catch {
+          this.isFts5Supported = false;
+        }
+      }
+      preprocessSql(sql, params) {
+        if (this.isFts5Supported) {
+          return { sql, params };
+        }
+        let outSql = sql;
+        let outParams = params;
+        if (outSql.includes("CREATE VIRTUAL TABLE") && outSql.includes("USING fts5")) {
+          outSql = `
+        CREATE TABLE IF NOT EXISTS sidecar_fts (
+          rowid INTEGER PRIMARY KEY,
+          file_path TEXT,
+          title TEXT,
+          description TEXT,
+          tags TEXT,
+          exports TEXT,
+          interfaces_text TEXT,
+          decisions_text TEXT
+        );
+      `;
+          outParams = [];
+        }
+        if (outSql.includes("INSERT INTO sidecar_fts(sidecar_fts, rowid")) {
+          outSql = "DELETE FROM sidecar_fts WHERE rowid = ?;";
+          outParams = [params[0]];
+        }
+        return { sql: outSql, params: outParams };
+      }
+      async exec(sql) {
+        if (!this.db) throw new Error("Database not initialized");
+        const prep = this.preprocessSql(sql, []);
+        this.db.exec(prep.sql);
+      }
+      async run(sql, params = []) {
+        if (!this.db) throw new Error("Database not initialized");
+        const prep = this.preprocessSql(sql, params);
+        const stmt = this.db.prepare(prep.sql);
+        if (prep.params.length > 0) {
+          stmt.bind(prep.params);
+        }
+        stmt.step();
+        stmt.free();
+        const res = this.db.exec("SELECT last_insert_rowid() as id, changes() as changes;");
+        let lastID = 0;
+        let changes = 0;
+        if (res && res[0]) {
+          lastID = Number(res[0].values[0][0]);
+          changes = Number(res[0].values[0][1]);
+        }
+        return { lastID, changes };
+      }
+      async get(sql, params = []) {
+        if (!this.db) throw new Error("Database not initialized");
+        const prep = this.preprocessSql(sql, params);
+        const stmt = this.db.prepare(prep.sql);
+        let result;
+        if (prep.params.length > 0) {
+          stmt.bind(prep.params);
+        }
+        if (stmt.step()) {
+          result = stmt.getAsObject();
+        }
+        stmt.free();
+        return result;
+      }
+      async all(sql, params = []) {
+        if (!this.db) throw new Error("Database not initialized");
+        const prep = this.preprocessSql(sql, params);
+        const stmt = this.db.prepare(prep.sql);
+        const results = [];
+        if (prep.params.length > 0) {
+          stmt.bind(prep.params);
+        }
+        while (stmt.step()) {
+          results.push(stmt.getAsObject());
+        }
+        stmt.free();
+        return results;
+      }
+      async prepare(sql) {
+        if (!this.db) throw new Error("Database not initialized");
+        return {
+          run: async (params = []) => {
+            const prep = this.preprocessSql(sql, params);
+            const stmt = this.db.prepare(prep.sql);
+            if (prep.params.length > 0) {
+              stmt.bind(prep.params);
+            }
+            stmt.step();
+            stmt.free();
+            const res = this.db.exec("SELECT last_insert_rowid() as id, changes() as changes;");
+            let lastID = 0;
+            let changes = 0;
+            if (res && res[0]) {
+              lastID = Number(res[0].values[0][0]);
+              changes = Number(res[0].values[0][1]);
+            }
+            return { lastID, changes };
+          },
+          get: async (params = []) => {
+            const prep = this.preprocessSql(sql, params);
+            const stmt = this.db.prepare(prep.sql);
+            let result;
+            if (prep.params.length > 0) {
+              stmt.bind(prep.params);
+            }
+            if (stmt.step()) {
+              result = stmt.getAsObject();
+            }
+            stmt.free();
+            return result;
+          },
+          all: async (params = []) => {
+            const prep = this.preprocessSql(sql, params);
+            const stmt = this.db.prepare(prep.sql);
+            const results = [];
+            if (prep.params.length > 0) {
+              stmt.bind(prep.params);
+            }
+            while (stmt.step()) {
+              results.push(stmt.getAsObject());
+            }
+            stmt.free();
+            return results;
+          },
+          finalize: async () => {
+          }
+        };
+      }
+      async close() {
+        if (!this.db) return;
+        if (this.dbPath && this.fsDriver) {
+          try {
+            const data = this.db.export();
+            let content = "";
+            const batchSize = 8192;
+            for (let i = 0; i < data.length; i += batchSize) {
+              content += String.fromCharCode.apply(null, data.subarray(i, i + batchSize));
+            }
+            await this.fsDriver.writeFile(this.dbPath, content);
+          } catch {
+          }
+        }
+        this.db.close();
+        this.db = null;
       }
     };
   }
@@ -5988,7 +6200,20 @@ var init_engine = __esm({
           this.fsDriver = new NodeFileSystem();
         }
         if (!this.dbDriver) {
-          this.dbDriver = new BetterSqliteDriver(this.dbPath);
+          let sqlite3Available = false;
+          try {
+            require("sqlite3");
+            sqlite3Available = true;
+          } catch (e) {
+          }
+          if (sqlite3Available) {
+            this.dbDriver = new BetterSqliteDriver(this.dbPath);
+          } else {
+            this.dbDriver = new WasmSqliteDriver({
+              dbPath: this.dbPath,
+              fsDriver: this.fsDriver
+            });
+          }
         }
       }
       /**
@@ -214345,6 +214570,52 @@ ${e.message}`;
 });
 
 // src/server/github.ts
+function getEncryptionKey() {
+  let machineId = "";
+  try {
+    machineId = os.hostname() + "_" + (os.userInfo().username || "");
+  } catch {
+    machineId = "stubs_fallback_machine_key";
+  }
+  return crypto5.createHash("sha256").update(machineId).digest();
+}
+function encryptToken(text) {
+  if (!text) return text;
+  try {
+    const key = getEncryptionKey();
+    const iv = crypto5.randomBytes(12);
+    const cipher = crypto5.createCipheriv("aes-256-gcm", key, iv);
+    let encrypted = cipher.update(text, "utf8", "hex");
+    encrypted += cipher.final("hex");
+    const tag = cipher.getAuthTag().toString("hex");
+    return `${iv.toString("hex")}:${tag}:${encrypted}`;
+  } catch {
+    return text;
+  }
+}
+function decryptToken(encryptedData) {
+  if (!encryptedData) return encryptedData;
+  const parts = encryptedData.split(":");
+  if (parts.length !== 3) {
+    return encryptedData;
+  }
+  const [ivHex, tagHex, encryptedHex] = parts;
+  if (ivHex.length !== 24 || tagHex.length !== 32) {
+    return encryptedData;
+  }
+  try {
+    const key = getEncryptionKey();
+    const iv = Buffer.from(ivHex, "hex");
+    const tag = Buffer.from(tagHex, "hex");
+    const decipher = crypto5.createDecipheriv("aes-256-gcm", key, iv);
+    decipher.setAuthTag(tag);
+    let decrypted = decipher.update(encryptedHex, "hex", "utf8");
+    decrypted += decipher.final("utf8");
+    return decrypted;
+  } catch {
+    return encryptedData;
+  }
+}
 function resolveEnvPlaceholders(value) {
   if (typeof value !== "string") return value;
   const match = value.match(/\${ENV:([^}]+)}/);
@@ -214380,7 +214651,7 @@ function resolveToken(configPath) {
       const creds = JSON.parse(rawCreds);
       const token = creds["github.com"]?.token || creds.github_token;
       if (token) {
-        return token;
+        return decryptToken(token);
       }
     }
   } catch {
@@ -214407,13 +214678,14 @@ async function createOrUpdateFile(owner, repo, path14, content, message, branch,
   const client = new GitHubClient(token);
   return await client.createOrUpdateFile(owner, repo, path14, content, message, branch);
 }
-var fs7, path7, os, GitHubClient;
+var fs7, path7, os, crypto5, GitHubClient;
 var init_github = __esm({
   "src/server/github.ts"() {
     "use strict";
     fs7 = __toESM(require("fs"));
     path7 = __toESM(require("path"));
     os = __toESM(require("os"));
+    crypto5 = __toESM(require("crypto"));
     init_schema();
     GitHubClient = class {
       token;
@@ -214803,6 +215075,11 @@ async function handleLogin(options = {}) {
   const credsDir = path12.join(os2.homedir(), ".stubs");
   const credsPath = path12.join(credsDir, "credentials.json");
   let token = options.token;
+  if (token) {
+    console.warn(
+      "Warning: The --token <pat> command-line argument is deprecated to prevent token leaks in shell history. Please use interactive login or define the STUBS_GITHUB_PAT environment variable instead."
+    );
+  }
   if (!token) {
     if (options.nonInteractive) {
       console.error(
@@ -214814,11 +215091,24 @@ async function handleLogin(options = {}) {
       input: process.stdin,
       output: process.stdout
     });
+    rl.muted = false;
+    rl._writeToOutput = function _writeToOutput(stringToWrite) {
+      if (!rl.muted) {
+        process.stdout.write(stringToWrite);
+      } else {
+        if (stringToWrite === "\r\n" || stringToWrite === "\n" || stringToWrite === "\r") {
+          process.stdout.write(stringToWrite);
+        } else {
+          process.stdout.write("*");
+        }
+      }
+    };
     const askToken = () => {
       return new Promise((resolve12) => {
         rl.question("Please enter your GitHub Personal Access Token (PAT):\n> ", (answer) => {
           resolve12(answer.trim());
         });
+        rl.muted = true;
       });
     };
     token = await askToken();
@@ -214847,11 +215137,11 @@ async function handleLogin(options = {}) {
       }
     }
     credentials["github.com"] = {
-      token,
+      token: encryptToken(token),
       login: user.login,
       updatedAt: (/* @__PURE__ */ new Date()).toISOString()
     };
-    credentials.github_token = token;
+    credentials.github_token = encryptToken(token);
     fs11.writeFileSync(credsPath, JSON.stringify(credentials, null, 2), "utf8");
     try {
       fs11.chmodSync(credsPath, 384);
@@ -215304,7 +215594,7 @@ ${body}`;
 var http = __toESM(require("http"));
 var fs8 = __toESM(require("fs"));
 var path8 = __toESM(require("path"));
-var crypto5 = __toESM(require("crypto"));
+var crypto6 = __toESM(require("crypto"));
 init_engine();
 init_schema();
 init_okf();
@@ -215843,7 +216133,7 @@ Using EJS/Handlebars to render a standard service module.
           if (content.trim().startsWith("---")) {
             const parsed = parseOkfSpec(content);
             if (parsed.isValid && parsed.frontmatter) {
-              const fileHash = crypto5.createHash("sha256").update(content).digest("hex");
+              const fileHash = crypto6.createHash("sha256").update(content).digest("hex");
               await engine.upsertSidecar({
                 filePath: spec.path,
                 frontmatter: parsed.frontmatter,
@@ -216055,7 +216345,7 @@ Using EJS/Handlebars to render a standard service module.
         notes.push(newNote);
         parsed.frontmatter.user_notes = notes;
         const newContent = stringifyOkfSpec(parsed.frontmatter, parsed.body);
-        const fileHash = crypto5.createHash("sha256").update(newContent).digest("hex");
+        const fileHash = crypto6.createHash("sha256").update(newContent).digest("hex");
         if (isRemote) {
           const [owner, repoName] = repo.split("/");
           await createOrUpdateFile(
@@ -216128,7 +216418,7 @@ Using EJS/Handlebars to render a standard service module.
         }
         note.status = "resolved";
         const newContent = stringifyOkfSpec(parsed.frontmatter, parsed.body);
-        const fileHash = crypto5.createHash("sha256").update(newContent).digest("hex");
+        const fileHash = crypto6.createHash("sha256").update(newContent).digest("hex");
         if (isRemote) {
           const [owner, repoName] = repo.split("/");
           await createOrUpdateFile(
@@ -217505,7 +217795,7 @@ init_schema();
 // src/sanding/engine.ts
 var import_fs2 = require("fs");
 var path10 = __toESM(require("path"));
-var crypto7 = __toESM(require("crypto"));
+var crypto8 = __toESM(require("crypto"));
 init_js_yaml();
 init_okf();
 
@@ -217625,7 +217915,7 @@ ${newCode}
 
 // src/sanding/ast.ts
 var ts2 = __toESM(require_typescript());
-var crypto6 = __toESM(require("crypto"));
+var crypto7 = __toESM(require("crypto"));
 var fs9 = __toESM(require("fs"));
 var path9 = __toESM(require("path"));
 function getAstStructuralHash(code) {
@@ -217643,7 +217933,7 @@ function getAstStructuralHash(code) {
   }
   visit2(sourceFile);
   const serialized = nodes.join(",");
-  return crypto6.createHash("sha256").update(serialized).digest("hex");
+  return crypto7.createHash("sha256").update(serialized).digest("hex");
 }
 function typeCheckCode(filePath, code) {
   const absoluteFilePath = path9.resolve(filePath);
@@ -217752,7 +218042,7 @@ function typeCheckCode(filePath, code) {
 
 // src/sanding/engine.ts
 function sha256(content) {
-  return crypto7.createHash("sha256").update(content).digest("hex");
+  return crypto8.createHash("sha256").update(content).digest("hex");
 }
 function stripSyncStateFromYaml(yamlText) {
   const lines = yamlText.split("\n");
@@ -218855,7 +219145,8 @@ Options:
       ".agents/skills/stubs/sub-skills/grilling/SKILL.md",
       ".agents/skills/stubs/sub-skills/materialization/SKILL.md",
       ".agents/skills/stubs/sub-skills/sanding/SKILL.md",
-      ".agents/skills/stubs/dist/cli.js"
+      ".agents/skills/stubs/dist/cli.cjs",
+      ".agents/skills/stubs/dist/sql-wasm.wasm"
     ];
     try {
       await import_fs3.promises.mkdir(destDir, { recursive: true });

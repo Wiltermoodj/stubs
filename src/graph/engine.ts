@@ -182,7 +182,20 @@ export class GraphEngine {
       this.fsDriver = new NodeFileSystem();
     }
     if (!this.dbDriver) {
-      this.dbDriver = new BetterSqliteDriver(this.dbPath);
+      let sqlite3Available = false;
+      try {
+        require('sqlite3');
+        sqlite3Available = true;
+      } catch (e) {}
+
+      if (sqlite3Available) {
+        this.dbDriver = new BetterSqliteDriver(this.dbPath);
+      } else {
+        this.dbDriver = new WasmSqliteDriver({
+          dbPath: this.dbPath,
+          fsDriver: this.fsDriver,
+        });
+      }
     }
   }
 
@@ -1158,7 +1171,22 @@ export function createGraphEngine(
 
   if (isNode) {
     if (!fsDriver) fsDriver = new NodeFileSystem();
-    if (!dbDriver) dbDriver = new BetterSqliteDriver(dbPath);
+    if (!dbDriver) {
+      let sqlite3Available = false;
+      try {
+        require('sqlite3');
+        sqlite3Available = true;
+      } catch (e) {}
+
+      if (sqlite3Available) {
+        dbDriver = new BetterSqliteDriver(dbPath);
+      } else {
+        dbDriver = new WasmSqliteDriver({
+          dbPath: dbPath,
+          fsDriver: fsDriver,
+        });
+      }
+    }
   } else {
     if (!fsDriver) fsDriver = new VirtualFileSystem();
     if (!dbDriver) dbDriver = new WasmSqliteDriver();

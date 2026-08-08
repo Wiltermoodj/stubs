@@ -1,7 +1,62 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
+import * as crypto from 'crypto';
 import { loadConfig } from '../config/schema';
+
+function getEncryptionKey(): Buffer {
+  let machineId = '';
+  try {
+    machineId = os.hostname() + '_' + (os.userInfo().username || '');
+  } catch {
+    machineId = 'stubs_fallback_machine_key';
+  }
+  return crypto.createHash('sha256').update(machineId).digest();
+}
+
+export function encryptToken(text: string): string {
+  if (!text) return text;
+  try {
+    const key = getEncryptionKey();
+    const iv = crypto.randomBytes(12);
+    const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
+
+    let encrypted = cipher.update(text, 'utf8', 'hex');
+    encrypted += cipher.final('hex');
+
+    const tag = cipher.getAuthTag().toString('hex');
+    return `${iv.toString('hex')}:${tag}:${encrypted}`;
+  } catch {
+    return text;
+  }
+}
+
+export function decryptToken(encryptedData: string): string {
+  if (!encryptedData) return encryptedData;
+  const parts = encryptedData.split(':');
+  if (parts.length !== 3) {
+    return encryptedData;
+  }
+
+  const [ivHex, tagHex, encryptedHex] = parts;
+  if (ivHex.length !== 24 || tagHex.length !== 32) {
+    return encryptedData;
+  }
+
+  try {
+    const key = getEncryptionKey();
+    const iv = Buffer.from(ivHex, 'hex');
+    const tag = Buffer.from(tagHex, 'hex');
+    const decipher = crypto.createDecipheriv('aes-256-gcm', key, iv);
+    decipher.setAuthTag(tag);
+
+    let decrypted = decipher.update(encryptedHex, 'hex', 'utf8');
+    decrypted += decipher.final('utf8');
+    return decrypted;
+  } catch {
+    return encryptedData;
+  }
+}
 
 export interface GitHubUser {
   login: string;
@@ -82,7 +137,7 @@ export function resolveToken(configPath?: string): string {
       const creds = JSON.parse(rawCreds);
       const token = creds['github.com']?.token || creds.github_token;
       if (token) {
-        return token;
+        return decryptToken(token);
       }
     }
   } catch {
