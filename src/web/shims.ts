@@ -6,7 +6,7 @@ function sha256(ascii: string): string {
   const mathPow = Math.pow;
   const maxWord = mathPow(2, 32);
   const lengthProperty = 'length';
-  let i, j;
+  let i;
   const hash = [] as number[];
   const words = [] as number[];
 
@@ -22,8 +22,8 @@ function sha256(ascii: string): string {
     candidate++;
   }
 
-  let asciiLength = ascii[lengthProperty];
-  let wordsLength = ((asciiLength + 8) >> 6) + 1;
+  const asciiLength = ascii[lengthProperty];
+  const wordsLength = ((asciiLength + 8) >> 6) + 1;
   for (i = 0; i < wordsLength * 16; i++) {
     words[i] = 0;
   }
@@ -101,7 +101,7 @@ class Hash {
     }
     return this;
   }
-  digest(encoding: string): string {
+  digest(_encoding: string): string {
     return sha256(this.data);
   }
 }
@@ -142,31 +142,31 @@ export function basename(p: string): string {
 }
 
 // Named exports from fs/promises to prevent esbuild undefined warnings
-export async function readFile(filePath: string): Promise<string> {
+export async function readFile(_filePath: string): Promise<string> {
   return '';
 }
-export async function writeFile(filePath: string, content: string): Promise<void> {}
-export async function readdir(dirPath: string): Promise<string[]> {
+export async function writeFile(_filePath: string, _content: string): Promise<void> {}
+export async function readdir(_dirPath: string): Promise<string[]> {
   return [];
 }
-export async function readDir(dirPath: string): Promise<string[]> {
+export async function readDir(_dirPath: string): Promise<string[]> {
   return [];
 }
-export async function mkdir(dirPath: string): Promise<void> {}
-export async function access(filePath: string): Promise<void> {}
-export async function rename(oldPath: string, newPath: string): Promise<void> {}
-export async function unlink(filePath: string): Promise<void> {}
+export async function mkdir(_dirPath: string): Promise<void> {}
+export async function access(_filePath: string): Promise<void> {}
+export async function rename(_oldPath: string, _newPath: string): Promise<void> {}
+export async function unlink(_filePath: string): Promise<void> {}
 
 // Named exports from fs (Sync methods)
-export function readFileSync(p: string, encoding?: string): string {
+export function readFileSync(_p: string, _encoding?: string): string {
   return '';
 }
-export function existsSync(p: string): boolean {
+export function existsSync(_p: string): boolean {
   return false;
 }
-export function mkdirSync(p: string, options?: any) {}
-export function writeFileSync(p: string, c: string, options?: any) {}
-export function readdirSync(p: string): string[] {
+export function mkdirSync(_p: string, _options?: any) {}
+export function writeFileSync(_p: string, _c: string, _options?: any) {}
+export function readdirSync(_p: string): string[] {
   return [];
 }
 
@@ -192,22 +192,22 @@ export class Database {
   constructor(path: string, callback?: (err: Error | null) => void) {
     if (callback) setTimeout(() => callback(null), 0);
   }
-  exec(sql: string, callback?: (err: Error | null) => void) {
+  exec(_sql: string, callback?: (err: Error | null) => void) {
     if (callback) setTimeout(() => callback(null), 0);
   }
-  run(sql: string, params?: any, callback?: any) {
+  run(_sql: string, params?: any, callback?: any) {
     if (typeof params === 'function') params(null);
     else if (callback) callback(null);
   }
-  get(sql: string, params?: any, callback?: any) {
+  get(_sql: string, params?: any, callback?: any) {
     if (typeof params === 'function') params(null, null);
     else if (callback) callback(null, null);
   }
-  all(sql: string, params?: any, callback?: any) {
+  all(_sql: string, params?: any, callback?: any) {
     if (typeof params === 'function') params(null, []);
     else if (callback) callback(null, []);
   }
-  prepare(sql: string) {
+  prepare(_sql: string) {
     return {
       run: (params: any, cb: any) => {
         if (cb) cb(null);

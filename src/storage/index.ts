@@ -365,7 +365,7 @@ export class WasmSqliteDriver implements DatabaseDriver {
             }
           }
         }
-      } catch (err) {
+      } catch {
         // Fall back to empty database if reading fails
       }
     }
@@ -539,7 +539,7 @@ export class WasmSqliteDriver implements DatabaseDriver {
           content += String.fromCharCode.apply(null, data.subarray(i, i + batchSize) as any);
         }
         await this.fsDriver.writeFile(this.dbPath, content);
-      } catch (err) {
+      } catch {
         // Ignore persist errors
       }
     }

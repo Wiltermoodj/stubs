@@ -496,7 +496,7 @@ async function fetchSpecsFromGithub() {
           cachedFiles[spec.path] = content;
           loadedCount++;
         }
-      } catch (err) {
+      } catch {
         console.warn(`Failed to fetch raw contents for ${spec.path}`);
       }
     }
