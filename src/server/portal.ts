@@ -4,6 +4,7 @@ import * as path from 'path';
 import * as crypto from 'crypto';
 import { GraphEngine } from '../graph/engine';
 import { loadConfig, StubsConfig } from '../config/schema';
+import { maskToken } from '../storage/credentials';
 import { parseOkfSpec } from '../parser/okf';
 import { stringifyOkfSpec } from '../materializer/engine';
 import { TemplateEngine } from '../templates/engine';
@@ -94,6 +95,33 @@ Using EJS/Handlebars to render a standard service module.
     }
 
     this.server = http.createServer((req, res) => {
+      const originalWrite = res.write;
+      const originalEnd = res.end;
+
+      res.write = function (chunk: any, encoding?: any, callback?: any): boolean {
+        if (typeof chunk === 'string') {
+          chunk = maskToken(chunk);
+        } else if (Buffer.isBuffer(chunk)) {
+          const str = chunk.toString('utf8');
+          if (str.includes('ghp_') || str.includes('github_pat_')) {
+            chunk = Buffer.from(maskToken(str), 'utf8');
+          }
+        }
+        return originalWrite.call(res, chunk, encoding, callback);
+      } as any;
+
+      res.end = function (chunk?: any, encoding?: any, callback?: any): any {
+        if (typeof chunk === 'string') {
+          chunk = maskToken(chunk);
+        } else if (Buffer.isBuffer(chunk)) {
+          const str = chunk.toString('utf8');
+          if (str.includes('ghp_') || str.includes('github_pat_')) {
+            chunk = Buffer.from(maskToken(str), 'utf8');
+          }
+        }
+        return originalEnd.call(res, chunk, encoding, callback);
+      } as any;
+
       this.handleRequest(req, res);
     });
 

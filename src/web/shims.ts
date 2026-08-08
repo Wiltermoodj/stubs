@@ -111,6 +111,39 @@ export function createHash(algorithm: string) {
   return new Hash();
 }
 
+export function randomBytes(size: number): Buffer {
+  const buf = Buffer.alloc(size);
+  for (let i = 0; i < size; i++) {
+    buf[i] = Math.floor(Math.random() * 256);
+  }
+  return buf;
+}
+
+export function pbkdf2Sync(_password: any, _salt: any, _iterations: any, keylen: number, _digest: any): Buffer {
+  return Buffer.alloc(keylen, 1);
+}
+
+class MockCipher {
+  update(data: string | Buffer, _inputEnc?: any, _outputEnc?: any): any {
+    return typeof data === 'string' ? data : data.toString('utf8');
+  }
+  final(_outputEnc?: any): any {
+    return '';
+  }
+  getAuthTag(): Buffer {
+    return Buffer.alloc(16, 2);
+  }
+  setAuthTag(_tag: Buffer): void {}
+}
+
+export function createCipheriv(_algorithm: string, _key: any, _iv: any): MockCipher {
+  return new MockCipher();
+}
+
+export function createDecipheriv(_algorithm: string, _key: any, _iv: any): MockCipher {
+  return new MockCipher();
+}
+
 // Shimming "path" Node.js module
 export function resolve(...args: string[]): string {
   return args.filter(Boolean).join('/').replace(/\\/g, '/');
@@ -169,6 +202,12 @@ export function writeFileSync(_p: string, _c: string, _options?: any) {}
 export function readdirSync(_p: string): string[] {
   return [];
 }
+export function statSync(_p: string): any {
+  return {
+    mode: 0o600,
+  };
+}
+export function chmodSync(_p: string, _mode: any): void {}
 
 // Shimming promises block under fs
 export const promises = {
@@ -185,6 +224,20 @@ export const promises = {
 // Shimming "os" Node.js module
 export function homedir(): string {
   return '';
+}
+export function hostname(): string {
+  return 'web_host';
+}
+export function platform(): string {
+  return 'web_platform';
+}
+export function arch(): string {
+  return 'web_arch';
+}
+export function userInfo(): any {
+  return {
+    username: 'web_user',
+  };
 }
 
 // Shimming "sqlite3" Node.js module

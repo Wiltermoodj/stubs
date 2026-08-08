@@ -22,22 +22,17 @@ Instead of jumping directly from natural language prompts to executable code—a
 
 ## What `stubs` Does
 
-* **Dual-File Sidecar Architecture:** Pairs production files (`*.ts`) 1:1 with Markdown specifications (`*.ts.md`) formatted in Google Open Knowledge Format (OKF).
+- **Dual-File Sidecar Architecture:** Pairs production files (`*.ts`) 1:1 with Markdown specifications (`*.ts.md`) formatted in Google Open Knowledge Format (OKF).
 
+- **Zero-Model Local Core:** Requires zero external API keys, zero local ML models, and no complex runtime dependencies. The host AI agent handles reasoning, while the local CLI performs mechanical operations at 0 token cost.
 
-* **Zero-Model Local Core:** Requires zero external API keys, zero local ML models, and no complex runtime dependencies. The host AI agent handles reasoning, while the local CLI performs mechanical operations at 0 token cost.
+- **Pluggable Graph & FTS5 Search:** Manages dependencies using a SQLite adjacency graph and FTS5 full-text search engine (`graph.sqlite`).
 
+- **Bi-Directional Code Sanding:** Reconciles specification drift automatically using AST structural hashes and timestamp vectors.
 
-* **Pluggable Graph & FTS5 Search:** Manages dependencies using a SQLite adjacency graph and FTS5 full-text search engine (`graph.sqlite`).
+- **Interactive Web Portal & PWA:** Serves an interactive 1-Hop Ego Graph visualization, human directive channel, and template workbench locally or via a touch-friendly PWA.
 
-
-* **Bi-Directional Code Sanding:** Reconciles specification drift automatically using AST structural hashes and timestamp vectors.
-
-
-* **Interactive Web Portal & PWA:** Serves an interactive 1-Hop Ego Graph visualization, human directive channel, and template workbench locally or via a touch-friendly PWA.
-
-
-* **Remote GitHub Collaboration & Mobile Support:** Works across local terminals, remote GitHub branches, and terminal-free mobile browsers using GitHub Personal Access Tokens (PAT) and WASM SQLite (`sql.js`).
+- **Remote GitHub Collaboration & Mobile Support:** Works across local terminals, remote GitHub branches, and terminal-free mobile browsers using GitHub Personal Access Tokens (PAT) and WASM SQLite (`sql.js`).
 
 ---
 
@@ -70,7 +65,7 @@ stubs auth login --provider=github
 
 ```
 
-*(You can also set the `STUBS_GITHUB_PAT` environment variable.)*
+_(You can also set the `STUBS_GITHUB_PAT` environment variable.)_
 
 ---
 
@@ -86,23 +81,23 @@ Access the touch-optimized Web UI from any mobile device or browser without need
 
 ## Core Workflow Commands
 
-| Command | Rationale / Action |
-| --- | --- |
-| `stubs install` | Downloads and installs the skill bundle from GitHub into `.agents/skills/stubs/`. |
+| Command            | Rationale / Action                                                                        |
+| ------------------ | ----------------------------------------------------------------------------------------- |
+| `stubs install`    | Downloads and installs the skill bundle from GitHub into `.agents/skills/stubs/`.         |
 | `stubs auth login` | Authenticates and securely stores your GitHub PAT globally (`~/.stubs/credentials.json`). |
-| `stubs init` | Initializes `.stubs/` configuration and SQLite graph database in the working directory.
+| `stubs init`       | Initializes `.stubs/` configuration and SQLite graph database in the working directory.   |
 
- |
+|
 | `stubs bootstrap` | Scans an existing TypeScript codebase, generates initial `*.ts.md` skeletons, and builds the dependency graph. |
 | `stubs serve` | Launches the local HTTP server and Web Portal (`http://localhost:3000`) with SSE live updates.
 
- |
+|
 | `stubs materialize` | Runs in-memory `tsc` typechecks on implementation code blocks and extracts them to executable `*.ts` files.
 
- |
+|
 | `stubs sand` | Reconciles structural drift between `*.ts` source code and `*.ts.md` specification sidecars.
 
- |
+|
 
 ---
 
@@ -123,13 +118,10 @@ npm run deploy:pages
 
 ## Architectural Principles
 
-* **Deep Modules:** Simple public interfaces that conceal rich internal logic.
+- **Deep Modules:** Simple public interfaces that conceal rich internal logic.
 
+- **Context Objects:** Group session, environment, and user state into unified parameters (`AuthContext`, `RequestContext`) to prevent pass-through clutter.
 
-* **Context Objects:** Group session, environment, and user state into unified parameters (`AuthContext`, `RequestContext`) to prevent pass-through clutter.
+- **Define Errors Out of Existence:** Prefer explicit `Result<T, E>` returns and idempotent APIs over disruptive runtime exceptions.
 
-
-* **Define Errors Out of Existence:** Prefer explicit `Result<T, E>` returns and idempotent APIs over disruptive runtime exceptions.
-
-
-* **Self-Healing Frontmatter:** Guarantees that manual edit collisions or missing YAML fields never crash the parser.
+- **Self-Healing Frontmatter:** Guarantees that manual edit collisions or missing YAML fields never crash the parser.
