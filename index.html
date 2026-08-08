@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"
+    />
+    <title>Stubs Spec Manager (PWA)</title>
+    <link rel="manifest" href="manifest.json" />
+    <meta name="theme-color" content="#1e1e2e" />
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+      body {
+        background-color: oklch(0.15 0.02 240);
+        color: oklch(0.85 0.02 240);
+        font-family:
+          'Inter',
+          system-ui,
+          -apple-system,
+          sans-serif;
+        overflow-x: hidden;
+        /* Prevent elastic bounce on iOS devices */
+        position: fixed;
+        width: 100%;
+        height: 100%;
+      }
+
+      #app-container {
+        width: 100%;
+        height: 100%;
+      }
+
+      /* Scrollbars matching dark theme */
+      .custom-scroll::-webkit-scrollbar {
+        width: 6px;
+        height: 6px;
+      }
+      .custom-scroll::-webkit-scrollbar-track {
+        background: oklch(0.18 0.02 240);
+      }
+      .custom-scroll::-webkit-scrollbar-thumb {
+        background: oklch(0.3 0.02 240);
+        border-radius: 4px;
+      }
+
+      /* Adaptive Drawer Transitions */
+      .drawer {
+        transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+      }
+
+      /* Touch specific improvements */
+      .touch-action-none {
+        touch-action: none;
+      }
+
+      /* Node selection highlight */
+      .node-focus {
+        stroke: oklch(0.6 0.25 250);
+        stroke-width: 3.5px;
+      }
+    </style>
+  </head>
+  <body class="antialiased">
+    <div id="app-container" class="flex flex-col h-full w-full"></div>
+
+    <!-- Load bundled web build entry point -->
+    <script src="app.js"></script>
+
+    <script>
+      // Register Service Worker for Progressive Web App (PWA) offline usage
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker
+            .register('sw.js')
+            .then((reg) => console.log('ServiceWorker registered successfully:', reg.scope))
+            .catch((err) => console.warn('ServiceWorker registration failed:', err));
+        });
+      }
+    </script>
+  </body>
+</html>
