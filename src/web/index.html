@@ -68,6 +68,15 @@
     <script src="app.js"></script>
 
     <script>
+      // Bridge beforeinstallprompt into the app shell for the install banner
+      window.addEventListener('beforeinstallprompt', (event) => {
+        event.preventDefault();
+        window.__pwaBeforeInstallPrompt = event;
+        if (typeof setupPwaInstallBanner === 'function') {
+          setupPwaInstallBanner();
+        }
+      });
+
       // Register Service Worker for Progressive Web App (PWA) offline usage
       if ('serviceWorker' in navigator) {
         window.addEventListener('load', () => {

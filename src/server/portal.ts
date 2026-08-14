@@ -434,11 +434,61 @@ Using EJS/Handlebars to render a standard service module.
         return;
       }
 
-      // 1. Dashboard UI Root
+      // 1. Dashboard UI Root - PWA primary
       if (pathname === '/' && req.method === 'GET') {
+        const pwaIndex = path.resolve(__dirname, '../../dist/web/index.html');
+        if (fs.existsSync(pwaIndex)) {
+          const html = fs.readFileSync(pwaIndex, 'utf8');
+          res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+          res.end(html);
+          return;
+        }
+
+        const missing = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Stubs PWA not built</title>
+</head>
+<body>
+  <p>The PWA build is missing. Run <code>npm run build:web</code> and restart.</p>
+</body>
+</html>`;
         res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-        res.end(this.getDashboardHtml());
+        res.end(missing);
         return;
+      }
+
+      // 1c. Legacy dashboard fallback
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+      res.end(this.getDashboardHtml());
+      return;
+
+      // 1b. PWA static assets
+      const pwaRoot = path.resolve(__dirname, '../../dist/web');
+      const pwaAssetPaths = new Set([
+        '/app.js',
+        '/app.js.map',
+        '/sql-wasm.wasm',
+        '/sql-wasm-browser.wasm',
+        '/manifest.json',
+        '/sw.js',
+      ]);
+      if (pwaAssetPaths.has(pathname) && req.method === 'GET') {
+        const safeRelative = pathname.startsWith('/') ? pathname.slice(1) : pathname;
+        const filePath = path.join(pwaRoot, safeRelative);
+        if (fs.existsSync(filePath)) {
+          const ext = path.extname(filePath);
+          const mimeMap: Record<string, string> = {
+            '.js': 'application/javascript',
+            '.map': 'application/json',
+            '.wasm': 'application/wasm',
+            '.json': 'application/json',
+          };
+          res.writeHead(200, { 'Content-Type': mimeMap[ext] || 'application/octet-stream' });
+          fs.createReadStream(filePath).pipe(res);
+          return;
+        }
       }
 
       // 2. SSE Event Stream (with v1 alias support)

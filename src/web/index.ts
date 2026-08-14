@@ -1352,7 +1352,9 @@ async function openBootstrapModal() {
   if (modal) modal.classList.remove('hidden');
 
   const listContainer = document.getElementById('bootstrap-files-list');
-  if (listContainer) listContainer.innerHTML = '<p class="text-xs text-slate-500 italic p-2">Scanning workspace for unbootstrapped files...</p>';
+  if (listContainer)
+    listContainer.innerHTML =
+      '<p class="text-xs text-slate-500 italic p-2">Scanning workspace for unbootstrapped files...</p>';
 
   function getQueryParams() {
     if (currentRepo) {
@@ -1368,9 +1370,12 @@ async function openBootstrapModal() {
 
     if (listContainer) {
       if (bootstrapFiles.length === 0) {
-        listContainer.innerHTML = '<p class="text-xs text-slate-500 italic p-2">All TypeScript files in the codebase have corresponding sidecar specifications!</p>';
+        listContainer.innerHTML =
+          '<p class="text-xs text-slate-500 italic p-2">All TypeScript files in the codebase have corresponding sidecar specifications!</p>';
       } else {
-        listContainer.innerHTML = bootstrapFiles.map((file) => `
+        listContainer.innerHTML = bootstrapFiles
+          .map(
+            (file) => `
           <div class="flex items-center justify-between p-2 hover:bg-slate-900/50 rounded-lg transition-all">
             <label class="flex items-center space-x-2.5 cursor-pointer truncate mr-2">
               <input
@@ -1388,11 +1393,15 @@ async function openBootstrapModal() {
               Preview
             </button>
           </div>
-        `).join('');
+        `,
+          )
+          .join('');
       }
     }
   } catch (err) {
-    if (listContainer) listContainer.innerHTML = '<p class="text-xs text-rose-400 font-semibold p-2">Failed to scan workspace.</p>';
+    if (listContainer)
+      listContainer.innerHTML =
+        '<p class="text-xs text-rose-400 font-semibold p-2">Failed to scan workspace.</p>';
   }
 
   // 2. Load templates dropdown
@@ -1418,7 +1427,9 @@ async function openBootstrapModal() {
 
   bootstrapSelectedFile = null;
   const previewText = document.getElementById('bootstrap-preview-text');
-  if (previewText) previewText.textContent = 'Select a file on the left to preview generated specification content...';
+  if (previewText)
+    previewText.textContent =
+      'Select a file on the left to preview generated specification content...';
   const previewBadge = document.getElementById('preview-filename-badge');
   if (previewBadge) previewBadge.textContent = 'None selected';
   updateBootstrapStatus();
@@ -1435,7 +1446,7 @@ function closeBootstrapModal() {
 
 function toggleAllBootstrapCheckboxes(checked: boolean) {
   const chks = document.querySelectorAll('.bootstrap-file-chk') as NodeListOf<HTMLInputElement>;
-  chks.forEach(chk => chk.checked = checked);
+  chks.forEach((chk) => (chk.checked = checked));
   updateBootstrapStatus();
 }
 
@@ -1468,7 +1479,7 @@ async function previewBootstrapFile(filePath: string) {
     const res = await fetch('/api/v1/bootstrap/preview' + getQueryParams(), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ filePath, templateName })
+      body: JSON.stringify({ filePath, templateName }),
     });
     const data = await res.json();
     if (previewText) {
@@ -1494,16 +1505,20 @@ function onBootstrapTemplateChange() {
 (window as any).onBootstrapTemplateChange = onBootstrapTemplateChange;
 
 function updateBootstrapStatus() {
-  const chks = document.querySelectorAll('.bootstrap-file-chk:checked') as NodeListOf<HTMLInputElement>;
+  const chks = document.querySelectorAll(
+    '.bootstrap-file-chk:checked',
+  ) as NodeListOf<HTMLInputElement>;
   const count = chks.length;
   const info = document.getElementById('bootstrap-status-info');
   if (info) info.textContent = `${count} file(s) selected for bootstrapping.`;
   const btn = document.getElementById('bootstrap-commit-btn') as HTMLButtonElement;
-  if (btn) btn.disabled = (count === 0);
+  if (btn) btn.disabled = count === 0;
 }
 
 async function commitBootstrapSidecars() {
-  const chks = document.querySelectorAll('.bootstrap-file-chk:checked') as NodeListOf<HTMLInputElement>;
+  const chks = document.querySelectorAll(
+    '.bootstrap-file-chk:checked',
+  ) as NodeListOf<HTMLInputElement>;
   if (chks.length === 0) return;
 
   const commitBtn = document.getElementById('bootstrap-commit-btn') as HTMLButtonElement;
@@ -1516,7 +1531,7 @@ async function commitBootstrapSidecars() {
   const templateSelect = document.getElementById('bootstrap-template-select') as HTMLSelectElement;
   const templateName = templateSelect ? templateSelect.value : '';
 
-  showToast(`Generating sidecars for ${chks.length} files...`, "info");
+  showToast(`Generating sidecars for ${chks.length} files...`, 'info');
 
   function getQueryParams() {
     if (currentRepo) {
@@ -1531,21 +1546,21 @@ async function commitBootstrapSidecars() {
       const res = await fetch('/api/v1/bootstrap/preview' + getQueryParams(), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ filePath, templateName })
+        body: JSON.stringify({ filePath, templateName }),
       });
       const data = await res.json();
       if (data.content) {
         filesToCommit.push({ filePath, content: data.content });
       } else {
-        showToast(`Skipped ${filePath}: generation failed.`, "error");
+        showToast(`Skipped ${filePath}: generation failed.`, 'error');
       }
     } catch (err) {
-      showToast(`Skipped ${filePath}: fetch failed.`, "error");
+      showToast(`Skipped ${filePath}: fetch failed.`, 'error');
     }
   }
 
   if (filesToCommit.length === 0) {
-    showToast("No valid files generated. Aborting commit.", "error");
+    showToast('No valid files generated. Aborting commit.', 'error');
     if (commitBtn) {
       commitBtn.textContent = 'Commit Specifications';
       commitBtn.disabled = false;
@@ -1553,17 +1568,17 @@ async function commitBootstrapSidecars() {
     return;
   }
 
-  showToast(`Committing ${filesToCommit.length} sidecar files...`, "info");
+  showToast(`Committing ${filesToCommit.length} sidecar files...`, 'info');
 
   try {
     const commitRes = await fetch('/api/v1/bootstrap/commit' + getQueryParams(), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ files: filesToCommit })
+      body: JSON.stringify({ files: filesToCommit }),
     });
     const commitData = await commitRes.json();
     if (commitData.success) {
-      showToast(`Successfully bootstrapped ${filesToCommit.length} sidecars!`, "success");
+      showToast(`Successfully bootstrapped ${filesToCommit.length} sidecars!`, 'success');
       closeBootstrapModal();
 
       // Refresh spec file lists
@@ -1573,10 +1588,10 @@ async function commitBootstrapSidecars() {
         await (window as any).loadWorkspace();
       }
     } else {
-      showToast("Commit failed: " + (commitData.error || 'unknown'), "error");
+      showToast('Commit failed: ' + (commitData.error || 'unknown'), 'error');
     }
   } catch (err) {
-    showToast("Error executing bootstrap commit.", "error");
+    showToast('Error executing bootstrap commit.', 'error');
   } finally {
     if (commitBtn) {
       commitBtn.textContent = 'Commit Specifications';
@@ -1586,3 +1601,48 @@ async function commitBootstrapSidecars() {
 }
 
 (window as any).commitBootstrapSidecars = commitBootstrapSidecars;
+
+// PWA install banner + offline cache status
+function setupPwaInstallBanner() {
+  const banner = document.getElementById('pwa-install-banner');
+  const btn = document.getElementById('pwa-install-btn');
+  if (!banner || !btn) return;
+
+  const evt = (window as any).__pwaBeforeInstallPrompt;
+  if (evt) {
+    btn.onclick = async () => {
+      try {
+        await evt.prompt();
+        const choice = await evt.userChoice;
+        showToast(
+          choice.outcome === 'accepted' ? 'Installing app...' : 'Install dismissed',
+          choice.outcome === 'accepted' ? 'success' : 'info',
+        );
+      } finally {
+        banner.classList.add('hidden');
+        (window as any).__pwaBeforeInstallPrompt = null;
+      }
+    };
+    banner.classList.remove('hidden');
+  } else {
+    banner.classList.add('hidden');
+  }
+}
+
+function updateOfflineStatus() {
+  const el = document.getElementById('offline-status');
+  const txt = document.getElementById('offline-status-text');
+  if (!el || !txt) return;
+
+  const hasRepo = Boolean(currentRepo && currentBranch);
+  const cacheKey = hasRepo ? `STUBS_OFFLINE_FILES_${currentRepo}_${currentBranch}` : null;
+  const cached = cacheKey ? localStorage.getItem(cacheKey) : null;
+  const hasCache = Boolean(
+    cached && JSON.parse(cached || '{}') && Object.keys(JSON.parse(cached || '{}')).length,
+  );
+
+  txt.textContent = hasCache
+    ? `Offline cache: ${currentRepo}@${currentBranch}`
+    : 'Offline cache empty';
+  el.classList.toggle('hidden', !hasCache);
+}

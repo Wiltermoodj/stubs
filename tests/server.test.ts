@@ -95,8 +95,8 @@ export function verify();
     const res = await fetch(getUrl('/'));
     expect(res.status).toBe(200);
     const text = await res.text();
-    expect(text).toContain('<!DOCTYPE html>');
-    expect(text).toContain('stubs Web Portal');
+    expect(text).toContain('<!doctype html>');
+    expect(text).toContain('Stubs Spec Manager (PWA)');
   });
 
   test('GET /api/graph should return indexed sidecars and project metadata', async () => {
