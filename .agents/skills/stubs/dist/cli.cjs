@@ -3942,15 +3942,15 @@ var require_sql_wasm = __commonJS({
         "undefined" != typeof __filename ? ya = __filename : ba && (ya = self.location.href);
         var za = "", Aa, Ba;
         if (ca) {
-          var fs13 = require("node:fs");
+          var fs12 = require("node:fs");
           za = __dirname + "/";
           Ba = (a) => {
             a = Ca(a) ? new URL(a) : a;
-            return fs13.readFileSync(a);
+            return fs12.readFileSync(a);
           };
           Aa = async (a) => {
             a = Ca(a) ? new URL(a) : a;
-            return fs13.readFileSync(a, void 0);
+            return fs12.readFileSync(a, void 0);
           };
           1 < process.argv.length && (wa = process.argv[1].replace(/\\/g, "/"));
           process.argv.slice(2);
@@ -4232,7 +4232,7 @@ var require_sql_wasm = __commonJS({
               if (ca) {
                 var b = Buffer.alloc(256), c = 0, d = process.stdin.fd;
                 try {
-                  c = fs13.readSync(d, b, 0, 256);
+                  c = fs12.readSync(d, b, 0, 256);
                 } catch (e) {
                   if (e.toString().includes("EOF")) c = 0;
                   else throw e;
@@ -5562,10 +5562,7 @@ var init_storage = __esm({
     fsSync = __toESM(require("fs"));
     path3 = __toESM(require("path"));
     import_sql = __toESM(require_sql_wasm());
-    try {
-      sqlite3 = require("sqlite3");
-    } catch {
-    }
+    sqlite3 = __toESM(require("sqlite3"));
     NodeFileSystem = class {
       async readFile(filePath) {
         return await fs3.readFile(filePath, "utf8");
@@ -5643,52 +5640,52 @@ var init_storage = __esm({
         if (!fsSync.existsSync(dir)) {
           fsSync.mkdirSync(dir, { recursive: true });
         }
-        return new Promise((resolve12, reject) => {
+        return new Promise((resolve13, reject) => {
           this.db = new sqlite3.Database(this.dbPath, (err) => {
             if (err) {
               reject(err);
             } else {
-              resolve12();
+              resolve13();
             }
           });
         });
       }
       async exec(sql) {
         if (!this.db) throw new Error("Database not initialized");
-        return new Promise((resolve12, reject) => {
+        return new Promise((resolve13, reject) => {
           this.db.exec(sql, (err) => {
             if (err) reject(err);
-            else resolve12();
+            else resolve13();
           });
         });
       }
       async run(sql, params = []) {
         if (!this.db) throw new Error("Database not initialized");
-        return new Promise((resolve12, reject) => {
+        return new Promise((resolve13, reject) => {
           this.db.run(sql, params, function(err) {
             if (err) {
               reject(err);
             } else {
-              resolve12({ lastID: this.lastID, changes: this.changes });
+              resolve13({ lastID: this.lastID, changes: this.changes });
             }
           });
         });
       }
       async get(sql, params = []) {
         if (!this.db) throw new Error("Database not initialized");
-        return new Promise((resolve12, reject) => {
+        return new Promise((resolve13, reject) => {
           this.db.get(sql, params, (err, row) => {
             if (err) reject(err);
-            else resolve12(row);
+            else resolve13(row);
           });
         });
       }
       async all(sql, params = []) {
         if (!this.db) throw new Error("Database not initialized");
-        return new Promise((resolve12, reject) => {
+        return new Promise((resolve13, reject) => {
           this.db.all(sql, params, (err, rows) => {
             if (err) reject(err);
-            else resolve12(rows);
+            else resolve13(rows);
           });
         });
       }
@@ -5697,34 +5694,34 @@ var init_storage = __esm({
         const stmt = this.db.prepare(sql);
         return {
           run: (params = []) => {
-            return new Promise((resolve12, reject) => {
+            return new Promise((resolve13, reject) => {
               stmt.run(params, function(err) {
                 if (err) reject(err);
-                else resolve12({ lastID: this.lastID, changes: this.changes });
+                else resolve13({ lastID: this.lastID, changes: this.changes });
               });
             });
           },
           get: (params = []) => {
-            return new Promise((resolve12, reject) => {
+            return new Promise((resolve13, reject) => {
               stmt.get(params, (err, row) => {
                 if (err) reject(err);
-                else resolve12(row);
+                else resolve13(row);
               });
             });
           },
           all: (params = []) => {
-            return new Promise((resolve12, reject) => {
+            return new Promise((resolve13, reject) => {
               stmt.all(params, (err, rows) => {
                 if (err) reject(err);
-                else resolve12(rows);
+                else resolve13(rows);
               });
             });
           },
           finalize: () => {
-            return new Promise((resolve12, reject) => {
+            return new Promise((resolve13, reject) => {
               stmt.finalize((err) => {
                 if (err) reject(err);
-                else resolve12();
+                else resolve13();
               });
             });
           }
@@ -5732,12 +5729,12 @@ var init_storage = __esm({
       }
       async close() {
         if (!this.db) return;
-        return new Promise((resolve12, reject) => {
+        return new Promise((resolve13, reject) => {
           this.db.close((err) => {
             if (err) reject(err);
             else {
               this.db = null;
-              resolve12();
+              resolve13();
             }
           });
         });
@@ -6249,17 +6246,17 @@ function normalizePosixPath(p) {
       result.push(part);
     }
   }
-  const isAbsolute2 = normalized.startsWith("/");
+  const isAbsolute3 = normalized.startsWith("/");
   let prefix = drivePrefix;
-  if (isAbsolute2 || drivePrefix) {
+  if (isAbsolute3 || drivePrefix) {
     prefix += "/";
   }
   return prefix + result.join("/");
 }
 function resolvePosixPath(p) {
   let normalized = p.replace(/\\/g, "/");
-  const isAbsolute2 = normalized.startsWith("/") || /^[a-zA-Z]:/.test(normalized);
-  if (!isAbsolute2) {
+  const isAbsolute3 = normalized.startsWith("/") || /^[a-zA-Z]:/.test(normalized);
+  if (!isAbsolute3) {
     const cwd = typeof process !== "undefined" && typeof process.cwd === "function" ? process.cwd().replace(/\\/g, "/") : "/";
     normalized = cwd + "/" + normalized;
   }
@@ -6343,20 +6340,12 @@ var init_engine = __esm({
           this.fsDriver = new NodeFileSystem();
         }
         if (!this.dbDriver) {
-          let sqlite3Available = false;
-          try {
-            require("sqlite3");
-            sqlite3Available = true;
-          } catch (e) {
-          }
-          if (sqlite3Available) {
-            this.dbDriver = new BetterSqliteDriver(this.dbPath);
-          } else {
-            this.dbDriver = new WasmSqliteDriver({
-              dbPath: this.dbPath,
-              fsDriver: this.fsDriver
-            });
-          }
+          this.dbDriver = new BetterSqliteDriver(this.dbPath);
+        } else {
+          this.dbDriver = new WasmSqliteDriver({
+            dbPath: this.dbPath,
+            fsDriver: this.fsDriver
+          });
         }
       }
       /**
@@ -7293,7 +7282,7 @@ var require_util = __commonJS({
       return url;
     }
     exports2.urlGenerate = urlGenerate;
-    function normalize(aPath) {
+    function normalize2(aPath) {
       var path15 = aPath;
       var url = urlParse(aPath);
       if (url) {
@@ -7302,7 +7291,7 @@ var require_util = __commonJS({
         }
         path15 = url.path;
       }
-      var isAbsolute2 = exports2.isAbsolute(path15);
+      var isAbsolute3 = exports2.isAbsolute(path15);
       var parts = path15.split(/\/+/);
       for (var part, up = 0, i = parts.length - 1; i >= 0; i--) {
         part = parts[i];
@@ -7322,7 +7311,7 @@ var require_util = __commonJS({
       }
       path15 = parts.join("/");
       if (path15 === "") {
-        path15 = isAbsolute2 ? "/" : ".";
+        path15 = isAbsolute3 ? "/" : ".";
       }
       if (url) {
         url.path = path15;
@@ -7330,8 +7319,8 @@ var require_util = __commonJS({
       }
       return path15;
     }
-    exports2.normalize = normalize;
-    function join9(aRoot, aPath) {
+    exports2.normalize = normalize2;
+    function join8(aRoot, aPath) {
       if (aRoot === "") {
         aRoot = ".";
       }
@@ -7356,18 +7345,18 @@ var require_util = __commonJS({
         aRootUrl.host = aPath;
         return urlGenerate(aRootUrl);
       }
-      var joined = aPath.charAt(0) === "/" ? aPath : normalize(aRoot.replace(/\/+$/, "") + "/" + aPath);
+      var joined = aPath.charAt(0) === "/" ? aPath : normalize2(aRoot.replace(/\/+$/, "") + "/" + aPath);
       if (aRootUrl) {
         aRootUrl.path = joined;
         return urlGenerate(aRootUrl);
       }
       return joined;
     }
-    exports2.join = join9;
+    exports2.join = join8;
     exports2.isAbsolute = function(aPath) {
       return aPath.charAt(0) === "/" || urlRegexp.test(aPath);
     };
-    function relative7(aRoot, aPath) {
+    function relative8(aRoot, aPath) {
       if (aRoot === "") {
         aRoot = ".";
       }
@@ -7386,7 +7375,7 @@ var require_util = __commonJS({
       }
       return Array(level + 1).join("../") + aPath.substr(aRoot.length + 1);
     }
-    exports2.relative = relative7;
+    exports2.relative = relative8;
     var supportsNullProto = function() {
       var obj = /* @__PURE__ */ Object.create(null);
       return !("__proto__" in obj);
@@ -7536,9 +7525,9 @@ var require_util = __commonJS({
             parsed.path = parsed.path.substring(0, index + 1);
           }
         }
-        sourceURL = join9(urlGenerate(parsed), sourceURL);
+        sourceURL = join8(urlGenerate(parsed), sourceURL);
       }
-      return normalize(sourceURL);
+      return normalize2(sourceURL);
     }
     exports2.computeSourceURL = computeSourceURL;
   }
@@ -8949,11 +8938,11 @@ var require_source_map_support = __commonJS({
   "node_modules/source-map-support/source-map-support.js"(exports2) {
     var SourceMapConsumer = require_source_map().SourceMapConsumer;
     var path15 = require("path");
-    var fs13;
+    var fs12;
     try {
-      fs13 = require("fs");
-      if (!fs13.existsSync || !fs13.readFileSync) {
-        fs13 = null;
+      fs12 = require("fs");
+      if (!fs12.existsSync || !fs12.readFileSync) {
+        fs12 = null;
       }
     } catch (err) {
     }
@@ -9004,7 +8993,7 @@ var require_source_map_support = __commonJS({
       }
       var contents = "";
       try {
-        if (!fs13) {
+        if (!fs12) {
           var xhr = new XMLHttpRequest();
           xhr.open(
             "GET",
@@ -9016,8 +9005,8 @@ var require_source_map_support = __commonJS({
           if (xhr.readyState === 4 && xhr.status === 200) {
             contents = xhr.responseText;
           }
-        } else if (fs13.existsSync(path16)) {
-          contents = fs13.readFileSync(path16, "utf8");
+        } else if (fs12.existsSync(path16)) {
+          contents = fs12.readFileSync(path16, "utf8");
         }
       } catch (er) {
       }
@@ -9267,9 +9256,9 @@ var require_source_map_support = __commonJS({
         var line = +match[2];
         var column = +match[3];
         var contents = fileContentsCache[source];
-        if (!contents && fs13 && fs13.existsSync(source)) {
+        if (!contents && fs12 && fs12.existsSync(source)) {
           try {
-            contents = fs13.readFileSync(source, "utf8");
+            contents = fs12.readFileSync(source, "utf8");
           } catch (er) {
             contents = "";
           }
@@ -13189,10 +13178,10 @@ var require_typescript = __commonJS({
       function and(f, g) {
         return (arg) => f(arg) && g(arg);
       }
-      function or(...fs13) {
+      function or(...fs12) {
         return (...args) => {
           let lastResult;
-          for (const f of fs13) {
+          for (const f of fs12) {
             lastResult = f(...args);
             if (lastResult) {
               return lastResult;
@@ -14775,7 +14764,7 @@ ${lanes.join("\n")}
       var tracing;
       var tracingEnabled;
       ((tracingEnabled2) => {
-        let fs13;
+        let fs12;
         let traceCount = 0;
         let traceFd = 0;
         let mode;
@@ -14784,9 +14773,9 @@ ${lanes.join("\n")}
         const legend = [];
         function startTracing2(tracingMode, traceDir, configFilePath) {
           Debug.assert(!tracing, "Tracing already started");
-          if (fs13 === void 0) {
+          if (fs12 === void 0) {
             try {
-              fs13 = require("fs");
+              fs12 = require("fs");
             } catch (e) {
               throw new Error(`tracing requires having fs
 (original error: ${e.message || e})`);
@@ -14797,8 +14786,8 @@ ${lanes.join("\n")}
           if (legendPath === void 0) {
             legendPath = combinePaths(traceDir, "legend.json");
           }
-          if (!fs13.existsSync(traceDir)) {
-            fs13.mkdirSync(traceDir, { recursive: true });
+          if (!fs12.existsSync(traceDir)) {
+            fs12.mkdirSync(traceDir, { recursive: true });
           }
           const countPart = mode === "build" ? `.${process.pid}-${++traceCount}` : mode === "server" ? `.${process.pid}` : ``;
           const tracePath = combinePaths(traceDir, `trace${countPart}.json`);
@@ -14808,10 +14797,10 @@ ${lanes.join("\n")}
             tracePath,
             typesPath
           });
-          traceFd = fs13.openSync(tracePath, "w");
+          traceFd = fs12.openSync(tracePath, "w");
           tracing = tracingEnabled2;
           const meta = { cat: "__metadata", ph: "M", ts: 1e3 * timestamp(), pid: 1, tid: 1 };
-          fs13.writeSync(
+          fs12.writeSync(
             traceFd,
             "[\n" + [{ name: "process_name", args: { name: "tsc" }, ...meta }, { name: "thread_name", args: { name: "Main" }, ...meta }, { name: "TracingStartedInBrowser", ...meta, cat: "disabled-by-default-devtools.timeline" }].map((v) => JSON.stringify(v)).join(",\n")
           );
@@ -14820,10 +14809,10 @@ ${lanes.join("\n")}
         function stopTracing() {
           Debug.assert(tracing, "Tracing is not in progress");
           Debug.assert(!!typeCatalog.length === (mode !== "server"));
-          fs13.writeSync(traceFd, `
+          fs12.writeSync(traceFd, `
 ]
 `);
-          fs13.closeSync(traceFd);
+          fs12.closeSync(traceFd);
           tracing = void 0;
           if (typeCatalog.length) {
             dumpTypes(typeCatalog);
@@ -14895,11 +14884,11 @@ ${lanes.join("\n")}
         function writeEvent(eventType, phase, name, args, extras, time = 1e3 * timestamp()) {
           if (mode === "server" && phase === "checkTypes") return;
           mark("beginTracing");
-          fs13.writeSync(traceFd, `,
+          fs12.writeSync(traceFd, `,
 {"pid":1,"tid":1,"ph":"${eventType}","cat":"${phase}","ts":${time},"name":"${name}"`);
-          if (extras) fs13.writeSync(traceFd, `,${extras}`);
-          if (args) fs13.writeSync(traceFd, `,"args":${JSON.stringify(args)}`);
-          fs13.writeSync(traceFd, `}`);
+          if (extras) fs12.writeSync(traceFd, `,${extras}`);
+          if (args) fs12.writeSync(traceFd, `,"args":${JSON.stringify(args)}`);
+          fs12.writeSync(traceFd, `}`);
           mark("endTracing");
           measure("Tracing", "beginTracing", "endTracing");
         }
@@ -14921,9 +14910,9 @@ ${lanes.join("\n")}
           var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o, _p, _q, _r, _s;
           mark("beginDumpTypes");
           const typesPath = legend[legend.length - 1].typesPath;
-          const typesFd = fs13.openSync(typesPath, "w");
+          const typesFd = fs12.openSync(typesPath, "w");
           const recursionIdentityMap = /* @__PURE__ */ new Map();
-          fs13.writeSync(typesFd, "[");
+          fs12.writeSync(typesFd, "[");
           const numTypes = types.length;
           for (let i = 0; i < numTypes; i++) {
             const type = types[i];
@@ -15019,13 +15008,13 @@ ${lanes.join("\n")}
               flags: Debug.formatTypeFlags(type.flags).split("|"),
               display
             };
-            fs13.writeSync(typesFd, JSON.stringify(descriptor));
+            fs12.writeSync(typesFd, JSON.stringify(descriptor));
             if (i < numTypes - 1) {
-              fs13.writeSync(typesFd, ",\n");
+              fs12.writeSync(typesFd, ",\n");
             }
           }
-          fs13.writeSync(typesFd, "]\n");
-          fs13.closeSync(typesFd);
+          fs12.writeSync(typesFd, "]\n");
+          fs12.closeSync(typesFd);
           mark("endDumpTypes");
           measure("Dump types", "beginDumpTypes", "endDumpTypes");
         }
@@ -15033,7 +15022,7 @@ ${lanes.join("\n")}
           if (!legendPath) {
             return;
           }
-          fs13.writeFileSync(legendPath, JSON.stringify(legend));
+          fs12.writeFileSync(legendPath, JSON.stringify(legend));
         }
         tracingEnabled2.dumpLegend = dumpLegend;
       })(tracingEnabled || (tracingEnabled = {}));
@@ -18965,11 +18954,11 @@ ${lanes.join("\n")}
           return toComponents;
         }
         const components = toComponents.slice(start);
-        const relative7 = [];
+        const relative8 = [];
         for (; start < fromComponents.length; start++) {
-          relative7.push("..");
+          relative8.push("..");
         }
-        return ["", ...relative7, ...components];
+        return ["", ...relative8, ...components];
       }
       function getRelativePathFromDirectory(fromDirectory, to, getCanonicalFileNameOrIgnoreCase) {
         Debug.assert(getRootLength(fromDirectory) > 0 === getRootLength(to) > 0, "Paths must either both be absolute or both be relative");
@@ -62247,9 +62236,9 @@ ${lanes.join("\n")}
             if (!startsWithDirectory(target, realPathDirectory, getCanonicalFileName)) {
               return;
             }
-            const relative7 = getRelativePathFromDirectory(realPathDirectory, target, getCanonicalFileName);
+            const relative8 = getRelativePathFromDirectory(realPathDirectory, target, getCanonicalFileName);
             for (const symlinkDirectory of symlinkDirectories) {
-              const option = resolvePath(symlinkDirectory, relative7);
+              const option = resolvePath(symlinkDirectory, relative8);
               const result2 = cb(option, target === referenceRedirect);
               shouldFilterIgnoredPaths = true;
               if (result2) return result2;
@@ -130436,7 +130425,7 @@ ${lanes.join("\n")}
           }
         }
         function createImportCallExpressionAMD(arg, containsLexicalThis) {
-          const resolve12 = factory2.createUniqueName("resolve");
+          const resolve13 = factory2.createUniqueName("resolve");
           const reject = factory2.createUniqueName("reject");
           const parameters = [
             factory2.createParameterDeclaration(
@@ -130445,7 +130434,7 @@ ${lanes.join("\n")}
               /*dotDotDotToken*/
               void 0,
               /*name*/
-              resolve12
+              resolve13
             ),
             factory2.createParameterDeclaration(
               /*modifiers*/
@@ -130462,7 +130451,7 @@ ${lanes.join("\n")}
                 factory2.createIdentifier("require"),
                 /*typeArguments*/
                 void 0,
-                [factory2.createArrayLiteralExpression([arg || factory2.createOmittedExpression()]), resolve12, reject]
+                [factory2.createArrayLiteralExpression([arg || factory2.createOmittedExpression()]), resolve13, reject]
               )
             )
           ]);
@@ -214429,8 +214418,8 @@ ${e.message}`;
         installPackage(options) {
           this.packageInstallId++;
           const request = { kind: "installPackage", ...options, id: this.packageInstallId };
-          const promise = new Promise((resolve12, reject) => {
-            (this.packageInstalledPromise ?? (this.packageInstalledPromise = /* @__PURE__ */ new Map())).set(this.packageInstallId, { resolve: resolve12, reject });
+          const promise = new Promise((resolve13, reject) => {
+            (this.packageInstalledPromise ?? (this.packageInstalledPromise = /* @__PURE__ */ new Map())).set(this.packageInstallId, { resolve: resolve13, reject });
           });
           this.installer.send(request);
           return promise;
@@ -214714,7 +214703,7 @@ ${e.message}`;
 
 // src/server/github.ts
 function getEncryptionKey() {
-  let machineId = "";
+  let machineId;
   try {
     machineId = os2.hostname() + "_" + (os2.userInfo().username || "");
   } catch {
@@ -214788,14 +214777,10 @@ function resolveToken(configPath) {
   } catch {
   }
   try {
-    const credsPath2 = path8.join(os2.homedir(), ".stubs", "credentials.json");
-    if (fs8.existsSync(credsPath2)) {
-      const rawCreds = fs8.readFileSync(credsPath2, "utf8");
-      const creds = JSON.parse(rawCreds);
-      const token = creds["github.com"]?.token || creds.github_token;
-      if (token) {
-        return decryptToken(token);
-      }
+    const creds = loadCredentials();
+    const token = creds["github.com"]?.token || creds.github_token;
+    if (token) {
+      return decryptToken(token);
     }
   } catch {
   }
@@ -214821,15 +214806,14 @@ async function createOrUpdateFile(owner, repo, path15, content, message, branch,
   const client = new GitHubClient(token);
   return await client.createOrUpdateFile(owner, repo, path15, content, message, branch);
 }
-var fs8, path8, os2, crypto6, GitHubClient;
+var os2, crypto6, GitHubClient;
 var init_github = __esm({
   "src/server/github.ts"() {
     "use strict";
-    fs8 = __toESM(require("fs"));
-    path8 = __toESM(require("path"));
     os2 = __toESM(require("os"));
     crypto6 = __toESM(require("crypto"));
     init_schema();
+    init_credentials();
     GitHubClient = class {
       token;
       baseUrl;
@@ -215035,11 +215019,11 @@ var engine_exports = {};
 __export(engine_exports, {
   GrillEngine: () => GrillEngine
 });
-var fs11, path12, readline, GrillEngine;
+var fs10, path12, readline, GrillEngine;
 var init_engine2 = __esm({
   "src/grill/engine.ts"() {
     "use strict";
-    fs11 = __toESM(require("fs"));
+    fs10 = __toESM(require("fs"));
     path12 = __toESM(require("path"));
     readline = __toESM(require("readline"));
     init_js_yaml();
@@ -215071,14 +215055,14 @@ var init_engine2 = __esm({
         this.onStateChange = options.onStateChange;
         this.transition("INIT");
         const resolvedPath = path12.resolve(filePath);
-        if (!fs11.existsSync(resolvedPath)) {
+        if (!fs10.existsSync(resolvedPath)) {
           this.transition("ERROR");
           throw new Error(`File not found: ${filePath}`);
         }
         const config = loadConfig(options.configPath);
         const depth = options.depth || config.grill.default_depth || "standard_drill";
         this.transition("PARSING");
-        const content = fs11.readFileSync(resolvedPath, "utf8");
+        const content = fs10.readFileSync(resolvedPath, "utf8");
         const parseResult = parseOkfSpec(content);
         if (!parseResult.isValid || !parseResult.frontmatter) {
           this.transition("ERROR");
@@ -215091,7 +215075,7 @@ var init_engine2 = __esm({
 ${dump(frontmatter).trim()}
 ---
 ${body}`;
-        fs11.writeFileSync(resolvedPath, intermediateContent, "utf8");
+        fs10.writeFileSync(resolvedPath, intermediateContent, "utf8");
         this.transition("GENERATING_QUESTIONS");
         const questions = this.generateQuestions(frontmatter, body, depth);
         this.transition("GRILLING");
@@ -215108,11 +215092,11 @@ ${body}`;
             output: process.stdout
           });
           const askQuestion = (query) => {
-            return new Promise((resolve12) => {
+            return new Promise((resolve13) => {
               rl.question(`
 Question: ${query}
 > `, (answer) => {
-                resolve12(answer.trim() || "N/A");
+                resolve13(answer.trim() || "N/A");
               });
             });
           };
@@ -215161,7 +215145,7 @@ Question: ${query}
 ${dump(frontmatter).trim()}
 ---
 ${updatedBody}`;
-        fs11.writeFileSync(resolvedPath, finalContent, "utf8");
+        fs10.writeFileSync(resolvedPath, finalContent, "utf8");
         try {
           const graphEngine = new GraphEngine(config.paths.db_path);
           await graphEngine.initialize();
@@ -215260,10 +215244,13 @@ async function handleLogin(options = {}) {
       }
     };
     const askToken = () => {
-      return new Promise((resolve12) => {
-        rl.question("Please enter your GitHub Personal Access Token (PAT):\n> ", (answer) => {
-          resolve12(answer.trim());
-        });
+      return new Promise((resolve13) => {
+        rl.question(
+          "Please enter your GitHub Personal Access Token (PAT):\n> ",
+          (answer) => {
+            resolve13(answer.trim());
+          }
+        );
         rl.muted = true;
       });
     };
@@ -215748,7 +215735,7 @@ ${body}`;
 
 // src/server/portal.ts
 var http = __toESM(require("http"));
-var fs9 = __toESM(require("fs"));
+var fs8 = __toESM(require("fs"));
 var path9 = __toESM(require("path"));
 var crypto7 = __toESM(require("crypto"));
 init_js_yaml();
@@ -215759,7 +215746,7 @@ init_okf();
 
 // src/materializer/engine.ts
 var import_fs = require("fs");
-var path7 = __toESM(require("path"));
+var path8 = __toESM(require("path"));
 var crypto5 = __toESM(require("crypto"));
 init_js_yaml();
 init_okf();
@@ -215947,6 +215934,25 @@ function typeCheckVirtualFile(targetFilePath, virtualContent, tsconfigPath) {
 
 // src/materializer/engine.ts
 init_engine();
+
+// src/storage/containment.ts
+var path7 = __toESM(require("path"));
+function resolveContainedPath(baseDir, relativePath) {
+  const absoluteBase = path7.resolve(baseDir);
+  const absoluteTarget = path7.resolve(absoluteBase, relativePath);
+  const normalizedBase = path7.resolve(absoluteBase);
+  const normalizedTarget = path7.resolve(absoluteTarget);
+  const relativeFromBase = path7.relative(normalizedBase, normalizedTarget);
+  const isContained = !relativeFromBase.startsWith("..") && !path7.isAbsolute(relativeFromBase);
+  if (!isContained) {
+    throw new Error(
+      `Path containment violation: "${relativePath}" resolves outside of base directory "${absoluteBase}"`
+    );
+  }
+  return normalizedTarget;
+}
+
+// src/materializer/engine.ts
 function stringifyOkfSpec(frontmatter, body) {
   const yamlText = dump(frontmatter, { indent: 2, noRefs: true });
   return `---
@@ -215968,8 +215974,8 @@ var MaterializerEngine = class {
    * Writes file content atomically by writing to a temporary file first, then renaming it.
    */
   async writeAtomic(filePath, content) {
-    const absolutePath = path7.resolve(filePath);
-    const dir = path7.dirname(absolutePath);
+    const absolutePath = path8.resolve(filePath);
+    const dir = path8.dirname(absolutePath);
     await import_fs.promises.mkdir(dir, { recursive: true });
     const tempPath = `${absolutePath}.tmp-${Date.now()}-${Math.random().toString(36).substring(2)}`;
     await import_fs.promises.writeFile(tempPath, content, "utf8");
@@ -215980,8 +215986,8 @@ var MaterializerEngine = class {
    * Orchestrates parsing, extracting, type-checking, hashing, atomic writing, and graph updates.
    */
   async materialize(sidecarPath) {
-    const absoluteSidecarPath = path7.resolve(sidecarPath);
-    const relativeSidecarPath = path7.relative(process.cwd(), absoluteSidecarPath).replace(/\\/g, "/");
+    const absoluteSidecarPath = path8.resolve(sidecarPath);
+    const relativeSidecarPath = path8.relative(process.cwd(), absoluteSidecarPath).replace(/\\/g, "/");
     try {
       await this.graphEngine.initialize();
     } catch (err) {
@@ -216014,8 +216020,8 @@ var MaterializerEngine = class {
         error: 'The sidecar frontmatter is missing "target_code_file" parameter.'
       };
     }
-    const sidecarDir = path7.dirname(absoluteSidecarPath);
-    const absoluteTargetFilePath = path7.resolve(sidecarDir, targetCodeFile);
+    const sidecarDir = path8.dirname(absoluteSidecarPath);
+    const absoluteTargetFilePath = resolveContainedPath(sidecarDir, targetCodeFile);
     const markdownBlocks = parseMarkdown(body);
     const extraction = extractImplementationCode(markdownBlocks);
     if (extraction.error || !extraction.code) {
@@ -216039,7 +216045,7 @@ var MaterializerEngine = class {
       };
     }
     const extractedCode = extraction.code;
-    const sidecarRelativeFromTarget = path7.relative(path7.dirname(absoluteTargetFilePath), absoluteSidecarPath).replace(/\\/g, "/");
+    const sidecarRelativeFromTarget = path8.relative(path8.dirname(absoluteTargetFilePath), absoluteSidecarPath).replace(/\\/g, "/");
     const sidecarRef = sidecarRelativeFromTarget.startsWith(".") ? sidecarRelativeFromTarget : `./${sidecarRelativeFromTarget}`;
     const sidecarHeader = `// @sidecar ${sidecarRef}
 
@@ -216175,13 +216181,13 @@ var PortalServer = class {
     }
     try {
       const templatesDir = path9.resolve(this.config.paths.templates_dir);
-      if (!fs9.existsSync(templatesDir)) {
-        fs9.mkdirSync(templatesDir, { recursive: true });
+      if (!fs8.existsSync(templatesDir)) {
+        fs8.mkdirSync(templatesDir, { recursive: true });
       }
-      const files = fs9.readdirSync(templatesDir);
+      const files = fs8.readdirSync(templatesDir);
       const hasProvisional = files.some((f) => f.toLowerCase().includes("provisional"));
       if (!hasProvisional) {
-        fs9.writeFileSync(
+        fs8.writeFileSync(
           path9.join(templatesDir, "controller-v1.0-provisional.ts.md.tpl"),
           `# Controller Mold (Draft Proposal)
 Provisional template for human review.
@@ -216192,7 +216198,7 @@ Provisional template for human review.
         );
       }
       if (!files.includes("service.ts.md.tpl")) {
-        fs9.writeFileSync(
+        fs8.writeFileSync(
           path9.join(templatesDir, "service.ts.md.tpl"),
           `# Service Mold (Active)
 Using EJS/Handlebars to render a standard service module.
@@ -216232,11 +216238,11 @@ Using EJS/Handlebars to render a standard service module.
       };
       this.handleRequest(req, res);
     });
-    return new Promise((resolve12, reject) => {
+    return new Promise((resolve13, reject) => {
       this.server.listen(this.port, () => {
         console.log(`[PortalServer] stubs serve mode active on http://localhost:${this.port}`);
         this.startFileWatcher();
-        resolve12();
+        resolve13();
       });
       this.server.on("error", (err) => {
         reject(err);
@@ -216259,11 +216265,11 @@ Using EJS/Handlebars to render a standard service module.
     }
     this.clients = [];
     if (this.server) {
-      return new Promise((resolve12) => {
+      return new Promise((resolve13) => {
         this.server.close(() => {
           this.server = null;
           console.log("[PortalServer] Server stopped.");
-          resolve12();
+          resolve13();
         });
       });
     }
@@ -216272,7 +216278,7 @@ Using EJS/Handlebars to render a standard service module.
    * Helper to parse JSON request bodies
    */
   async parseJsonBody(req) {
-    return new Promise((resolve12, reject) => {
+    return new Promise((resolve13, reject) => {
       let body = "";
       req.on("data", (chunk) => {
         body += chunk.toString();
@@ -216280,10 +216286,10 @@ Using EJS/Handlebars to render a standard service module.
       req.on("end", () => {
         try {
           if (!body) {
-            resolve12({});
+            resolve13({});
             return;
           }
-          resolve12(JSON.parse(body));
+          resolve13(JSON.parse(body));
         } catch {
           reject(new Error("Invalid JSON"));
         }
@@ -216463,8 +216469,8 @@ Using EJS/Handlebars to render a standard service module.
       }
       if (pathname === "/" && req.method === "GET") {
         const pwaIndex = path9.resolve(__dirname, "../../dist/web/index.html");
-        if (fs9.existsSync(pwaIndex)) {
-          const html = fs9.readFileSync(pwaIndex, "utf8");
+        if (fs8.existsSync(pwaIndex)) {
+          const html = fs8.readFileSync(pwaIndex, "utf8");
           res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
           res.end(html);
           return;
@@ -216483,9 +216489,6 @@ Using EJS/Handlebars to render a standard service module.
         res.end(missing);
         return;
       }
-      res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
-      res.end(this.getDashboardHtml());
-      return;
       const pwaRoot = path9.resolve(__dirname, "../../dist/web");
       const pwaAssetPaths = /* @__PURE__ */ new Set([
         "/app.js",
@@ -216498,7 +216501,7 @@ Using EJS/Handlebars to render a standard service module.
       if (pwaAssetPaths.has(pathname) && req.method === "GET") {
         const safeRelative = pathname.startsWith("/") ? pathname.slice(1) : pathname;
         const filePath = path9.join(pwaRoot, safeRelative);
-        if (fs9.existsSync(filePath)) {
+        if (fs8.existsSync(filePath)) {
           const ext = path9.extname(filePath);
           const mimeMap = {
             ".js": "application/javascript",
@@ -216507,7 +216510,7 @@ Using EJS/Handlebars to render a standard service module.
             ".json": "application/json"
           };
           res.writeHead(200, { "Content-Type": mimeMap[ext] || "application/octet-stream" });
-          fs9.createReadStream(filePath).pipe(res);
+          fs8.createReadStream(filePath).pipe(res);
           return;
         }
       }
@@ -216562,12 +216565,12 @@ Using EJS/Handlebars to render a standard service module.
           content = await fetchFileContents(owner, repoName, filePath, branch);
         } else {
           resolvedPath = path9.isAbsolute(filePath) ? filePath : path9.resolve(process.cwd(), filePath);
-          if (!fs9.existsSync(resolvedPath)) {
+          if (!fs8.existsSync(resolvedPath)) {
             res.writeHead(404, { "Content-Type": "application/json" });
             res.end(JSON.stringify({ error: `File not found at ${resolvedPath}` }));
             return;
           }
-          content = await fs9.promises.readFile(resolvedPath, "utf8");
+          content = await fs8.promises.readFile(resolvedPath, "utf8");
         }
         const parsed = parseOkfSpec(content);
         if (!parsed.isValid || !parsed.frontmatter) {
@@ -216609,7 +216612,7 @@ Using EJS/Handlebars to render a standard service module.
             fileHash
           });
         } else {
-          await fs9.promises.writeFile(resolvedPath, newContent, "utf8");
+          await fs8.promises.writeFile(resolvedPath, newContent, "utf8");
           const relativePath = path9.relative(process.cwd(), resolvedPath).replace(/\\/g, "/");
           await engine.upsertSidecar({
             filePath: relativePath,
@@ -216642,12 +216645,12 @@ Using EJS/Handlebars to render a standard service module.
           content = await fetchFileContents(owner, repoName, filePath, branch);
         } else {
           resolvedPath = path9.isAbsolute(filePath) ? filePath : path9.resolve(process.cwd(), filePath);
-          if (!fs9.existsSync(resolvedPath)) {
+          if (!fs8.existsSync(resolvedPath)) {
             res.writeHead(404, { "Content-Type": "application/json" });
             res.end(JSON.stringify({ error: `File not found at ${resolvedPath}` }));
             return;
           }
-          content = await fs9.promises.readFile(resolvedPath, "utf8");
+          content = await fs8.promises.readFile(resolvedPath, "utf8");
         }
         const parsed = parseOkfSpec(content);
         if (!parsed.isValid || !parsed.frontmatter) {
@@ -216682,7 +216685,7 @@ Using EJS/Handlebars to render a standard service module.
             fileHash
           });
         } else {
-          await fs9.promises.writeFile(resolvedPath, newContent, "utf8");
+          await fs8.promises.writeFile(resolvedPath, newContent, "utf8");
           const relativePath = path9.relative(process.cwd(), resolvedPath).replace(/\\/g, "/");
           await engine.upsertSidecar({
             filePath: relativePath,
@@ -216713,7 +216716,7 @@ Using EJS/Handlebars to render a standard service module.
           const templatePath = templateEngine.getTemplatePath(name);
           let content = "";
           try {
-            content = await fs9.promises.readFile(templatePath, "utf8");
+            content = await fs8.promises.readFile(templatePath, "utf8");
           } catch {
           }
           resultTemplates.push({ name, isDraft, version, content });
@@ -216842,7 +216845,7 @@ Using EJS/Handlebars to render a standard service module.
         }
         const templatesDir = path9.resolve(this.config.paths.templates_dir);
         const templatePath = path9.resolve(templatesDir, templateName);
-        if (!fs9.existsSync(templatePath)) {
+        if (!fs8.existsSync(templatePath)) {
           res.writeHead(404, { "Content-Type": "application/json" });
           res.end(JSON.stringify({ error: `Template file not found at ${templatePath}` }));
           return;
@@ -216857,7 +216860,7 @@ Using EJS/Handlebars to render a standard service module.
             newName = templateName.replace(".tpl", "-approved.tpl");
           }
           const newPath = path9.resolve(templatesDir, newName);
-          await fs9.promises.rename(templatePath, newPath);
+          await fs8.promises.rename(templatePath, newPath);
           this.broadcast("graph:updated", { type: "template_approved", templateName, newName });
           res.writeHead(200, { "Content-Type": "application/json" });
           res.end(
@@ -216867,7 +216870,7 @@ Using EJS/Handlebars to render a standard service module.
             })
           );
         } else {
-          await fs9.promises.unlink(templatePath);
+          await fs8.promises.unlink(templatePath);
           this.broadcast("graph:updated", { type: "template_rejected", templateName });
           res.writeHead(200, { "Content-Type": "application/json" });
           res.end(
@@ -216944,8 +216947,8 @@ Using EJS/Handlebars to render a standard service module.
           code = await client.fetchFileContents(owner, name, filePath, branch);
         } else {
           const fullPath = path9.resolve(process.cwd(), filePath);
-          if (fs9.existsSync(fullPath)) {
-            code = await fs9.promises.readFile(fullPath, "utf8");
+          if (fs8.existsSync(fullPath)) {
+            code = await fs8.promises.readFile(fullPath, "utf8");
           }
         }
         const exportsList = extractExports(code);
@@ -216961,8 +216964,8 @@ Using EJS/Handlebars to render a standard service module.
           if (!templateContent) {
             const templateEngine2 = new TemplateEngine(this.config.paths.templates_dir);
             const templatePath = templateEngine2.getTemplatePath(templateName);
-            if (fs9.existsSync(templatePath)) {
-              templateContent = await fs9.promises.readFile(templatePath, "utf8");
+            if (fs8.existsSync(templatePath)) {
+              templateContent = await fs8.promises.readFile(templatePath, "utf8");
             }
           }
         }
@@ -217047,8 +217050,8 @@ ${dump(fm)}---
             }
           } else {
             const fullPath = path9.resolve(process.cwd(), mdPath);
-            await fs9.promises.mkdir(path9.dirname(fullPath), { recursive: true });
-            await fs9.promises.writeFile(fullPath, content, "utf8");
+            await fs8.promises.mkdir(path9.dirname(fullPath), { recursive: true });
+            await fs8.promises.writeFile(fullPath, content, "utf8");
             const parsed = parseOkfSpec(content);
             if (parsed.isValid && parsed.frontmatter) {
               const fileHash = crypto7.createHash("sha256").update(content).digest("hex");
@@ -217068,6 +217071,11 @@ ${dump(fm)}---
         this.broadcast("graph:updated", { timestamp: (/* @__PURE__ */ new Date()).toISOString() });
         res.writeHead(200, { "Content-Type": "application/json" });
         res.end(JSON.stringify({ success: true }));
+        return;
+      }
+      if (!pathname.startsWith("/api")) {
+        res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+        res.end(this.getDashboardHtml());
         return;
       }
       res.writeHead(404, { "Content-Type": "application/json" });
@@ -217118,13 +217126,13 @@ data: ${JSON.stringify(data)}
    */
   startFileWatcher() {
     const specsDir = path9.resolve(this.config.paths.specs_dir);
-    if (!fs9.existsSync(specsDir)) {
+    if (!fs8.existsSync(specsDir)) {
       console.warn(`[Watcher] Warning: Watch directory "${specsDir}" does not exist.`);
       return;
     }
     console.log(`[Watcher] Starting OS-level filesystem watcher on "${specsDir}"...`);
     try {
-      this.watcher = fs9.watch(specsDir, { recursive: true }, (eventType, filename) => {
+      this.watcher = fs8.watch(specsDir, { recursive: true }, (eventType, filename) => {
         if (filename && (filename.endsWith(".ts.md") || filename.endsWith(".md"))) {
           this.reindexAndBroadcast();
         }
@@ -217134,7 +217142,7 @@ data: ${JSON.stringify(data)}
         `[Watcher] Recursive watch failed: ${err.message || err}. Falling back to standard watch.`
       );
       try {
-        this.watcher = fs9.watch(specsDir, (eventType, filename) => {
+        this.watcher = fs8.watch(specsDir, (eventType, filename) => {
           if (filename && (filename.endsWith(".ts.md") || filename.endsWith(".md"))) {
             this.reindexAndBroadcast();
           }
@@ -217182,8 +217190,8 @@ data: ${JSON.stringify(data)}
     const tsFiles = [];
     const mdFiles = /* @__PURE__ */ new Set();
     const recurse = async (currentDir) => {
-      if (!fs9.existsSync(currentDir)) return;
-      const entries = await fs9.promises.readdir(currentDir, { withFileTypes: true });
+      if (!fs8.existsSync(currentDir)) return;
+      const entries = await fs8.promises.readdir(currentDir, { withFileTypes: true });
       for (const entry of entries) {
         const fullPath = path9.join(currentDir, entry.name);
         const relativePath = path9.relative(process.cwd(), fullPath).replace(/\\/g, "/");
@@ -218622,7 +218630,7 @@ ${newCode}
 // src/sanding/ast.ts
 var ts2 = __toESM(require_typescript());
 var crypto8 = __toESM(require("crypto"));
-var fs10 = __toESM(require("fs"));
+var fs9 = __toESM(require("fs"));
 var path10 = __toESM(require("path"));
 function getAstStructuralHash(code) {
   const sourceFile = ts2.createSourceFile("file.ts", code, ts2.ScriptTarget.Latest, true);
@@ -218653,9 +218661,9 @@ function typeCheckCode(filePath, code) {
     skipLibCheck: true
   };
   const tsconfigPath = path10.resolve("tsconfig.json");
-  if (fs10.existsSync(tsconfigPath)) {
+  if (fs9.existsSync(tsconfigPath)) {
     try {
-      const tsconfigContent = fs10.readFileSync(tsconfigPath, "utf8");
+      const tsconfigContent = fs9.readFileSync(tsconfigPath, "utf8");
       const parsed = ts2.parseConfigFileTextToJson(tsconfigPath, tsconfigContent);
       if (parsed.config) {
         const parsedOptions = ts2.parseJsonConfigFileContent(
@@ -218682,9 +218690,9 @@ function typeCheckCode(filePath, code) {
       if (resolved === absoluteFilePath) {
         return sourceFile;
       }
-      if (fs10.existsSync(resolved)) {
+      if (fs9.existsSync(resolved)) {
         try {
-          const content = fs10.readFileSync(resolved, "utf8");
+          const content = fs9.readFileSync(resolved, "utf8");
           return ts2.createSourceFile(resolved, content, ts2.ScriptTarget.Latest, true);
         } catch {
           return void 0;
@@ -218702,14 +218710,14 @@ function typeCheckCode(filePath, code) {
     fileExists: (fileName) => {
       const resolved = path10.resolve(fileName);
       if (resolved === absoluteFilePath) return true;
-      return fs10.existsSync(resolved);
+      return fs9.existsSync(resolved);
     },
     readFile: (fileName) => {
       const resolved = path10.resolve(fileName);
       if (resolved === absoluteFilePath) return code;
-      if (fs10.existsSync(resolved)) {
+      if (fs9.existsSync(resolved)) {
         try {
-          return fs10.readFileSync(resolved, "utf8");
+          return fs9.readFileSync(resolved, "utf8");
         } catch {
           return void 0;
         }
