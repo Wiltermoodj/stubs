@@ -5,6 +5,7 @@ import * as yaml from 'js-yaml';
 import { parseOkfSpec, OkfFrontmatter, ParsedOkfSpec } from '../parser/okf';
 import { extractImplementationCode, replaceImplementationCode } from '../parser/markdown';
 import { getAstStructuralHash, typeCheckCode } from './ast';
+import { resolveContainedPath } from '../storage/containment';
 
 export interface SyncResult {
   filePath: string;

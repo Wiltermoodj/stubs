@@ -6,6 +6,7 @@ import { parseOkfSpec, OkfFrontmatter } from '../parser/okf';
 import { parseMarkdown, extractImplementationCode } from '../parser/ast';
 import { typeCheckVirtualFile } from '../compiler/typechecker';
 import { GraphEngine } from '../graph/engine';
+import { resolveContainedPath } from '../storage/containment';
 
 export interface MaterializeResult {
   success: boolean;
@@ -101,9 +102,9 @@ export class MaterializerEngine {
       };
     }
 
-    // Resolve target path relative to the sidecar's directory
+    // Resolve target path relative to the sidecar's directory using containment rule
     const sidecarDir = path.dirname(absoluteSidecarPath);
-    const absoluteTargetFilePath = path.resolve(sidecarDir, targetCodeFile);
+    const absoluteTargetFilePath = resolveContainedPath(sidecarDir, targetCodeFile);
 
     // 3. Extract Implementation Code Blocks
     const markdownBlocks = parseMarkdown(body);
