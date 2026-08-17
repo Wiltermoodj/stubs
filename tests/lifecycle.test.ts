@@ -123,6 +123,8 @@ export function greet(name: string): string {
     const materializationResult = await materializer.materialize(sidecarFilePath);
 
     // Verify Stage 3
+    if (!materializationResult.success)
+      console.error('diagnostics', materializationResult.diagnostics);
     expect(materializationResult.success).toBe(true);
     expect(fs.existsSync(codeFilePath)).toBe(true);
 

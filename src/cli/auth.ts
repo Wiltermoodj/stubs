@@ -122,9 +122,12 @@ export async function handleLogin(
 
     const askToken = (): Promise<string> => {
       return new Promise((resolve) => {
-        rl.question('Please enter your GitHub Personal Access Token (PAT):\n> ', (answer: string) => {
-          resolve(answer.trim());
-        });
+        rl.question(
+          'Please enter your GitHub Personal Access Token (PAT):\n> ',
+          (answer: string) => {
+            resolve(answer.trim());
+          },
+        );
         rl.muted = true;
       });
     };

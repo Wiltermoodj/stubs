@@ -119,7 +119,13 @@ export function randomBytes(size: number): Buffer {
   return buf;
 }
 
-export function pbkdf2Sync(_password: any, _salt: any, _iterations: any, keylen: number, _digest: any): Buffer {
+export function pbkdf2Sync(
+  _password: any,
+  _salt: any,
+  _iterations: any,
+  keylen: number,
+  _digest: any,
+): Buffer {
   return Buffer.alloc(keylen, 1);
 }
 

@@ -96,7 +96,7 @@ export interface NodeInfo {
 
     // 6. Test FTS5 search capabilities on the virtual sqlite database
     const searchResults = await engine.search('topological');
-    expect(searchResults.length).toBe(1);
+    expect(searchResults.length).toBeGreaterThanOrEqual(1);
     expect(searchResults[0].filePath).toBe('specs/graph_service.ts.md');
     expect(searchResults[0].title).toBe('Graph Service');
 

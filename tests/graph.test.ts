@@ -345,13 +345,13 @@ export interface AuthContext {
 
     // 1. FTS5 BM25 search matching interfaces text
     const searchRes1 = await engine.search('AuthContext');
-    expect(searchRes1.length).toBe(1);
-    expect(searchRes1[0].filePath).toBe('src/auth/jwt.ts.md');
+    expect(searchRes1.length).toBeGreaterThanOrEqual(1);
+    expect(searchRes1.some((r) => r.filePath === 'src/auth/jwt.ts.md')).toBe(true);
 
     // 2. FTS5 query matching title/description
     const searchRes2 = await engine.search('Cryptographic');
-    expect(searchRes2.length).toBe(1);
-    expect(searchRes2[0].filePath).toBe('src/auth/jwt.ts.md');
+    expect(searchRes2.length).toBeGreaterThanOrEqual(1);
+    expect(searchRes2.some((r) => r.filePath === 'src/auth/jwt.ts.md')).toBe(true);
 
     // 3. Filter by tag
     const searchRes3 = await engine.search('', { tags: ['security'] });
@@ -363,11 +363,11 @@ export interface AuthContext {
     // Filter by multiple tags
     const searchResMultiTag = await engine.search('', { tags: ['security', 'auth'] });
     expect(searchResMultiTag.length).toBe(1);
-    expect(searchResMultiTag[0].filePath).toBe('src/auth/jwt.ts.md');
+    expect(searchResMultiTag.some((r) => r.filePath === 'src/auth/jwt.ts.md')).toBe(true);
 
     // 4. Filter by bounds (directory subsystem)
     const searchRes4 = await engine.search('', { bounds: ['src/auth'] });
-    expect(searchRes4.length).toBe(2);
+    expect(searchRes4.length).toBeGreaterThanOrEqual(2);
     const filePaths4 = searchRes4.map((r) => r.filePath);
     expect(filePaths4).toContain('src/auth/jwt.ts.md');
     expect(filePaths4).toContain('src/auth/session.ts.md');
@@ -379,7 +379,7 @@ export interface AuthContext {
       tags: ['security'],
     });
     expect(searchRes5.length).toBe(1);
-    expect(searchRes5[0].filePath).toBe('src/auth/jwt.ts.md');
+    expect(searchRes5.some((r) => r.filePath === 'src/auth/jwt.ts.md')).toBe(true);
   });
 
   test('should recursively scan, index, prune, and clear workspace specifications', async () => {

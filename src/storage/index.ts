@@ -367,7 +367,7 @@ export class WasmSqliteDriver implements DatabaseDriver {
             path.join(__dirname, file),
             path.join(__dirname, '../../node_modules/sql.js/dist', file),
             path.join(process.cwd(), 'node_modules/sql.js/dist', file),
-            path.join(process.cwd(), '.agents/skills/stubs/dist', file)
+            path.join(process.cwd(), '.agents/skills/stubs/dist', file),
           ];
           for (const p of possiblePaths) {
             if (fsSync.existsSync(p)) {
@@ -377,7 +377,7 @@ export class WasmSqliteDriver implements DatabaseDriver {
           return path.join(__dirname, file);
         }
         return file;
-      }
+      },
     });
 
     let data: Uint8Array | undefined = this.initialData;
