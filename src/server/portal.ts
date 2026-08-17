@@ -1,3 +1,4 @@
+import { OkfFrontmatter } from '../parser/okf';
 import * as http from 'http';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -7,7 +8,8 @@ import { GraphEngine } from '../graph/engine';
 
 export function extractExports(code: string): string[] {
   const exports: string[] = [];
-  const regex = /^\s*export\s+(?:async\s+)?(?:function|class|const|let|var|interface|type|enum)\s+([a-zA-Z0-9_$]+)/gm;
+  const regex =
+    /^\s*export\s+(?:async\s+)?(?:function|class|const|let|var|interface|type|enum)\s+([a-zA-Z0-9_$]+)/gm;
   let match;
   while ((match = regex.exec(code)) !== null) {
     if (match[1]) {
@@ -16,10 +18,13 @@ export function extractExports(code: string): string[] {
   }
   const namedExportsRegex = /^\s*export\s*\{([^}]+)\}/gm;
   while ((match = namedExportsRegex.exec(code)) !== null) {
-    const names = match[1].split(',').map(n => {
-      const parts = n.trim().split(/\s+as\s+/);
-      return parts[parts.length - 1].trim();
-    }).filter(Boolean);
+    const names = match[1]
+      .split(',')
+      .map((n) => {
+        const parts = n.trim().split(/\s+as\s+/);
+        return parts[parts.length - 1].trim();
+      })
+      .filter(Boolean);
     exports.push(...names);
   }
   return Array.from(new Set(exports));
@@ -278,7 +283,7 @@ Using EJS/Handlebars to render a standard service module.
               const fileHash = crypto.createHash('sha256').update(content).digest('hex');
               await engine.upsertSidecar({
                 filePath: spec.path,
-                frontmatter: parsed.frontmatter,
+                frontmatter: parsed.frontmatter as OkfFrontmatter,
                 body: parsed.body,
                 fileHash,
               });
@@ -455,14 +460,9 @@ Using EJS/Handlebars to render a standard service module.
 </body>
 </html>`;
         res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-        res.end(missing);
+        res.end(this.getDashboardHtml());
         return;
       }
-
-      // 1c. Legacy dashboard fallback
-      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-      res.end(this.getDashboardHtml());
-      return;
 
       // 1b. PWA static assets
       const pwaRoot = path.resolve(__dirname, '../../dist/web');
@@ -587,11 +587,11 @@ Using EJS/Handlebars to render a standard service module.
           status: 'pending',
         };
 
-        const notes = parsed.frontmatter.user_notes || [];
+        const notes = (parsed.frontmatter as OkfFrontmatter).user_notes || [];
         notes.push(newNote);
-        parsed.frontmatter.user_notes = notes;
+        (parsed.frontmatter as OkfFrontmatter).user_notes = notes;
 
-        const newContent = stringifyOkfSpec(parsed.frontmatter, parsed.body);
+        const newContent = stringifyOkfSpec(parsed.frontmatter as OkfFrontmatter, parsed.body);
         const fileHash = crypto.createHash('sha256').update(newContent).digest('hex');
 
         if (isRemote) {
@@ -606,7 +606,7 @@ Using EJS/Handlebars to render a standard service module.
           );
           await engine.upsertSidecar({
             filePath,
-            frontmatter: parsed.frontmatter,
+            frontmatter: parsed.frontmatter as OkfFrontmatter,
             body: parsed.body,
             fileHash,
           });
@@ -615,7 +615,7 @@ Using EJS/Handlebars to render a standard service module.
           const relativePath = path.relative(process.cwd(), resolvedPath).replace(/\\/g, '/');
           await engine.upsertSidecar({
             filePath: relativePath,
-            frontmatter: parsed.frontmatter,
+            frontmatter: parsed.frontmatter as OkfFrontmatter,
             body: parsed.body,
             fileHash,
           });
@@ -671,7 +671,7 @@ Using EJS/Handlebars to render a standard service module.
           return;
         }
 
-        const notes = parsed.frontmatter.user_notes || [];
+        const notes = (parsed.frontmatter as OkfFrontmatter).user_notes || [];
         const note = notes.find((n) => n.id === id);
         if (!note) {
           res.writeHead(404, { 'Content-Type': 'application/json' });
@@ -681,7 +681,7 @@ Using EJS/Handlebars to render a standard service module.
 
         note.status = 'resolved';
 
-        const newContent = stringifyOkfSpec(parsed.frontmatter, parsed.body);
+        const newContent = stringifyOkfSpec(parsed.frontmatter as OkfFrontmatter, parsed.body);
         const fileHash = crypto.createHash('sha256').update(newContent).digest('hex');
 
         if (isRemote) {
@@ -696,7 +696,7 @@ Using EJS/Handlebars to render a standard service module.
           );
           await engine.upsertSidecar({
             filePath,
-            frontmatter: parsed.frontmatter,
+            frontmatter: parsed.frontmatter as OkfFrontmatter,
             body: parsed.body,
             fileHash,
           });
@@ -705,7 +705,7 @@ Using EJS/Handlebars to render a standard service module.
           const relativePath = path.relative(process.cwd(), resolvedPath).replace(/\\/g, '/');
           await engine.upsertSidecar({
             filePath: relativePath,
-            frontmatter: parsed.frontmatter,
+            frontmatter: parsed.frontmatter as OkfFrontmatter,
             body: parsed.body,
             fileHash,
           });
@@ -796,7 +796,7 @@ Using EJS/Handlebars to render a standard service module.
               owner,
               repoName,
               newPath,
-              tplObj.content,
+              tplObj!.content,
               `Approve template ${templateName}`,
               branch,
             );
@@ -834,9 +834,9 @@ Using EJS/Handlebars to render a standard service module.
             }
 
             // Update cache
-            tplObj.name = newName;
-            tplObj.isDraft = false;
-            tplObj.version = 'v1.0';
+            tplObj!.name = newName;
+            tplObj!.isDraft = false;
+            tplObj!.version = 'v1.0';
 
             this.broadcast('graph:updated', { type: 'template_approved', templateName, newName });
             res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -940,9 +940,9 @@ Using EJS/Handlebars to render a standard service module.
         const { engine } = await this.resolveGraphEngine(parsedUrl);
         const q = parsedUrl.searchParams.get('q') || '';
         const tagsParam = parsedUrl.searchParams.get('tags');
-        const tags = tagsParam ? tagsParam.split(',').filter(Boolean) : undefined;
+        const tags = tagsParam ? (tagsParam as string).split(',').filter(Boolean) : undefined;
         const boundsParam = parsedUrl.searchParams.get('bounds');
-        const bounds = boundsParam ? boundsParam.split(',').filter(Boolean) : undefined;
+        const bounds = boundsParam ? (boundsParam as string).split(',').filter(Boolean) : undefined;
 
         const results = await engine.search(q, { tags, bounds });
         res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -959,7 +959,7 @@ Using EJS/Handlebars to render a standard service module.
           return;
         }
 
-        const sidecar = await engine.getSidecar(filePath);
+        const sidecar = await engine.getSidecar(filePath as string);
         if (!sidecar) {
           res.writeHead(404, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ error: 'Sidecar specification not found' }));
@@ -981,22 +981,27 @@ Using EJS/Handlebars to render a standard service module.
           const client = new GitHubClient();
           const tree = await client.fetchTree(owner, name, branch);
 
-          const tsFiles = tree.filter(entry =>
-            entry.type === 'blob' &&
-            entry.path.endsWith('.ts') &&
-            !entry.path.endsWith('.d.ts') &&
-            !entry.path.startsWith('node_modules/') &&
-            !entry.path.startsWith('.git/') &&
-            !entry.path.startsWith('.stubs/') &&
-            !entry.path.startsWith('dist/') &&
-            !entry.path.startsWith('build/')
-          ).map(e => e.path);
+          const tsFiles = tree
+            .filter(
+              (entry) =>
+                entry.type === 'blob' &&
+                entry.path.endsWith('.ts') &&
+                !entry.path.endsWith('.d.ts') &&
+                !entry.path.startsWith('node_modules/') &&
+                !entry.path.startsWith('.git/') &&
+                !entry.path.startsWith('.stubs/') &&
+                !entry.path.startsWith('dist/') &&
+                !entry.path.startsWith('build/'),
+            )
+            .map((e) => e.path);
 
           const mdFiles = new Set(
-            tree.filter(entry => entry.type === 'blob' && entry.path.endsWith('.ts.md')).map(e => e.path)
+            tree
+              .filter((entry) => entry.type === 'blob' && entry.path.endsWith('.ts.md'))
+              .map((e) => e.path),
           );
 
-          unbootstrapped = tsFiles.filter(tsFile => !mdFiles.has(`${tsFile}.md`));
+          unbootstrapped = tsFiles.filter((tsFile) => !mdFiles.has(`${tsFile}.md`));
         } else {
           const result = await this.scanLocalWorkspace();
           unbootstrapped = result.unbootstrapped;
@@ -1040,9 +1045,9 @@ Using EJS/Handlebars to render a standard service module.
           if (isRemote) {
             // Find in remoteTemplates cache
             const cached = this.remoteTemplates.get(`${repo}#${branch}`) || [];
-            const tpl = cached.find(t => t.name === templateName);
+            const tpl = cached.find((t) => t.name === templateName);
             if (tpl) {
-              templateContent = tpl.content;
+              templateContent = tpl!.content;
             }
           }
           if (!templateContent) {
@@ -1072,14 +1077,18 @@ No custom interfaces specified yet.
         }
 
         const filename = path.basename(filePath);
-        const title = filename.replace(/\.ts$/, '').split(/[-_]/).map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+        const title = filename
+          .replace(/\.ts$/, '')
+          .split(/[-_]/)
+          .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+          .join(' ');
 
         const templateData = {
           project_name: this.config.project_name || 'stubs',
           version: '1.0.0',
           title: title,
           target_code_file: `./${filename}`,
-          exports: exportsList
+          exports: exportsList,
         };
 
         const templateEngine = new TemplateEngine(this.config.paths.templates_dir);
@@ -1094,7 +1103,7 @@ No custom interfaces specified yet.
           version: 1,
           target_code_file: `./${filename}`,
           status_flag: 'clean',
-          exports: exportsList
+          exports: exportsList,
         };
 
         const yamlHeader = `---\n${yaml.dump(fm)}---\n`;
@@ -1139,7 +1148,7 @@ No custom interfaces specified yet.
               const fileHash = crypto.createHash('sha256').update(content).digest('hex');
               await engine.upsertSidecar({
                 filePath: mdPath,
-                frontmatter: parsed.frontmatter,
+                frontmatter: parsed.frontmatter as OkfFrontmatter,
                 body: parsed.body,
                 fileHash,
               });
@@ -1155,7 +1164,7 @@ No custom interfaces specified yet.
               const fileHash = crypto.createHash('sha256').update(content).digest('hex');
               await this.graphEngine.upsertSidecar({
                 filePath: mdPath,
-                frontmatter: parsed.frontmatter,
+                frontmatter: parsed.frontmatter as OkfFrontmatter,
                 body: parsed.body,
                 fileHash,
               });
@@ -1174,6 +1183,23 @@ No custom interfaces specified yet.
 
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ success: true }));
+        return;
+      }
+
+      // ---------------------------------------------------------
+      // Fallback: Web Dashboard or 404
+      // ---------------------------------------------------------
+      if (!pathname.startsWith('/api')) {
+        const path = await import('path');
+        const pwaIndex = path.resolve(process.cwd(), 'dist', 'web', 'index.html');
+        let htmlContent = '';
+        if (fs.existsSync(pwaIndex)) {
+          htmlContent = fs.readFileSync(pwaIndex, 'utf8');
+        } else {
+          htmlContent = this.getDashboardHtml();
+        }
+        res.writeHead(200, { 'Content-Type': 'text/html' });
+        res.end(htmlContent);
         return;
       }
 
@@ -1334,7 +1360,7 @@ No custom interfaces specified yet.
 
     await recurse(process.cwd());
 
-    const unbootstrapped = tsFiles.filter(tsFile => {
+    const unbootstrapped = tsFiles.filter((tsFile) => {
       const expectedMd = `${tsFile}.md`;
       return !mdFiles.has(expectedMd);
     });
