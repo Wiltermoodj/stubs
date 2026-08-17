@@ -51,13 +51,12 @@ yarn-error.log*
 next-env.d.ts
 
 *.log
-.gitignore
 node_modules/
 shared/node_modules/
 
-*.db 
-*.db-* 
-.env.development 
+*.db
+*.db-*
+.env.development
 
 .jules.env
 .gh-pat
@@ -66,4 +65,34 @@ shared/node_modules/
 /dist/
 /.stubs/*.sqlite
 /.stubs/graph.sqlite*
+
+# kanban runtime state
+/.kanban/HEARTBEAT
+/.kanban/logs/
+/.kanban/results/
+/.kanban/workers/
+/.kanban/workspace/
+/.kanban/kanban.db.pre-canonical-migration
+/.kanban/kanban_db_selection_offer
+/.kanban/latest_sweep.txt
+/.kanban/tmp_*.py
+
+# desktop monitor daemon
+/.desktop/
+
+# local session / scratch artifacts
+AGENT_GOAL.md
+HEARTBEAT
+PRIORITIES.md
+STOP
+custom-templates/
+lint-fixes.patch
+lint_output.txt
+repro_save.js
+temp_inspect.js
+temp_repro.js
+knowledge/analysis/
+
+# local eslint config
+.eslintrc.cjs
 
