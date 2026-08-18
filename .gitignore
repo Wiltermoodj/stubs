@@ -96,3 +96,4 @@ knowledge/analysis/
 # local eslint config
 .eslintrc.cjs
 
+.agents/skills/stubs/dist/cli.cjs
