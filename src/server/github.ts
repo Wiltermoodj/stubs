@@ -6,11 +6,11 @@ import { loadConfig } from '../config/schema';
 import { loadCredentials } from '../storage/credentials';
 
 function getEncryptionKey(): Buffer {
-  let machineId = '';
+  let machineId = 'stubs_fallback_machine_key';
   try {
     machineId = os.hostname() + '_' + (os.userInfo().username || '');
   } catch {
-    machineId = 'stubs_fallback_machine_key';
+    // keep fallback
   }
   return crypto.createHash('sha256').update(machineId).digest();
 }
@@ -132,14 +132,10 @@ export function resolveToken(configPath?: string): string {
 
   // 3. ~/.stubs/credentials.json
   try {
-    const credsPath = path.join(os.homedir(), '.stubs', 'credentials.json');
-    if (fs.existsSync(credsPath)) {
-      const rawCreds = fs.readFileSync(credsPath, 'utf8');
-      const creds = JSON.parse(rawCreds);
-      const token = creds['github.com']?.token || creds.github_token;
-      if (token) {
-        return decryptToken(token);
-      }
+    const creds = loadCredentials();
+    const token = creds['github.com']?.token || creds.github_token;
+    if (token) {
+      return decryptToken(token);
     }
   } catch {
     // Ignore
