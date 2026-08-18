@@ -1,6 +1,5 @@
 import * as path from 'path';
 import * as os from 'os';
-import * as readline from 'readline';
 import { GitHubClient, encryptToken } from '../server/github';
 import { loadCredentials, saveCredentials } from '../storage/credentials';
 

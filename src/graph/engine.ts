@@ -186,7 +186,7 @@ export class GraphEngine {
       try {
         require('sqlite3');
         sqlite3Available = true;
-      } catch (_e) {
+      } catch {
         // Fallback to WASM if native module missing
       }
 
@@ -1178,7 +1178,7 @@ export function createGraphEngine(
       try {
         require('sqlite3');
         sqlite3Available = true;
-      } catch (_e) {
+      } catch {
         // Fallback to WASM if native module missing
       }
 

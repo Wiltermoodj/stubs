@@ -449,16 +449,6 @@ Using EJS/Handlebars to render a standard service module.
           return;
         }
 
-        const missing = `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <title>Stubs PWA not built</title>
-</head>
-<body>
-  <p>The PWA build is missing. Run <code>npm run build:web</code> and restart.</p>
-</body>
-</html>`;
         res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
         res.end(this.getDashboardHtml());
         return;
@@ -1324,6 +1314,10 @@ No custom interfaces specified yet.
         console.error('[Watcher] Re-indexing failed:', err.message || err);
       }
     }, 150);
+
+    if (this.debounceTimer && typeof (this.debounceTimer as any).unref === 'function') {
+      (this.debounceTimer as any).unref();
+    }
   }
 
   private async scanLocalWorkspace(): Promise<{ unbootstrapped: string[] }> {

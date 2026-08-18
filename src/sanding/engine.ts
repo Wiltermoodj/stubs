@@ -287,7 +287,7 @@ export class SandingEngine {
       };
     }
 
-    const resolvedTarget = path.resolve(path.dirname(resolvedSidecar), targetCodeFile);
+    const resolvedTarget = resolveContainedPath(path.dirname(resolvedSidecar), targetCodeFile);
 
     // Calculate stable sidecar hash (excluding the sync_state property)
     const cleanSidecarContent = stripSyncStateFromContent(content);

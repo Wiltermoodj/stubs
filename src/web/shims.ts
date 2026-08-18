@@ -180,6 +180,45 @@ export function basename(p: string): string {
   return p.replace(/\\/g, '/').split('/').pop() || '';
 }
 
+export function isAbsolute(p: string): boolean {
+  if (!p) return false;
+  const norm = p.replace(/\\/g, '/');
+  return norm.startsWith('/') || /^[a-zA-Z]:[\\/]/.test(p);
+}
+
+export function normalize(p: string): string {
+  if (!p) return '.';
+  const isAbs = isAbsolute(p);
+  const trailingSlash = p.endsWith('/') || p.endsWith('\\');
+  const segments = p.replace(/\\/g, '/').split('/');
+  const stack: string[] = [];
+
+  for (const seg of segments) {
+    if (!seg || seg === '.') continue;
+    if (seg === '..') {
+      if (stack.length > 0 && stack[stack.length - 1] !== '..') {
+        stack.pop();
+      } else if (!isAbs) {
+        stack.push('..');
+      }
+    } else {
+      stack.push(seg);
+    }
+  }
+
+  let result = stack.join('/');
+  if (isAbs) {
+    result = '/' + result;
+  }
+  if (!result) {
+    return isAbs ? '/' : '.';
+  }
+  if (trailingSlash && !result.endsWith('/')) {
+    result += '/';
+  }
+  return result;
+}
+
 // Named exports from fs/promises to prevent esbuild undefined warnings
 export async function readFile(_filePath: string): Promise<string> {
   return '';
@@ -295,6 +334,8 @@ export default {
   relative,
   dirname,
   basename,
+  isAbsolute,
+  normalize,
   promises,
   readFile,
   writeFile,

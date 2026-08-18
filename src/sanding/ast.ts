@@ -34,14 +34,14 @@ export function getAstStructuralHash(code: string): string {
   return crypto.createHash('sha256').update(serialized).digest('hex');
 }
 
-/**
- * Executes in-memory TypeScript compilation and semantic type-checking using TS Compiler API.
- * Uses virtual files, resolves actual imports from disk, and loads options from tsconfig.json if available.
- */
-export function typeCheckCode(filePath: string, code: string): TypeCheckResult {
-  const absoluteFilePath = path.resolve(filePath);
+interface CachedAstConfig {
+  mtimeMs: number;
+  compilerOptions: ts.CompilerOptions;
+}
 
-  // Default compiler options
+let astConfigCache: CachedAstConfig | null = null;
+
+function getAstCompilerOptions(): ts.CompilerOptions {
   let compilerOptions: ts.CompilerOptions = {
     noEmit: true,
     target: ts.ScriptTarget.ES2022,
@@ -52,10 +52,14 @@ export function typeCheckCode(filePath: string, code: string): TypeCheckResult {
     skipLibCheck: true,
   };
 
-  // Attempt to load tsconfig.json if it exists in project root
   const tsconfigPath = path.resolve('tsconfig.json');
   if (fs.existsSync(tsconfigPath)) {
     try {
+      const stat = fs.statSync(tsconfigPath);
+      if (astConfigCache && astConfigCache.mtimeMs === stat.mtimeMs) {
+        return { ...astConfigCache.compilerOptions };
+      }
+
       const tsconfigContent = fs.readFileSync(tsconfigPath, 'utf8');
       const parsed = ts.parseConfigFileTextToJson(tsconfigPath, tsconfigContent);
       if (parsed.config) {
@@ -66,16 +70,32 @@ export function typeCheckCode(filePath: string, code: string): TypeCheckResult {
         );
         compilerOptions = {
           ...parsedOptions.options,
-          ...compilerOptions, // Maintain override options for our typecheck needs
+          ...compilerOptions,
           noEmit: true,
         };
         delete compilerOptions.rootDir;
         delete compilerOptions.rootDirs;
+
+        astConfigCache = {
+          mtimeMs: stat.mtimeMs,
+          compilerOptions: { ...compilerOptions },
+        };
       }
     } catch {
       // Gracefully fall back to defaults if parsing fails
     }
   }
+
+  return compilerOptions;
+}
+
+/**
+ * Executes in-memory TypeScript compilation and semantic type-checking using TS Compiler API.
+ * Uses virtual files, resolves actual imports from disk, and loads options from tsconfig.json if available.
+ */
+export function typeCheckCode(filePath: string, code: string): TypeCheckResult {
+  const absoluteFilePath = path.resolve(filePath);
+  const compilerOptions = getAstCompilerOptions();
 
   const sourceFile = ts.createSourceFile(absoluteFilePath, code, ts.ScriptTarget.Latest, true);
 

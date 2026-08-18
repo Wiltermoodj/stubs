@@ -109,6 +109,8 @@ window.addEventListener('DOMContentLoaded', async () => {
   }
 
   renderApp();
+  setupPwaInstallBanner();
+  updateOfflineStatus();
 
   if (!pat) {
     showPatModal();
@@ -1398,7 +1400,7 @@ async function openBootstrapModal() {
           .join('');
       }
     }
-  } catch (err) {
+  } catch {
     if (listContainer)
       listContainer.innerHTML =
         '<p class="text-xs text-rose-400 font-semibold p-2">Failed to scan workspace.</p>';
@@ -1489,7 +1491,7 @@ async function previewBootstrapFile(filePath: string) {
         previewText.textContent = 'Error generating preview: ' + (data.error || 'unknown');
       }
     }
-  } catch (err) {
+  } catch {
     if (previewText) previewText.textContent = 'Failed to fetch generation preview.';
   }
 }
@@ -1554,7 +1556,7 @@ async function commitBootstrapSidecars() {
       } else {
         showToast(`Skipped ${filePath}: generation failed.`, 'error');
       }
-    } catch (err) {
+    } catch {
       showToast(`Skipped ${filePath}: fetch failed.`, 'error');
     }
   }
@@ -1590,7 +1592,7 @@ async function commitBootstrapSidecars() {
     } else {
       showToast('Commit failed: ' + (commitData.error || 'unknown'), 'error');
     }
-  } catch (err) {
+  } catch {
     showToast('Error executing bootstrap commit.', 'error');
   } finally {
     if (commitBtn) {
