@@ -315,8 +315,7 @@ describe('GitHub Client API and Auth Credentials Manager', () => {
 
       // Verify file written to ~/.stubs/credentials.json (encrypted format)
       expect(fs.existsSync(mockCredsPath)).toBe(true);
-      const raw = fs.readFileSync(mockCredsPath, 'utf8');
-      const creds = JSON.parse(raw);
+      const creds = loadCredentials();
       expect(decryptToken(creds['github.com'].token)).toBe('cli_valid_token');
       expect(creds['github.com'].login).toBe('testlogin');
 
@@ -448,7 +447,7 @@ describe('GitHub Client API and Auth Credentials Manager', () => {
       expect(exitCode).toBe(0);
 
       const loaded = loadCredentials();
-      expect(loaded.github_token).toBe('piped_pat_token');
+      expect(decryptToken(loaded.github_token)).toBe('piped_pat_token');
 
       mockStdinOn.mockRestore();
       process.stdin.isTTY = originalIsTTY;

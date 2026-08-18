@@ -102,38 +102,7 @@ export async function handleLogin(
     }
 
     // Prompt user for GitHub Personal Access Token via CLI with masking
-    const rl = readline.createInterface({
-      input: process.stdin as any,
-      output: process.stdout as any,
-    }) as any;
-
-    rl.muted = false;
-    rl._writeToOutput = function _writeToOutput(stringToWrite: string) {
-      if (!rl.muted) {
-        process.stdout.write(stringToWrite);
-      } else {
-        if (stringToWrite === '\r\n' || stringToWrite === '\n' || stringToWrite === '\r') {
-          process.stdout.write(stringToWrite);
-        } else {
-          process.stdout.write('*');
-        }
-      }
-    };
-
-    const askToken = (): Promise<string> => {
-      return new Promise((resolve) => {
-        rl.question(
-          'Please enter your GitHub Personal Access Token (PAT):\n> ',
-          (answer: string) => {
-            resolve(answer.trim());
-          },
-        );
-        rl.muted = true;
-      });
-    };
-
-    token = await askToken();
-    rl.close();
+    token = await askTokenMasked('Please enter your GitHub Personal Access Token (PAT):\n> ');
   }
 
   if (!token) {

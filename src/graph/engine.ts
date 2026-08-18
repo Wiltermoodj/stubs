@@ -186,7 +186,9 @@ export class GraphEngine {
       try {
         require('sqlite3');
         sqlite3Available = true;
-      } catch (e) {}
+      } catch (_e) {
+        // Fallback to WASM if native module missing
+      }
 
       if (sqlite3Available) {
         this.dbDriver = new BetterSqliteDriver(this.dbPath);
@@ -1176,7 +1178,9 @@ export function createGraphEngine(
       try {
         require('sqlite3');
         sqlite3Available = true;
-      } catch (e) {}
+      } catch (_e) {
+        // Fallback to WASM if native module missing
+      }
 
       if (sqlite3Available) {
         dbDriver = new BetterSqliteDriver(dbPath);
