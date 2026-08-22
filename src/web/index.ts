@@ -125,18 +125,19 @@ window.addEventListener('DOMContentLoaded', async () => {
 function renderApp() {
   container.innerHTML = `
     <!-- Top Nav Header -->
-    <header class="h-16 border-b border-slate-800 bg-slate-900/50 backdrop-blur px-4 flex items-center justify-between z-40 select-none shrink-0">
+    <header class="h-16 border-b border-slate-800 bg-slate-900/50 backdrop-blur px-4 flex items-center justify-between z-[50] select-none shrink-0">
       <div class="flex items-center space-x-3">
         <!-- Drawer toggle for Mobile Left Sidebar -->
-        <button onclick="toggleLeftDrawer()" class="md:hidden text-slate-300 p-1.5 bg-slate-800/65 rounded-lg active:scale-95 transition-all text-sm">
+        <button
+          onclick="toggleLeftDrawer()"
+          aria-label="Open file browser"
+          class="md:hidden text-slate-300 min-w-[44px] min-h-[44px] flex items-center justify-center bg-slate-800/65 rounded-lg active:scale-95 transition-[transform,background-color] duration-100 text-sm"
+        >
           📂
         </button>
-        <span class="text-xl">🧩</span>
+        <span class="text-xl" aria-hidden="true">🧩</span>
         <div>
-          <h1 class="text-sm font-semibold tracking-tight text-white flex items-center space-x-2">
-            <span>Stubs Spec PWA</span>
-            <span class="text-[9px] bg-indigo-500/15 text-indigo-400 border border-indigo-500/20 px-1.5 py-0.5 rounded-full font-mono">Mobile v1.0</span>
-          </h1>
+          <h1 class="text-sm font-semibold tracking-tight text-white">Stubs Spec PWA</h1>
           <p class="text-[10px] text-slate-500 truncate max-w-[140px] sm:max-w-[200px]" id="current-repo-display">
             ${currentRepo || 'No repo connected'}
           </p>
@@ -145,13 +146,26 @@ function renderApp() {
 
       <!-- Action Buttons -->
       <div class="flex items-center space-x-2">
-        <button onclick="openBootstrapModal()" class="text-[11px] font-semibold text-white bg-indigo-600 hover:bg-indigo-500 border border-indigo-500/20 px-2.5 py-1.5 rounded-lg transition-all active:scale-95">
-          ⚡ Bootstrap Codebase
+        <button
+          onclick="openBootstrapModal()"
+          aria-label="Bootstrap codebase"
+          class="text-[11px] font-semibold text-white bg-indigo-600 hover:bg-indigo-500 border border-indigo-500/20 px-3 py-1.5 rounded-lg transition-[background-color] duration-200 active:scale-95 flex items-center space-x-1.5"
+        >
+          <span aria-hidden="true">⚡</span><span>Bootstrap Codebase</span>
         </button>
-        <button onclick="showPatModal()" class="text-[11px] font-semibold text-slate-400 bg-slate-800/80 hover:bg-slate-700/80 border border-slate-700/50 px-2.5 py-1.5 rounded-lg transition-all active:scale-95">
-          🔑 PAT Setup
+        <button
+          onclick="showPatModal()"
+          aria-label="PAT Setup"
+          title="PAT Setup"
+          class="min-w-[44px] min-h-[44px] flex items-center justify-center text-slate-400 hover:text-slate-200 rounded-lg transition-[color] duration-200"
+        >
+          🔑
         </button>
-        <button onclick="toggleRightDrawer()" class="md:hidden text-slate-300 p-1.5 bg-slate-800/65 rounded-lg active:scale-95 transition-all text-sm">
+        <button
+          onclick="toggleRightDrawer()"
+          aria-label="Open directives panel"
+          class="md:hidden text-slate-300 min-w-[44px] min-h-[44px] flex items-center justify-center bg-slate-800/65 rounded-lg active:scale-95 transition-[transform,background-color] duration-100 text-sm"
+        >
           📋
         </button>
       </div>
@@ -161,18 +175,22 @@ function renderApp() {
     <div class="flex-1 flex overflow-hidden relative">
 
       <!-- Left Sidebar Drawer (Specifications List) -->
-      <aside id="left-drawer" class="drawer fixed md:static inset-y-0 left-0 w-72 md:w-64 border-r border-slate-800 bg-slate-900 md:bg-slate-900/25 flex flex-col z-30 ${isLeftDrawerOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'} md:translate-x-0">
+      <aside id="left-drawer" class="drawer fixed md:static inset-y-0 left-0 w-72 md:w-64 border-r border-slate-800 bg-slate-900 md:bg-slate-900/25 flex flex-col z-[70] ${isLeftDrawerOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'} md:translate-x-0">
         <div class="p-4 border-b border-slate-800/60 bg-slate-900/45 flex flex-col space-y-3 shrink-0">
           <div class="flex items-center justify-between">
             <h2 class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Workspace Specs</h2>
-            <button onclick="toggleLeftDrawer()" class="md:hidden text-slate-500 text-xs">✕</button>
+            <button
+              onclick="toggleLeftDrawer()"
+              aria-label="Close file browser"
+              class="md:hidden text-slate-500 hover:text-slate-300 min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg transition-[color] duration-100 text-xs"
+            >✕</button>
           </div>
 
           <!-- Repo dropdown selector -->
           <div class="space-y-1">
             <label for="repo-sel" class="text-[9px] font-bold text-slate-500 uppercase">Repository</label>
-            <select id="repo-sel" onchange="selectRepo(this.value)" class="w-full bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 font-semibold focus:outline-none focus:border-indigo-500">
-              <option value="">-- Choose Repository --</option>
+            <select id="repo-sel" onchange="selectRepo(this.value)" class="w-full bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 transition-[border-color,box-shadow] duration-200">
+              <option value="">— Choose Repository</option>
               ${reposList.map((r) => `<option value="${r.fullName}" ${r.fullName === currentRepo ? 'selected' : ''}>${r.fullName}</option>`).join('')}
             </select>
           </div>
@@ -180,7 +198,7 @@ function renderApp() {
           <!-- Branch dropdown selector -->
           <div class="space-y-1">
             <label for="branch-sel" class="text-[9px] font-bold text-slate-500 uppercase">Branch</label>
-            <select id="branch-sel" onchange="selectBranch(this.value)" class="w-full bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 font-mono focus:outline-none focus:border-indigo-500">
+            <select id="branch-sel" onchange="selectBranch(this.value)" class="w-full bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 font-mono focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 transition-[border-color,box-shadow] duration-200">
               ${branchesList.map((b) => `<option value="${b}" ${b === currentBranch ? 'selected' : ''}>${b}</option>`).join('')}
             </select>
           </div>
@@ -190,44 +208,51 @@ function renderApp() {
             type="text"
             id="web-search-input"
             oninput="renderSpecsList()"
-            placeholder="Search files..."
-            class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-slate-200 placeholder-slate-600 focus:outline-none focus:border-indigo-500 transition-all"
+            placeholder="Search files…"
+            aria-label="Search specification files"
+            class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-slate-200 placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 transition-[border-color,box-shadow] duration-200"
           />
         </div>
 
         <!-- Files List Scroll Container -->
         <div class="flex-1 overflow-y-auto custom-scroll p-3 space-y-1.5" id="web-specs-list">
-          <p class="text-xs text-slate-500 italic p-3 text-center">No specifications loaded.</p>
+          <div class="flex flex-col items-center justify-center text-center py-8 px-4 space-y-3">
+            <span class="text-2xl" aria-hidden="true">📂</span>
+            <p class="text-xs text-slate-400 font-medium">No specifications loaded</p>
+            <p class="text-[11px] text-slate-500">Connect a GitHub repo above to load sidecar specs, or
+              <button onclick="showPatModal()" class="text-indigo-400 hover:underline font-medium">configure your PAT</button> to get started.
+            </p>
+          </div>
         </div>
       </aside>
 
       <!-- Backdrop overlay for mobile drawers -->
-      <div id="drawer-overlay" onclick="closeAllDrawers()" class="fixed inset-0 bg-black/60 z-20 transition-opacity duration-300 md:hidden hidden"></div>
+      <div id="drawer-overlay" onclick="closeAllDrawers()" class="fixed inset-0 bg-black/60 z-[65] transition-opacity duration-300 md:hidden hidden"></div>
 
       <!-- Center Pane (Main Details & Interactive Ego Graph) -->
       <main class="flex-1 flex flex-col bg-slate-950/20 overflow-y-auto custom-scroll pb-20 md:pb-6" id="web-detail-pane">
         <div class="flex-1 flex flex-col items-center justify-center text-slate-500 p-8 h-full">
-          <span class="text-4xl mb-4">🧭</span>
-          <h3 class="text-sm font-semibold text-slate-300">Select sidecar specification</h3>
+          <span class="text-4xl mb-4" aria-hidden="true">🧭</span>
+          <h3 class="text-sm font-semibold text-slate-300">Select a sidecar specification</h3>
           <p class="text-xs max-w-xs text-center mt-1 text-slate-500">Select any spec sidecar from the sidebar to inspect dependencies, decisions, and interact with the 1-hop Ego Graph.</p>
         </div>
       </main>
 
       <!-- Right Panel Drawer (Directives / Templates Workbench) -->
-      <aside id="right-drawer" class="drawer fixed md:static inset-y-0 right-0 w-80 md:w-80 border-l border-slate-800 bg-slate-900 md:bg-slate-900/25 flex flex-col z-30 ${isRightDrawerOpen ? 'translate-x-0' : 'translate-x-full md:translate-x-0'} md:translate-x-0">
+      <aside id="right-drawer" class="drawer fixed md:static inset-y-0 right-0 w-80 md:w-80 border-l border-slate-800 bg-slate-900 md:bg-slate-900/25 flex flex-col z-[70] ${isRightDrawerOpen ? 'translate-x-0' : 'translate-x-full md:translate-x-0'} md:translate-x-0">
         <!-- Tabs Header -->
         <div class="flex border-b border-slate-800 bg-slate-950/30 shrink-0 select-none">
           <button
             onclick="switchRightTab('directives')"
             id="tab-dir-btn"
-            class="flex-1 py-3 text-[10px] font-bold uppercase tracking-wider text-center border-b-2 ${currentTab === 'directives' ? 'border-indigo-500 text-indigo-400' : 'border-transparent text-slate-400'} transition-all"
+            class="flex-1 py-3 text-[10px] font-bold uppercase tracking-wider text-center border-b-2 ${currentTab === 'directives' ? 'border-indigo-500 text-indigo-400' : 'border-transparent text-slate-400'} transition-[border-color,color] duration-200"
           >
             Directives
           </button>
           <button
             onclick="switchRightTab('templates')"
             id="tab-tpl-btn"
-            class="flex-1 py-3 text-[10px] font-bold uppercase tracking-wider text-center border-b-2 ${currentTab === 'templates' ? 'border-indigo-500 text-indigo-400' : 'border-transparent text-slate-400'} transition-all"
+            class="flex-1 py-3 text-[10px] font-bold uppercase tracking-wider text-center border-b-2 ${currentTab === 'templates' ? 'border-indigo-500 text-indigo-400' : 'border-transparent text-slate-400'} transition-[border-color,color] duration-200"
           >
             Templates Drafts
           </button>
@@ -241,11 +266,11 @@ function renderApp() {
     </div>
 
     <!-- PAT Setup Modal -->
-    <div id="pat-modal" class="fixed inset-0 bg-black/80 z-50 flex items-center justify-center hidden px-4">
-      <div class="bg-slate-900 border border-slate-800 w-full max-w-md p-6 rounded-2xl shadow-2xl space-y-4">
+    <div id="pat-modal" class="fixed inset-0 bg-black/80 z-[80] flex items-center justify-center hidden px-4" role="dialog" aria-modal="true" aria-labelledby="pat-modal-title">
+      <div class="bg-slate-900 border border-slate-800 w-full max-w-md p-6 rounded-2xl shadow-[0_20px_25px_-5px_rgba(0,0,0,0.4),0_8px_10px_-6px_rgba(0,0,0,0.4)] space-y-4">
         <div class="text-center space-y-1.5">
-          <span class="text-3xl">🔑</span>
-          <h2 class="text-base font-semibold text-white tracking-tight">Connect GitHub API Client</h2>
+          <span class="text-3xl" aria-hidden="true">🔑</span>
+          <h2 id="pat-modal-title" class="text-base font-semibold text-white tracking-tight">Connect GitHub API Client</h2>
           <p class="text-xs text-slate-400">Enter a GitHub Personal Access Token (PAT) with repository read/write access to sync workspace sidecars directly in browser memory.</p>
         </div>
 
@@ -255,35 +280,39 @@ function renderApp() {
             type="password"
             id="pat-input"
             value="${pat}"
-            placeholder="github_pat_..."
-            class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3.5 py-2 text-xs font-mono text-slate-300 placeholder-slate-600 focus:outline-none focus:border-indigo-500"
+            placeholder="github_pat_…"
+            class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3.5 py-2 text-xs font-mono text-slate-300 placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 transition-[border-color,box-shadow] duration-200"
           />
         </div>
 
         <div class="flex space-x-2 pt-2">
-          <button onclick="validateAndSavePat()" class="flex-1 bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs py-2.5 rounded-lg active:scale-95 transition-all">
-            Save and Connect
-          </button>
-          <button onclick="hidePatModal()" class="px-4 bg-slate-800 hover:bg-slate-700 text-slate-400 font-semibold text-xs py-2.5 rounded-lg active:scale-95 transition-all">
+          <button onclick="hidePatModal()" class="px-4 bg-slate-800 hover:bg-slate-700 text-slate-400 font-semibold text-xs py-2.5 rounded-lg active:scale-95 transition-[background-color] duration-200">
             Cancel
           </button>
+          <button onclick="validateAndSavePat()" class="flex-1 bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs py-2.5 rounded-lg active:scale-95 transition-[background-color] duration-200">
+            Save and Connect
+          </button>
         </div>
-        <p id="pat-error" class="text-[11px] text-rose-400 hidden italic text-center"></p>
+        <p id="pat-error" class="text-[11px] text-slate-400 hidden italic text-center"></p>
       </div>
     </div>
 
     <!-- Bootstrap Codebase Modal -->
-    <div id="bootstrap-modal" class="fixed inset-0 bg-black/80 z-50 flex items-center justify-center hidden px-4">
-      <div class="bg-slate-900 border border-slate-800 w-full max-w-4xl h-[85vh] p-6 rounded-2xl shadow-2xl flex flex-col space-y-4">
+    <div id="bootstrap-modal" class="fixed inset-0 bg-black/80 z-[80] flex items-center justify-center hidden px-4" role="dialog" aria-modal="true" aria-labelledby="bootstrap-modal-title">
+      <div class="bg-slate-900 border border-slate-800 w-full max-w-4xl h-[85vh] p-6 rounded-2xl shadow-[0_20px_25px_-5px_rgba(0,0,0,0.4),0_8px_10px_-6px_rgba(0,0,0,0.4)] flex flex-col space-y-4">
         <div class="flex items-center justify-between border-b border-slate-800 pb-3 shrink-0">
           <div class="flex items-center space-x-2.5">
-            <span class="text-xl">⚡</span>
+            <span class="text-xl" aria-hidden="true">⚡</span>
             <div>
-              <h2 class="text-base font-semibold text-white tracking-tight">Bootstrap Specification Sidecars</h2>
+              <h2 id="bootstrap-modal-title" class="text-base font-semibold text-white tracking-tight">Bootstrap Specification Sidecars</h2>
               <p class="text-xs text-slate-400">Generate OKF skeleton sidecars for TypeScript files missing specs.</p>
             </div>
           </div>
-          <button onclick="closeBootstrapModal()" class="text-slate-500 hover:text-slate-300 text-sm p-1">✕</button>
+          <button
+            onclick="closeBootstrapModal()"
+            aria-label="Close bootstrap modal"
+            class="text-slate-500 hover:text-slate-300 min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg transition-[color] duration-100"
+          >✕</button>
         </div>
 
         <!-- Main Columns Split -->
@@ -312,9 +341,9 @@ function renderApp() {
               <select
                 id="bootstrap-template-select"
                 onchange="onBootstrapTemplateChange()"
-                class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-300 focus:outline-none focus:border-indigo-500"
+                class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 transition-[border-color,box-shadow] duration-200"
               >
-                <option value="">-- Use Default OKF Skeleton --</option>
+                <option value="">— Use Default OKF Skeleton</option>
               </select>
             </div>
 
@@ -322,24 +351,24 @@ function renderApp() {
             <div class="flex-1 flex flex-col min-h-0">
               <div class="flex items-center justify-between mb-1.5 shrink-0">
                 <h3 class="text-xs font-semibold text-slate-200">Specification Preview</h3>
-                <span id="preview-filename-badge" class="text-[10px] font-mono text-indigo-400 truncate max-w-[200px]">None selected</span>
+                <span id="preview-filename-badge" class="text-[10px] font-mono text-indigo-400 truncate max-w-[200px]">—</span>
               </div>
               <div class="flex-1 bg-slate-950 border border-slate-800 rounded-xl overflow-hidden flex flex-col">
-                <pre class="flex-1 p-3 text-[10px] text-slate-300 font-mono overflow-y-auto custom-scroll whitespace-pre-wrap select-all leading-relaxed" id="bootstrap-preview-text">Select a file on the left to preview generated specification content...</pre>
+                <pre class="flex-1 p-3 text-[10px] text-slate-300 font-mono overflow-y-auto custom-scroll whitespace-pre-wrap select-all leading-relaxed" id="bootstrap-preview-text">Select a file on the left to preview generated specification content…</pre>
               </div>
             </div>
           </div>
         </div>
 
-        <!-- Footer Buttons -->
+        <!-- Footer Buttons: Cancel left, Commit right (ADR 0032) -->
         <div class="flex items-center justify-between border-t border-slate-800 pt-3 shrink-0">
           <span id="bootstrap-status-info" class="text-xs text-slate-500 italic">0 files selected for bootstrapping.</span>
           <div class="flex space-x-2">
-            <button onclick="commitBootstrapSidecars()" id="bootstrap-commit-btn" class="bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs px-5 py-2.5 rounded-lg active:scale-95 transition-all shadow-sm" disabled>
-              Commit Specifications
-            </button>
-            <button onclick="closeBootstrapModal()" class="bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold text-xs px-4 py-2.5 rounded-lg active:scale-95 transition-all">
+            <button onclick="closeBootstrapModal()" class="bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold text-xs px-4 py-2.5 rounded-lg active:scale-95 transition-[background-color] duration-200">
               Cancel
+            </button>
+            <button onclick="commitBootstrapSidecars()" id="bootstrap-commit-btn" class="bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs px-5 py-2.5 rounded-lg active:scale-95 transition-[background-color] duration-200 shadow-sm" disabled>
+              Commit Specifications
             </button>
           </div>
         </div>
@@ -347,7 +376,7 @@ function renderApp() {
     </div>
 
     <!-- Dynamic Toast Notification Container -->
-    <div id="toast-wrapper" class="fixed bottom-4 right-4 z-50 flex flex-col space-y-2 pointer-events-none"></div>
+    <div id="toast-wrapper" class="fixed bottom-4 right-4 z-[100] flex flex-col space-y-2 pointer-events-none" aria-live="polite" aria-atomic="false"></div>
   `;
   renderSpecsList();
   renderRightPanel();
@@ -396,26 +425,34 @@ function showToast(message: string, type: 'success' | 'info' | 'error' | 'warnin
   const container = document.getElementById('toast-wrapper');
   if (!container) return;
   const toast = document.createElement('div');
-  const borderCol =
+  toast.setAttribute('role', 'status');
+  // Neutral border accent — semantic color only appears in active context (toasts are transient surfaces)
+  const accentColor =
     type === 'error'
-      ? 'oklch(0.627 0.265 20)'
+      ? 'oklch(0.55 0.22 20)'
       : type === 'success'
-        ? 'oklch(0.627 0.265 140)'
+        ? 'oklch(0.55 0.22 140)'
         : type === 'warning'
-          ? 'oklch(0.627 0.265 60)'
-          : 'oklch(0.5 0.2 240)';
+          ? 'oklch(0.55 0.22 60)'
+          : 'oklch(0.45 0.18 240)';
   toast.className =
-    'pointer-events-auto p-3.5 rounded-xl border bg-slate-900/95 shadow-xl max-w-xs text-xs flex flex-col space-y-1 transition-all';
-  toast.style.borderColor = borderCol;
+    'pointer-events-auto p-3.5 rounded-xl border bg-slate-900/95 shadow-[0_20px_25px_-5px_rgba(0,0,0,0.5),0_8px_10px_-6px_rgba(0,0,0,0.4)] max-w-xs text-xs flex flex-col space-y-1';
+  toast.style.borderColor = accentColor;
   toast.innerHTML = `
-    <div class="flex items-center justify-between">
-      <span class="font-bold text-white uppercase text-[9px]">${type} notification</span>
-      <button onclick="this.parentElement.parentElement.remove()" class="text-slate-500 hover:text-slate-300">✕</button>
+    <div class="flex items-start justify-between gap-2">
+      <p class="text-slate-200 leading-relaxed flex-1">${message}</p>
+      <button
+        onclick="this.parentElement.parentElement.remove()"
+        aria-label="Dismiss notification"
+        class="text-slate-500 hover:text-slate-300 min-w-[20px] flex items-center justify-center shrink-0 transition-[color] duration-100"
+      >\u2715</button>
     </div>
-    <p class="text-slate-300 leading-relaxed">${message}</p>
   `;
   container.appendChild(toast);
-  setTimeout(() => toast.remove(), 4000);
+  // Error toasts persist until dismissed (ADR 0033). All others auto-dismiss after 4s.
+  if (type !== 'error') {
+    setTimeout(() => toast.remove(), 4000);
+  }
 }
 
 // PAT Modals
@@ -623,7 +660,7 @@ function renderSpecsList() {
       return `
       <div
         onclick="selectSidecar('${filePath}')"
-        class="p-3 rounded-xl border cursor-pointer select-none transition-all duration-150 ${isSelected ? 'bg-indigo-600/15 border-indigo-500 text-white' : 'bg-slate-900/40 border-slate-800 hover:border-slate-700 text-slate-300'}"
+        class="p-3 rounded-xl border cursor-pointer select-none transition-[background-color,border-color] duration-150 ${isSelected ? 'bg-indigo-600/15 border-indigo-500 text-white' : 'bg-slate-900/40 border-slate-800 hover:border-slate-700 text-slate-300'}"
       >
         <div class="flex flex-col">
           <span class="text-xs font-semibold truncate">${baseName}</span>
@@ -658,12 +695,12 @@ async function loadAndRenderSidecarDetail(filePath: string) {
   const panel = document.getElementById('web-detail-pane');
   if (!panel) return;
 
-  panel.innerHTML = `<div class="p-6 text-xs text-slate-400 italic">Reading sidecar specifications...</div>`;
+  panel.innerHTML = `<div class="p-6 text-xs text-slate-400 italic">Reading sidecar specifications…</div>`;
 
   try {
     const sidecar = await graphEngine.getSidecar(filePath);
     if (!sidecar) {
-      panel.innerHTML = `<div class="p-6 text-xs text-rose-400 font-bold">Error: sidecar specification not found.</div>`;
+      panel.innerHTML = `<div class="p-6 text-xs text-slate-400 font-medium">Specification not found. Try refreshing the workspace or selecting a different file.</div>`;
       return;
     }
 
@@ -674,14 +711,14 @@ async function loadAndRenderSidecarDetail(filePath: string) {
           (t: string) =>
             `<span class="text-[9px] font-mono bg-slate-900 border border-slate-800 text-slate-400 px-1.5 py-0.5 rounded">#${t}</span>`,
         )
-        .join(' ') || '<span class="text-slate-600 italic text-[11px]">None</span>';
+        .join(' ') || '<span class="text-slate-600 italic text-[11px]">—</span>';
     const exportsHtml =
       fm.exports
         ?.map(
           (e: string) =>
             `<span class="text-[9px] font-mono bg-indigo-950/20 border border-indigo-900/30 text-indigo-400 px-1.5 py-0.5 rounded">${e}</span>`,
         )
-        .join(' ') || '<span class="text-slate-600 italic text-[11px]">None</span>';
+        .join(' ') || '<span class="text-slate-600 italic text-[11px]">—</span>';
 
     const decisionsHtml =
       fm.decisions
@@ -690,7 +727,7 @@ async function loadAndRenderSidecarDetail(filePath: string) {
       <div class="p-3 bg-slate-900/40 border border-slate-800/80 rounded-xl">
         <div class="flex items-center justify-between mb-1">
           <span class="text-[10px] font-mono text-indigo-400 font-semibold">${d.id}</span>
-          <span class="text-[9px] font-mono text-slate-500">${d.date || 'No Date'}</span>
+          <span class="text-[9px] font-mono text-slate-500">${d.date || '—'}</span>
         </div>
         <p class="text-xs text-slate-200 font-medium leading-relaxed">${d.summary}</p>
       </div>
@@ -730,15 +767,15 @@ async function loadAndRenderSidecarDetail(filePath: string) {
         <div class="border-b border-slate-800/80 pb-4">
           <div class="flex items-start justify-between">
             <div>
-              <h2 class="text-base sm:text-lg font-semibold text-white tracking-tight">${fm.title || 'Untitled'}</h2>
+              <h2 class="text-base sm:text-lg font-semibold text-white tracking-tight">${fm.title || '—'}</h2>
               <p class="text-[10px] sm:text-xs font-mono text-slate-500 mt-1 select-all">${filePath}</p>
             </div>
             <div class="text-right flex flex-col items-end space-y-1">
-              <span class="text-[10px] sm:text-[11px] font-mono bg-slate-900 border border-slate-800 text-slate-300 px-2 py-0.5 rounded-md">status: ${fm.status}</span>
-              <span class="text-[9px] font-mono text-slate-500">flag: ${fm.status_flag || 'clean'}</span>
+              <span class="text-[10px] sm:text-[11px] font-mono bg-slate-900 border border-slate-800 text-slate-300 px-2 py-0.5 rounded-md">status: ${fm.status || '—'}</span>
+              <span class="text-[9px] font-mono text-slate-500">flag: ${fm.status_flag || '—'}</span>
             </div>
           </div>
-          <p class="text-xs sm:text-sm text-slate-400 mt-3 leading-relaxed">${fm.description || 'No description'}</p>
+          <p class="text-xs sm:text-sm text-slate-400 mt-3 leading-relaxed">${fm.description || '—'}</p>
         </div>
 
         <!-- Touch-optimized Ego Graph View -->
@@ -748,7 +785,7 @@ async function loadAndRenderSidecarDetail(filePath: string) {
               1-Hop Ego Dependency Graph
             </h3>
             <div class="flex space-x-1 text-[10px]">
-              <button onclick="resetZoom()" class="bg-slate-800 border border-slate-700 px-2 py-0.5 rounded text-slate-300">Reset</button>
+              <button onclick="resetZoom()" class="bg-slate-800 border border-slate-700 px-2 py-0.5 rounded text-slate-300 transition-[background-color] duration-100 hover:bg-slate-700">Reset</button>
             </div>
           </div>
 
@@ -800,7 +837,7 @@ async function loadAndRenderSidecarDetail(filePath: string) {
     setupTouchGestures();
     renderRightPanel();
   } catch (err: any) {
-    panel.innerHTML = `<div class="p-6 text-xs text-rose-400 font-bold">Error loading sidecar detail: ${err.message}</div>`;
+    panel.innerHTML = `<div class="p-6 text-xs text-slate-400 font-medium">Could not load this specification. ${err.message ? `(${err.message})` : ''} Try selecting a different file or refreshing the workspace.</div>`;
   }
 }
 
@@ -1065,7 +1102,7 @@ async function renderRightPanel() {
           <textarea id="new-dir-text" rows="3" placeholder="Enter spec instructions..." class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-slate-300 placeholder-slate-700 focus:outline-none focus:border-indigo-500 resize-none min-h-[50px]"></textarea>
         </div>
 
-        <button onclick="submitDirective()" class="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs py-2 rounded-lg active:scale-95 transition-all shadow-sm">
+        <button onclick="submitDirective()" class="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs py-2 rounded-lg active:scale-95 transition-[background-color] duration-200 shadow-sm">
           Send Directive
         </button>
       </div>
@@ -1097,7 +1134,7 @@ async function renderRightPanel() {
                 ${
                   d.status === 'pending'
                     ? `
-                  <button onclick="resolveDirective('${d.filePath}', '${d.id}')" class="px-2 py-0.5 bg-slate-800 border border-slate-700 text-slate-300 hover:text-emerald-400 hover:border-emerald-500/25 rounded font-semibold transition-all">Resolve</button>
+                  <button onclick="resolveDirective('${d.filePath}', '${d.id}')" class="px-2 py-0.5 bg-slate-800 border border-slate-700 text-slate-300 hover:text-slate-100 hover:border-slate-500 rounded font-semibold transition-[color,border-color] duration-100">Resolve</button>
                 `
                     : `<span class="text-slate-500 uppercase font-semibold font-mono text-[8px] tracking-wider">Resolved</span>`
                 }
@@ -1123,24 +1160,26 @@ async function renderRightPanel() {
       <div class="space-y-3" id="provisional-templates-list">
         <!-- Static draft templates matching portal capabilities -->
         <div class="p-3 bg-slate-900/35 border border-slate-800 rounded-xl space-y-3">
-          <div class="flex items-center justify-between">
-            <span class="text-xs font-semibold text-white">controller-v1.0-provisional.ts.md.tpl</span>
-            <span class="text-[9px] font-mono bg-amber-500/10 border border-amber-500/20 text-amber-400 px-1.5 py-0.5 rounded-full font-bold">DRAFT</span>
+          <div class="flex items-start justify-between">
+            <div>
+              <span class="text-xs font-semibold text-white">controller-v1.0-provisional.ts.md.tpl</span>
+              <span class="text-[9px] text-slate-500 font-mono block mt-0.5">draft &middot; pending review</span>
+            </div>
           </div>
           <pre class="bg-slate-950 p-2 border border-slate-900 rounded-lg text-[9px] text-slate-400 max-h-[80px] overflow-y-auto font-mono custom-scroll"># Controller Mold (Draft Proposal)
 Provisional template for human review.
 - Project: {{project_name}}
 - Version: v1.0-provisional</pre>
           <div class="flex items-center space-x-2 pt-1 text-[10px]">
-            <button onclick="approveTemplateProposal('controller-v1.0-provisional.ts.md.tpl', true)" class="flex-1 bg-slate-800 hover:bg-indigo-600/20 text-indigo-400 hover:border-indigo-500/35 border border-slate-700 rounded-lg font-bold py-1 transition-all">Approve Template</button>
-            <button onclick="approveTemplateProposal('controller-v1.0-provisional.ts.md.tpl', false)" class="px-3 bg-slate-950 border border-slate-900 text-rose-500 hover:bg-rose-950/20 rounded-lg py-1 transition-all font-bold">Reject</button>
+            <button onclick="approveTemplateProposal('controller-v1.0-provisional.ts.md.tpl', true)" class="flex-1 bg-slate-800 hover:bg-indigo-600/20 text-indigo-400 hover:border-indigo-500/35 border border-slate-700 rounded-lg font-bold py-1 transition-[background-color,border-color] duration-200">Approve Template</button>
+            <button onclick="approveTemplateProposal('controller-v1.0-provisional.ts.md.tpl', false)" class="px-3 bg-slate-950 border border-slate-900 text-slate-400 hover:bg-slate-900 rounded-lg py-1 transition-[background-color] duration-200 font-bold">Reject</button>
           </div>
         </div>
 
         <div class="p-3 bg-slate-900/35 border border-slate-800 rounded-xl space-y-1.5">
-          <div class="flex items-center justify-between">
+          <div>
             <span class="text-xs font-semibold text-white">service.ts.md.tpl</span>
-            <span class="text-[9px] font-mono bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 px-1.5 py-0.5 rounded-full font-bold">ACTIVE</span>
+            <span class="text-[9px] text-slate-500 font-mono block mt-0.5">active &middot; registered</span>
           </div>
           <p class="text-[10px] text-slate-500 italic font-mono">Template is fully registered on repository.</p>
         </div>
@@ -1378,7 +1417,7 @@ async function openBootstrapModal() {
         listContainer.innerHTML = bootstrapFiles
           .map(
             (file) => `
-          <div class="flex items-center justify-between p-2 hover:bg-slate-900/50 rounded-lg transition-all">
+          <div class="flex items-center justify-between p-2 hover:bg-slate-900/50 rounded-lg transition-[background-color] duration-150">
             <label class="flex items-center space-x-2.5 cursor-pointer truncate mr-2">
               <input
                 type="checkbox"
