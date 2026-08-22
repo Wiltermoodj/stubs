@@ -62,41 +62,57 @@ export function parseMarkdown(content: string): MarkdownBlock[] {
  * Extracts TypeScript code blocks from the ## Implementation section of parsed Markdown blocks.
  * If no ## Implementation heading is found, or if it does not contain typescript code blocks,
  * returns an appropriate error description.
+ *
+ * Key behavior: finds the ## Implementation heading that has typescript code blocks
+ * immediately following it (before any same-level or higher heading), preferring the
+ * last such section when multiple exist (e.g., ## Current implementation precedes
+ * ## Implementation).
  */
 export function extractImplementationCode(blocks: MarkdownBlock[]): {
   code: string | null;
   error: string | null;
 } {
-  const headingIdx = blocks.findIndex(
-    (b) => b.type === 'heading' && /^(?:\d+\.\s+)?implementation$/i.test(b.text),
-  );
+  // Find all headings matching "Implementation" (with optional numbering prefix)
+  const implHeadingIndices: number[] = [];
+  for (let i = 0; i < blocks.length; i++) {
+    const b = blocks[i];
+    if (b.type === 'heading' && /^(?:\d+\.\s+)?implementation$/i.test(b.text)) {
+      implHeadingIndices.push(i);
+    }
+  }
 
-  if (headingIdx === -1) {
+  if (implHeadingIndices.length === 0) {
     return {
       code: null,
       error: 'No "## Implementation" section found in the sidecar specification.',
     };
   }
 
-  const headingLevel = (blocks[headingIdx] as any).level;
-  const tsBlocks: string[] = [];
+  // Search from last to first to prefer the final Implementation section
+  // (handles cases where ## Current implementation precedes ## Implementation)
+  for (let j = implHeadingIndices.length - 1; j >= 0; j--) {
+    const implIdx = implHeadingIndices[j];
+    const headingLevel = (blocks[implIdx] as any).level;
+    const tsBlocks: string[] = [];
 
-  for (let i = headingIdx + 1; i < blocks.length; i++) {
-    const block = blocks[i];
-    if (block.type === 'heading' && block.level <= headingLevel) {
-      break;
+    for (let i = implIdx + 1; i < blocks.length; i++) {
+      const block = blocks[i];
+      if (block.type === 'heading' && block.level <= headingLevel) {
+        break;
+      }
+      if (block.type === 'code' && (block.lang === 'typescript' || block.lang === 'ts')) {
+        tsBlocks.push(block.content);
+      }
     }
-    if (block.type === 'code' && (block.lang === 'typescript' || block.lang === 'ts')) {
-      tsBlocks.push(block.content);
+
+    if (tsBlocks.length > 0) {
+      return { code: tsBlocks.join('\n\n'), error: null };
     }
   }
 
-  if (tsBlocks.length === 0) {
-    return {
-      code: null,
-      error: 'No typescript code block found within the "## Implementation" section.',
-    };
-  }
-
-  return { code: tsBlocks.join('\n\n'), error: null };
+  // No Implementation section contained typescript code blocks
+  return {
+    code: null,
+    error: 'No typescript code block found within any "## Implementation" section.',
+  };
 }

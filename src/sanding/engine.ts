@@ -11,8 +11,12 @@ export interface SyncResult {
   filePath: string;
   targetCodeFile: string;
   status: 'synced' | 'no_change' | 'conflict' | 'healed' | 'error';
-  direction?: 'materialized' | 'sanded' | 'none';
+  direction?: 'materialized' | 'sanded' | 'sidecar_to_code' | 'code_to_sidecar' | 'none';
   error?: string;
+  /** Set to true when a non-structural conflict was auto-resolved (newer file wins). */
+  conflict_resolved?: boolean;
+  /** Set when status is 'conflict'; describes the resolution strategy. */
+  resolution?: string;
 }
 
 /**
@@ -287,9 +291,39 @@ export class SandingEngine {
       };
     }
 
-    const resolvedTarget = resolveContainedPath(path.dirname(resolvedSidecar), targetCodeFile);
+    // Resolve target_code_file. The value can be:
+    // (a) workspace-root-relative (e.g. "src/lib/firebase.ts") — resolve against process.cwd().
+    //     This is the B1 fix: paths without a "./" or "../" prefix are treated as relative to
+    //     the workspace root (process.cwd()), not the sidecar's directory.
+    // (b) sidecar-relative (e.g. "./auth-spec.ts", "../foo.ts") — resolve against the sidecar's
+    //     parent directory. Paths starting with "./" or "../" preserve the pre-B1 convention
+    //     where target_code_file was relative to the sidecar's location.
+    //
+    // Strategy: check the path prefix. "./" and "../" → sidecar-relative. Everything else →
+    // workspace-root-relative (cwd). This fixes the original bug while keeping existing
+    // sidecars and tests working without modification.
+    const workspaceRoot = process.cwd();
+    const sidecarDir = path.dirname(resolvedSidecar);
 
-    // Calculate stable sidecar hash (excluding the sync_state property)
+    const isSidecarRelative = targetCodeFile.startsWith('./') || targetCodeFile.startsWith('../');
+    const resolvedTarget = isSidecarRelative
+      ? resolveContainedPath(sidecarDir, targetCodeFile)
+      : resolveContainedPath(workspaceRoot, targetCodeFile);
+
+    // Guard: ensure resolved path stays within workspace root
+    const relativeCheck = path.relative(workspaceRoot, resolvedTarget);
+    if (path.isAbsolute(relativeCheck) || relativeCheck.startsWith('..')) {
+      return {
+        filePath: sidecarPath,
+        targetCodeFile,
+        status: 'error',
+        error:
+          `Resolved path "${resolvedTarget}" escapes workspace root "${workspaceRoot}". ` +
+          `target_code_file must resolve within the workspace.`,
+      };
+    }
+
+    // Calculate stable sidecar hash
     const cleanSidecarContent = stripSyncStateFromContent(content);
     const currentSidecarHash = sha256(cleanSidecarContent);
 
@@ -443,7 +477,8 @@ export class SandingEngine {
         filePath: sidecarPath,
         targetCodeFile,
         status: wasHealed ? 'healed' : 'synced',
-        direction: 'materialized',
+        direction: 'sidecar_to_code',
+        conflict_resolved: true,
       };
     }
 
@@ -488,7 +523,7 @@ export class SandingEngine {
         filePath: sidecarPath,
         targetCodeFile,
         status: wasHealed ? 'healed' : 'synced',
-        direction: 'sanded',
+        direction: 'code_to_sidecar',
       };
     }
 
@@ -539,6 +574,7 @@ export class SandingEngine {
           targetCodeFile,
           status: 'synced',
           direction: 'sanded',
+          conflict_resolved: true,
         };
       } else {
         // Materialize Sidecar -> Code
@@ -583,11 +619,12 @@ export class SandingEngine {
           targetCodeFile,
           status: 'synced',
           direction: 'materialized',
+          conflict_resolved: true,
         };
       }
     }
 
-    // 2. Structural conflict (AST mismatch) -> Define errors out of existence: non-destructive marker flag
+    // 2. Structural conflict (AST mismatch) -> non-destructive marker flag
     frontmatter.status_flag = 'needs-human-review-resolution';
     frontmatter.stale_details = `Conflict detected: Both sidecar and code files have been modified with structural AST differences.`;
 
@@ -599,6 +636,7 @@ export class SandingEngine {
       targetCodeFile,
       status: 'conflict',
       direction: 'none',
+      resolution: 'needs-human-review-resolution',
     };
   }
 

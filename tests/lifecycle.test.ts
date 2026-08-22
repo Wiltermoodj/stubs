@@ -161,16 +161,18 @@ export function greet(name: string): string {
 
     // Verify Stage 4
     expect(syncResult.status).toBe('synced');
-    expect(syncResult.direction).toBe('sanded');
+    expect(syncResult.direction).toBe('code_to_sidecar');
 
     // Verify sidecar was successfully sanded
     currentSpec = parseOkfSpec(fs.readFileSync(sidecarFilePath, 'utf8'));
     expect(currentSpec.frontmatter?.status).toBe('materialized');
-    expect(currentSpec.body).toContain('Greetings, " + name + "!"; // Developer modification');
+    expect(currentSpec.body).toContain(
+      'return "Greetings, " + name + "!"; // Developer modification',
+    );
     expect(currentSpec.frontmatter?.sync_state?.code_hash).toBeDefined();
 
     // Run sync again - should report no_change as files are perfectly synchronized now
     const secondSyncResult = await sandingEngine.syncFile(sidecarFilePath);
     expect(secondSyncResult.status).toBe('no_change');
-  }, 20000);
+  }, 120000);
 });

@@ -5,6 +5,7 @@
 Agents often get stuck when attempting to modify `.agents/skills/stubs/dist/cli.cjs` due to the file being a massive, compiled build artifact rather than source code.
 
 ### File Metadata
+
 - **Path:** `.agents/skills/stubs/dist/cli.cjs`
 - **File Size:** ~10 MB (10,227,653 bytes)
 - **Line Count:** 219,972 lines

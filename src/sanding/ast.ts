@@ -21,10 +21,8 @@ export function getAstStructuralHash(code: string): string {
     let detail = '';
     if (ts.isIdentifier(node)) {
       detail = `:${node.text}`;
-    } else if (ts.isLiteralExpression(node)) {
-      detail = `:${node.text}`;
     }
-    // Record node kind and identifier/literal detail
+    // Record node kind and identifier detail (ignore literal values for structural comparison)
     nodes.push(`${node.kind}${detail}`);
     ts.forEachChild(node, visit);
   }

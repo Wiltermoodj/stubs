@@ -87,6 +87,14 @@ export class GrillEngine {
         const ans = providedAnswer || `[Automated reply to: ${questions[i].substring(0, 30)}...]`;
         answers.push(ans);
       }
+      // Generate explicit output for non-interactive mode
+      console.log(`\n=== STUBS NON-INTERACTIVE GRILL ENGINE ===\n`);
+      console.log(`Target: ${frontmatter.title}\n`);
+      questions.forEach((q, idx) => {
+        console.log(`Q${idx + 1}: ${q}\n`);
+        console.log(`A${idx + 1}: ${answers[idx]}\n`);
+      });
+      console.log(`=== GRILLING COMPLETED ===\n`);
     } else {
       // Interactive mode using readline
       const rl = readline.createInterface({

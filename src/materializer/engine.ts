@@ -102,9 +102,26 @@ export class MaterializerEngine {
       };
     }
 
-    // Resolve target path relative to the sidecar's directory using containment rule
+    // Resolve target path using the same strategy as the sanding engine (B1 fix):
+    // (a) workspace-root-relative (no "./" or "../" prefix) → resolve against process.cwd().
+    // (b) sidecar-relative ("./" or "../" prefix) → resolve against the sidecar's directory.
+    // This keeps the materialize and sand commands consistent.
+    const workspaceRoot = process.cwd();
     const sidecarDir = path.dirname(absoluteSidecarPath);
-    const absoluteTargetFilePath = resolveContainedPath(sidecarDir, targetCodeFile);
+    const isSidecarRelative = targetCodeFile.startsWith('./') || targetCodeFile.startsWith('../');
+    const resolvedBase = isSidecarRelative ? sidecarDir : workspaceRoot;
+    const absoluteTargetFilePath = resolveContainedPath(resolvedBase, targetCodeFile);
+
+    // Guard: ensure resolved path stays within workspace root
+    const relativeCheck = path.relative(workspaceRoot, absoluteTargetFilePath);
+    if (path.isAbsolute(relativeCheck) || relativeCheck.startsWith('..')) {
+      return {
+        success: false,
+        error:
+          `Resolved path "${absoluteTargetFilePath}" escapes workspace root "${workspaceRoot}". ` +
+          `target_code_file must resolve within the workspace.`,
+      };
+    }
 
     // 3. Extract Implementation Code Blocks
     const markdownBlocks = parseMarkdown(body);

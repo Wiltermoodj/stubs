@@ -43,24 +43,31 @@ Instead of jumping directly from natural language prompts to executable code—a
 When working inside a target project/codebase, `stubs` should be executed directly via its CommonJS distribution entrypoint `cli.cjs` to ensure ESM/CommonJS host independence.
 
 #### 1. In-Project Invocation
+
 You can execute `stubs` commands inside your target codebase directly using `node`:
+
 ```bash
 node .agents/skills/stubs/dist/cli.cjs <command> [options]
 ```
 
 Or configure a `package.json` script alias inside your target codebase's `package.json`:
+
 ```json
 "scripts": {
   "stubs": "node .agents/skills/stubs/dist/cli.cjs"
 }
 ```
+
 Now, you can simply run:
+
 ```bash
 npm run stubs -- <command> [options]
 ```
 
 #### 2. Global Command Availability (`npm link`)
+
 If you want to invoke `stubs` globally across your system as a standard terminal command (e.g., `stubs init`, `stubs serve`), set up a global link from a clone of the `stubs` source repository:
+
 ```bash
 # Inside your local clone of the main stubs repository:
 npm link

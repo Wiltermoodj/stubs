@@ -98,6 +98,34 @@ this should not be extracted
       expect(extraction.code).toBe('export function foo() { return "bar"; }');
     });
 
+    it('should extract typescript blocks from ## Implementation when preceded by ## Current implementation', () => {
+      const content = `
+## Overview
+Some other details.
+
+## Current implementation
+Some narrative about the current state.
+
+## Implementation
+\`\`\`typescript
+export function calculateHash(input: string): string {
+  return crypto.createHash('sha256').update(input).digest('hex');
+}
+\`\`\`
+
+## Another Section
+\`\`\`typescript
+export function otherFunction() {}
+\`\`\`
+      `;
+      const blocks = parseMarkdown(content);
+      const extraction = extractImplementationCode(blocks);
+      expect(extraction.error).toBeNull();
+      expect(extraction.code).toBe(
+        "export function calculateHash(input: string): string {\n  return crypto.createHash('sha256').update(input).digest('hex');\n}",
+      );
+    });
+
     it('should fail with error if ## Implementation section is missing', () => {
       const content = `
 ## Overview
