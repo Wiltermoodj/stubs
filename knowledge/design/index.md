@@ -25,17 +25,21 @@ Architectural Decision Records governing visual design, interaction patterns, an
 - [0021 - Iconography & Imagery Standards](0021-iconography-imagery.md) — Lucide, 5 sizes, avatar chain
 - [0027 - Elevation & Depth Standards](0027-elevation-depth.md) — 5-tier shadow scale
 - [0028 - Theming & Dark Mode](0028-theming-dark-mode.md) — Token contract, z-index lightness hierarchy (4%–6% dark gap)
+- [0041 - Surface Tier System](0041-surface-tier-system.md) — `surface` prop, shadow-to-tier mapping, layering rules
 
 ## Interaction & Motion
 
 - [0022 - Animations & Micro-Interaction Standards](0022-animations-microinteractions.md) — Ban linear easing, cubic-bezier curves (200ms–500ms), 1000ms icon tooltips, Optimistic UI
 - [0038 - Page & Section Transitions](0038-page-section-transitions.md) — Route fade, section slide-in, stagger patterns
+- [0044 - Scrollbar Auto-Hide Standards](0044-scrollbar-auto-hide-standards.md) — Hidden at rest, fade on idle, zero-width overlay
 
 ## Layout & Navigation
 
 - [0024 - Responsive & Adaptive Layout](0024-responsive-layout.md) — Desktop >1024px, tablet 768–1024px, mobile <768px card transformation
 - [0037 - Navigation Header Bar](0037-navigation-header-bar.md) — 3-zone layout, frosted glass, breadcrumb placement
+- [0039 - Toolbar & Header Standards](0039-toolbar-header-standards.md) — Single-row layout, dynamic priority collapse, overflow anchor
 - [0040 - Split Pane Detail Cards Dynamic Layout](0040-split-pane-detail-cards.md) — Dynamic CSS Grid Inspector Pane layout and visual weighting.
+- [0045 - Mobile Sticky Footer & FAB Patterns](0045-mobile-sticky-footer-and-fab-patterns.md) — Single paradigm, 1–3 slot contract, safe-area buffer
 
 ## Components
 
@@ -45,6 +49,8 @@ Architectural Decision Records governing visual design, interaction patterns, an
 - [0034 - Table Design Standards](0034-table-design-standards.md) — Clean grid lines, numeric right-alignment, density toggle, Concept C & Concept A
 - [0035 - System Ban on Badges & Categorical Status Hierarchy](0035-badge-status-indicators.md) — Deprecation of badge.tsx, pills, dots, Concept C/A replacements
 - [0036 - Destructive Action Confirmation](0036-destructive-action-confirmation.md) — Menu-gated entry points, neutral resting triggers, AlertDialog anatomy
+- [0042 - Multi-Step Wizards](0042-multi-step-wizards.md) — 3-zone layout, background draft auto-save, next never disabled, accordion review
+- [0043 - Button Text vs Icon Rules](0043-button-text-vs-icon-rules.md) — Persistent vs transient surface rules, icon-only utilities, primary CTA must be icon+text
 
 ## Forms & Data
 

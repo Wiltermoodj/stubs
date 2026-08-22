@@ -97,3 +97,12 @@ knowledge/analysis/
 .eslintrc.cjs
 
 .agents/skills/stubs/dist/cli.cjs
+
+# design-system skill (sourced from design project — not committed here)
+.agents/skills/design-system/
+knowledge/design/0041-surface-tier-system.md
+knowledge/design/0042-multi-step-wizards.md
+knowledge/design/0043-button-text-vs-icon-rules.md
+knowledge/design/0044-scrollbar-auto-hide-standards.md
+knowledge/design/0045-mobile-sticky-footer-and-fab-patterns.md
+RULES.md
