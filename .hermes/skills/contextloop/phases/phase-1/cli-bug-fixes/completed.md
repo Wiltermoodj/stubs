@@ -1,6 +1,6 @@
 # Phase 1: CLI Bug Fixes — Completed
 
-**Completed:** 2026-08-21T21:20:00-07:00
+**Completed:** 2026-08-21T21:53:00-07:00
 
 ## Tasks completed
 
@@ -25,4 +25,4 @@ All three highest-priority CLI bugs (B3 materialization parser, B1 sand path res
 
 ## Notes for next phase
 
-Phase 1 deliverable (assessment.md) is in place and complete. Next phase should focus on the remaining CLI bugs (B4 audit flags, B5 grind command) and doc alignment (R5), or move to the next phase per the implementation plan. The cli.cjs binary is stable at 9.8MB; cold starts remain expensive — batch operations where possible.
+Phase 1 deliverable (STUBS_CLI_ASSESSMENT.md) is in place and complete. Next phase should focus on the remaining CLI bugs (B4 audit flags, B5 grind command) and doc alignment (R5), or move to the next phase per the implementation plan. The cli.cjs binary is stable at 9.8MB; cold starts remain expensive — batch operations where possible.

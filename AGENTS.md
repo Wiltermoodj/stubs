@@ -2,6 +2,18 @@
 
 This document outlines the conventions and tooling rules AI agents must follow when operating in the `stubs` repository.
 
+## Context Map — Read First
+
+Before making any code changes, read the architecture context map to understand the module structure, dependency layers, and core concepts:
+
+**[`knowledge/ARCHITECTURE.md`](knowledge/ARCHITECTURE.md)** — Repository layout, dependency layer map, core concepts, CLI quick reference, and links to all module sidecar specs.
+
+For a detailed module status matrix and full OKF subsystem index, see [`src/INDEX.md`](src/INDEX.md).
+
+For individual module sidecar specs (interface contracts, design decisions, dependency graphs), find the `*.ts.md` file co-located with each `*.ts` source file in `src/`.
+
+---
+
 ## Toolchain & Conventions
 
 - **Package Manager:** `npm` (or `npx` for executing binaries).
