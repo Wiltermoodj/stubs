@@ -34,15 +34,15 @@ Provides zero-dependency template rendering for OKF sidecar scaffolding. Templat
 
 ## Template Syntax Support
 
-| Handlebars | EJS Equivalent |
-|---|---|
-| `{{variable}}` | `<%= variable %>` |
-| `{{this}}` | `<%= typeof item !== "undefined" ? item : "" %>` |
-| `{{#if cond}}` | `<% if (cond) { %>` |
-| `{{else}}` | `<% } else { %>` |
-| `{{/if}}` | `<% } %>` |
+| Handlebars       | EJS Equivalent                                                                                               |
+| ---------------- | ------------------------------------------------------------------------------------------------------------ |
+| `{{variable}}`   | `<%= variable %>`                                                                                            |
+| `{{this}}`       | `<%= typeof item !== "undefined" ? item : "" %>`                                                             |
+| `{{#if cond}}`   | `<% if (cond) { %>`                                                                                          |
+| `{{else}}`       | `<% } else { %>`                                                                                             |
+| `{{/if}}`        | `<% } %>`                                                                                                    |
 | `{{#each list}}` | `<% if (typeof list !== "undefined" && Array.isArray(list)) { list.forEach(function(item) { with(item) { %>` |
-| `{{/each}}` | `<% } }); } %>` |
+| `{{/each}}`      | `<% } }); } %>`                                                                                              |
 
 ## Template File Convention
 
@@ -51,9 +51,11 @@ Templates are stored in `.stubs/templates/` with extension `.ts.md.tpl`. The `Te
 ## Key Functions
 
 ### `translateHandlebarsToEjs(templateText: string): string`
+
 Pure function. Translates template syntax via ordered regex replacements. `{{this}}` is translated first to prevent it matching the general `{{expr}}` pattern.
 
 ### `compileTemplate(templateText: string): (data: any) => string`
+
 Compiles a template (after Handlebars→EJS translation) into an executable JavaScript function using `new Function('data', code)`. Expression evaluation is wrapped in `try/catch` to silently swallow undefined variable access.
 
 ## Key Design Decisions

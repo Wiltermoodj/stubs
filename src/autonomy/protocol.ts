@@ -126,6 +126,13 @@ export class AutonomyProtocol {
 
     const fm = parsed.frontmatter;
     const codeRelativePath = fm.target_code_file;
+    if (!codeRelativePath) {
+      return {
+        phase: 1,
+        success: true,
+        message: 'Concept documentation file has no code drift targets.',
+      };
+    }
     const codePath = path.resolve(path.dirname(sidecarPath), codeRelativePath);
 
     // Phase 1: Drift Detection

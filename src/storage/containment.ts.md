@@ -32,16 +32,19 @@ Security primitive. Prevents directory traversal attacks via malicious `target_c
 ## Functions
 
 ### `resolveContainedPath(baseDir, relativePath): string`
+
 - Resolves `relativePath` against `baseDir` using `path.resolve`.
 - Computes `path.relative(normalizedBase, normalizedTarget)`.
 - **Throws** if the relative path starts with `..` or is absolute — this is the only function in the codebase that intentionally throws on a security violation.
 
 ### `isSafeRelativePath(relativePath): boolean`
+
 - Rejects absolute paths.
 - Rejects paths starting with `..` or containing `/../`.
 - Rejects paths whose `path.normalize()` result escapes the base.
 
 ### `validateTargetCodeFile(targetCodeFile): string | null`
+
 - Convenience validator for frontmatter values.
 - Returns `null` if valid, or a human-readable error string if invalid.
 - Enforces `.ts` extension convention.

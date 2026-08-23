@@ -1067,8 +1067,9 @@ No custom interfaces specified yet.
         }
 
         const filename = path.basename(filePath);
+        const isSidecar = filename.includes('.') && !filename.endsWith('.md');
         const title = filename
-          .replace(/\.ts$/, '')
+          .replace(/\.[a-zA-Z0-9_-]+$/, '')
           .split(/[-_]/)
           .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
           .join(' ');
@@ -1077,24 +1078,27 @@ No custom interfaces specified yet.
           project_name: this.config.project_name || 'stubs',
           version: '1.0.0',
           title: title,
-          target_code_file: `./${filename}`,
+          target_code_file: isSidecar ? `./${filename}` : undefined,
           exports: exportsList,
         };
 
         const templateEngine = new TemplateEngine(this.config.paths.templates_dir);
         const rendered = templateEngine.renderString(templateContent, templateData);
 
-        const fm = {
+        const fm: any = {
           title: `${title} Spec`,
-          type: 'sidecar-spec',
-          description: `Generated skeleton specification for ${title}.`,
+          type: isSidecar ? 'sidecar-spec' : 'concept-doc',
+          description: `Generated specification for ${title}.`,
           tags: [],
           status: 'skeleton',
           version: 1,
-          target_code_file: `./${filename}`,
           status_flag: 'clean',
           exports: exportsList,
         };
+
+        if (isSidecar) {
+          fm.target_code_file = `./${filename}`;
+        }
 
         const yamlHeader = `---\n${yaml.dump(fm)}---\n`;
         const fullContent = yamlHeader + '\n' + rendered;

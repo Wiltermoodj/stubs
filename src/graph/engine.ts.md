@@ -48,26 +48,29 @@ The central data store of the stubs framework. Every sidecar spec is indexed her
 ## Database Schema
 
 ### `sidecars` table
+
 Primary record store. Columns map 1:1 to `OkfFrontmatter` fields plus metadata: `file_path`, `title`, `type`, `description`, `module_depth`, `context_object`, `template_source`, `template_version`, `status`, `version`, `target_code_file`, `status_flag`, `stale_details`, `last_sync_timestamp`, `sidecar_hash`, `code_hash`, `interfaces_text`, `decisions_text`, `raw_content`, `tags`, `exports`, `file_hash`, `created_at`, `updated_at`.
 
 ### `dependencies` table
+
 Adjacency list: `sidecar_id` → `depends_on_path` (TEXT). Represents `depends_on` frontmatter links.
 
 ### `sidecars_fts` (FTS5 virtual table)
+
 Full-text search index over: `file_path`, `title`, `description`, `tags`, `interfaces_text`, `decisions_text`, `raw_content`.
 
 ## Key Operations
 
-| Method | Description |
-|---|---|
-| `initialize()` | Opens DB, creates schema and FTS triggers |
-| `indexFile(sidecarPath)` | Parses, validates, and upserts a sidecar into the graph |
-| `indexWorkspace(specsDir)` | Globs for `*.ts.md` files and batch-indexes them |
-| `getEgoGraph(filePath, depth)` | Returns 1-hop or N-hop subgraph centered on a sidecar |
-| `search(query, options)` | FTS5 BM25-ranked full-text search with tag/bounds filtering |
-| `getSidecar(filePath)` | Returns full sidecar record by path |
-| `deleteSidecar(filePath)` | Removes sidecar and its dependency edges |
-| `pruneOrphans()` | Removes records for files that no longer exist |
+| Method                         | Description                                                 |
+| ------------------------------ | ----------------------------------------------------------- |
+| `initialize()`                 | Opens DB, creates schema and FTS triggers                   |
+| `indexFile(sidecarPath)`       | Parses, validates, and upserts a sidecar into the graph     |
+| `indexWorkspace(specsDir)`     | Globs for `*.ts.md` files and batch-indexes them            |
+| `getEgoGraph(filePath, depth)` | Returns 1-hop or N-hop subgraph centered on a sidecar       |
+| `search(query, options)`       | FTS5 BM25-ranked full-text search with tag/bounds filtering |
+| `getSidecar(filePath)`         | Returns full sidecar record by path                         |
+| `deleteSidecar(filePath)`      | Removes sidecar and its dependency edges                    |
+| `pruneOrphans()`               | Removes records for files that no longer exist              |
 
 ## Path Normalization
 

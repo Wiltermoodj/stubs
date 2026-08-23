@@ -44,6 +44,7 @@ Returns `null` if no TypeScript block is found.
 Replaces the TypeScript block under `## Implementation` with `newCode`.
 
 **Fallbacks (in order):**
+
 1. Replace the first ` ```typescript ` block in the document.
 2. Append a new `## Implementation` section with the code block.
 

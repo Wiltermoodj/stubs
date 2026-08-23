@@ -37,31 +37,33 @@ Core parsing primitive. Takes raw file content and returns a `ParsedOkfSpec` wit
 ## OkfFrontmatter Fields
 
 ### Required
-| Field | Type | Values |
-|---|---|---|
-| `title` | `string` | Display name of the module |
-| `type` | enum | `subsystem-index` \| `sidecar-spec` \| `module-stub` |
-| `description` | `string` | Module purpose summary |
-| `tags` | `string[]` | Search/filter tags |
-| `status` | enum | `skeleton` \| `spec` \| `implemented` \| `materialized` \| `grilling` \| `partially-materialized` |
-| `version` | `number` | Monotonic integer |
-| `target_code_file` | `string` | Relative path to the paired `.ts` file |
-| `status_flag` | enum | `clean` \| `dependency-stale` \| `template-outdated` \| `template-realign-required` \| `needs-human-review-resolution` \| `typecheck-failed` |
+
+| Field              | Type       | Values                                                                                                                                       |
+| ------------------ | ---------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| `title`            | `string`   | Display name of the module                                                                                                                   |
+| `type`             | enum       | `subsystem-index` \| `sidecar-spec` \| `module-stub`                                                                                         |
+| `description`      | `string`   | Module purpose summary                                                                                                                       |
+| `tags`             | `string[]` | Search/filter tags                                                                                                                           |
+| `status`           | enum       | `skeleton` \| `spec` \| `implemented` \| `materialized` \| `grilling` \| `partially-materialized`                                            |
+| `version`          | `number`   | Monotonic integer                                                                                                                            |
+| `target_code_file` | `string`   | Relative path to the paired `.ts` file                                                                                                       |
+| `status_flag`      | enum       | `clean` \| `dependency-stale` \| `template-outdated` \| `template-realign-required` \| `needs-human-review-resolution` \| `typecheck-failed` |
 
 ### Optional
-| Field | Type | Purpose |
-|---|---|---|
-| `module_depth` | `'deep' \| 'shallow'` | Signals interface complexity |
-| `context_object` | `string` | Name of the context parameter object |
-| `template_source` | `string` | Template mold origin |
-| `template_version` | `number \| string` | Template version for drift detection |
-| `exports` | `string[]` | Public symbols exported by the target file |
-| `depends_on` | `string[]` | Sidecar file paths this module imports |
-| `used_by` | `string[]` | Sidecar file paths that import this module |
-| `stale_details` | `string \| null` | Human-readable staleness reason |
-| `sync_state` | object | `last_sync_timestamp`, `sidecar_hash`, `code_hash` |
-| `decisions` | `Array<{id, summary, date}>` | Architecture Decision Records |
-| `user_notes` | `Array<{id, timestamp, text, status}>` | Human directives and grill Q&A |
+
+| Field              | Type                                   | Purpose                                            |
+| ------------------ | -------------------------------------- | -------------------------------------------------- |
+| `module_depth`     | `'deep' \| 'shallow'`                  | Signals interface complexity                       |
+| `context_object`   | `string`                               | Name of the context parameter object               |
+| `template_source`  | `string`                               | Template mold origin                               |
+| `template_version` | `number \| string`                     | Template version for drift detection               |
+| `exports`          | `string[]`                             | Public symbols exported by the target file         |
+| `depends_on`       | `string[]`                             | Sidecar file paths this module imports             |
+| `used_by`          | `string[]`                             | Sidecar file paths that import this module         |
+| `stale_details`    | `string \| null`                       | Human-readable staleness reason                    |
+| `sync_state`       | object                                 | `last_sync_timestamp`, `sidecar_hash`, `code_hash` |
+| `decisions`        | `Array<{id, summary, date}>`           | Architecture Decision Records                      |
+| `user_notes`       | `Array<{id, timestamp, text, status}>` | Human directives and grill Q&A                     |
 
 ## Parse Flow
 

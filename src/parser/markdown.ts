@@ -1,11 +1,11 @@
 /**
- * Parses markdown and extracts TypeScript code blocks.
+ * Parses markdown and extracts implementation code blocks across languages (TS, Python, Go, Rust, generic).
  */
 
 /**
- * Extracts the first TypeScript block under a section matching "Implementation" (case-insensitive).
- * If no such block exists, it falls back to extracting the first TypeScript block in the file.
- * Returns null if no TypeScript block is found.
+ * Extracts the first code block under a section matching "Implementation" (case-insensitive).
+ * If no such block exists, it falls back to extracting the first code block in the file.
+ * Returns null if no code block is found.
  */
 export function extractImplementationCode(body: string): string | null {
   if (!body) return null;
@@ -24,9 +24,6 @@ export function extractImplementationCode(body: string): string | null {
       continue;
     }
 
-    // If we are in the implementation section and we hit another header of equal or higher level (less or equal number of #),
-    // and we already collected some code, we can stop.
-    // However, to keep it simple and robust, we check if we find a code block.
     if (inImplementationSection && /^\s*#+\s+/.test(line)) {
       if (codeBlockLines.length > 0) {
         break;
@@ -34,7 +31,7 @@ export function extractImplementationCode(body: string): string | null {
     }
 
     if (inImplementationSection) {
-      if (line.trim().startsWith('```typescript')) {
+      if (!inCodeBlock && line.trim().startsWith('```')) {
         inCodeBlock = true;
         continue;
       }
@@ -52,12 +49,12 @@ export function extractImplementationCode(body: string): string | null {
     return codeBlockLines.join('\n');
   }
 
-  // Fallback: search for the first typescript code block in the entire markdown body
+  // Fallback: search for the first fenced code block in the entire markdown body
   const fallbackLines: string[] = [];
   let inFallbackBlock = false;
 
   for (const line of lines) {
-    if (line.trim().startsWith('```typescript')) {
+    if (!inFallbackBlock && line.trim().startsWith('```')) {
       inFallbackBlock = true;
       continue;
     }
@@ -73,16 +70,21 @@ export function extractImplementationCode(body: string): string | null {
 }
 
 /**
- * Replaces the TypeScript block under "Implementation" with new code.
- * If no block or section exists, it falls back to replacing the first block or appending an Implementation section.
+ * Replaces the code block under "Implementation" with new code.
+ * Preserves the original fence language if present, or defaults to typescript/provided language.
  */
-export function replaceImplementationCode(body: string, newCode: string): string {
+export function replaceImplementationCode(
+  body: string,
+  newCode: string,
+  language = 'typescript',
+): string {
   const normalized = body.replace(/\r\n/g, '\n');
   const lines = normalized.split('\n');
   let inImplementationSection = false;
   let startIdx = -1;
   let endIdx = -1;
   let inCodeBlock = false;
+  let detectedLang = language;
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
@@ -98,9 +100,11 @@ export function replaceImplementationCode(body: string, newCode: string): string
     }
 
     if (inImplementationSection) {
-      if (line.trim().startsWith('```typescript')) {
+      if (!inCodeBlock && line.trim().startsWith('```')) {
         inCodeBlock = true;
         startIdx = i;
+        const langMatch = line.trim().replace(/^```/, '').trim();
+        if (langMatch) detectedLang = langMatch;
         continue;
       }
       if (inCodeBlock && line.trim().startsWith('```')) {
@@ -116,14 +120,16 @@ export function replaceImplementationCode(body: string, newCode: string): string
     return [...before, newCode, ...after].join('\n');
   }
 
-  // Fallback 1: Replace first typescript block in the body
+  // Fallback 1: Replace first code block in the body
   let firstStart = -1;
   let firstEnd = -1;
   inCodeBlock = false;
   for (let i = 0; i < lines.length; i++) {
-    if (lines[i].trim().startsWith('```typescript')) {
+    if (!inCodeBlock && lines[i].trim().startsWith('```')) {
       inCodeBlock = true;
       firstStart = i;
+      const langMatch = lines[i].trim().replace(/^```/, '').trim();
+      if (langMatch) detectedLang = langMatch;
       continue;
     }
     if (inCodeBlock && lines[i].trim().startsWith('```')) {
@@ -139,5 +145,5 @@ export function replaceImplementationCode(body: string, newCode: string): string
   }
 
   // Fallback 2: Append a new ## Implementation section
-  return `${normalized.trim()}\n\n## Implementation\n\n\`\`\`typescript\n${newCode}\n\`\`\`\n`;
+  return `${normalized.trim()}\n\n## Implementation\n\n\`\`\`${detectedLang}\n${newCode}\n\`\`\`\n`;
 }

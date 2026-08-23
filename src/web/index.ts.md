@@ -32,20 +32,20 @@ The browser-side companion to the PortalServer. Runs entirely in the browser wit
 
 ## UI Sections
 
-| Panel | Description |
-|---|---|
-| **Ego Graph** | Force-directed 1-hop dependency graph visualization centered on the selected sidecar |
-| **Sidecar Viewer** | Renders the OKF spec as formatted Markdown with frontmatter fields |
-| **Template Workbench** | Lists templates, renders them with user-provided JSON data |
-| **GitHub Tab** | PAT authentication, repo/branch selector, remote file browser |
-| **Search** | FTS5-powered full-text search via the Portal API |
-| **Directives** | User notes / human directive channel — submit notes appended to sidecar frontmatter |
+| Panel                  | Description                                                                          |
+| ---------------------- | ------------------------------------------------------------------------------------ |
+| **Ego Graph**          | Force-directed 1-hop dependency graph visualization centered on the selected sidecar |
+| **Sidecar Viewer**     | Renders the OKF spec as formatted Markdown with frontmatter fields                   |
+| **Template Workbench** | Lists templates, renders them with user-provided JSON data                           |
+| **GitHub Tab**         | PAT authentication, repo/branch selector, remote file browser                        |
+| **Search**             | FTS5-powered full-text search via the Portal API                                     |
+| **Directives**         | User notes / human directive channel — submit notes appended to sidecar frontmatter  |
 
 ## Dual-Mode Operation
 
-| Mode | SQLite | API |
-|---|---|---|
-| **Online (local server)** | Not used | All queries via PortalServer REST API |
+| Mode                          | SQLite                                  | API                                           |
+| ----------------------------- | --------------------------------------- | --------------------------------------------- |
+| **Online (local server)**     | Not used                                | All queries via PortalServer REST API         |
 | **Offline / GitHub PAT mode** | WASM sql.js loaded from `sql-wasm.wasm` | Direct GitHub API calls via `GitHubApiClient` |
 
 In offline mode, the app downloads the `graph.sqlite` file from the GitHub repository and loads it into a WASM in-memory database for local graph queries.
@@ -53,6 +53,7 @@ In offline mode, the app downloads the `graph.sqlite` file from the GitHub repos
 ## Browser Shims (`shims.ts`)
 
 `shims.ts` provides stub implementations of Node.js built-ins required by modules bundled into the browser build:
+
 - `process` (env, cwd, platform, version)
 - `path` (join, resolve, dirname, basename, extname, relative)
 - `os` (homedir, tmpdir, hostname, platform, arch, userInfo)

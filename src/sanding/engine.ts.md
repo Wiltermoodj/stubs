@@ -55,13 +55,13 @@ interface SyncResult {
 
 ## Sync Decision Matrix
 
-| Condition | Action |
-|---|---|
-| Sidecar newer, AST hashes differ | Materialize sidecar code → target file |
-| Code newer, AST hashes differ | Sand code → sidecar `## Implementation` block |
-| AST hashes match | `no_change` — no file writes |
+| Condition                                         | Action                                                                           |
+| ------------------------------------------------- | -------------------------------------------------------------------------------- |
+| Sidecar newer, AST hashes differ                  | Materialize sidecar code → target file                                           |
+| Code newer, AST hashes differ                     | Sand code → sidecar `## Implementation` block                                    |
+| AST hashes match                                  | `no_change` — no file writes                                                     |
 | Structural conflict (both changed, hashes differ) | Escalate: `status='conflict'`, set `status_flag='needs-human-review-resolution'` |
-| Non-structural conflict (timestamp tie, same AST) | Auto-resolve: newer file wins |
+| Non-structural conflict (timestamp tie, same AST) | Auto-resolve: newer file wins                                                    |
 
 ## Frontmatter Healing
 
@@ -70,11 +70,12 @@ interface SyncResult {
 ## `sync_state` Tracking
 
 After every successful sync, the sidecar's `sync_state` block is updated:
+
 ```yaml
 sync_state:
-  last_sync_timestamp: "2026-08-21T21:00:00Z"
-  sidecar_hash: "sha256..."
-  code_hash: "sha256..."
+  last_sync_timestamp: '2026-08-21T21:00:00Z'
+  sidecar_hash: 'sha256...'
+  code_hash: 'sha256...'
 ```
 
 `stripSyncStateFromYaml()` and `stripSyncStateFromContent()` strip this block before computing content hashes to prevent false drift detection caused by the hash update itself.

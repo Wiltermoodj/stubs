@@ -39,9 +39,9 @@ interface StubsConfig {
   project_name: string;
   autonomy_level: 'strict_gate' | 'guided_execution' | 'autonomous';
   paths: {
-    specs_dir: string;      // default: 'src'
-    templates_dir: string;  // default: '.stubs/templates'
-    db_path: string;        // default: '.stubs/graph.sqlite'
+    specs_dir: string; // default: 'src'
+    templates_dir: string; // default: '.stubs/templates'
+    db_path: string; // default: '.stubs/graph.sqlite'
   };
   search: {
     engine: 'sqlite-fts5' | 'plugin-level-2' | 'plugin-level-3';

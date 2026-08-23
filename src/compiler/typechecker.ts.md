@@ -40,7 +40,7 @@ function typeCheckVirtualFile(
   targetFilePath: string,
   virtualContent: string,
   tsconfigPath?: string,
-): TypeCheckResult
+): TypeCheckResult;
 ```
 
 ## How It Works

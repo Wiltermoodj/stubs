@@ -61,22 +61,26 @@ DatabaseDriver
 ## Implementations
 
 ### `NodeFileSystem`
+
 - Full Node.js `fs/promises` implementation.
 - `glob()` recursively walks directories, excluding `node_modules`, `.git`, `.stubs`, `dist`, `build`.
 - `writeFile()` auto-creates parent directories with `fs.mkdir({ recursive: true })`.
 
 ### `BetterSqliteDriver`
+
 - Wraps native `sqlite3` npm package.
 - Used when `require('sqlite3')` succeeds (normal Node.js environment).
 - All methods are async wrappers over the synchronous sqlite3 callback API.
 
 ### `WasmSqliteDriver`
+
 - Wraps `sql.js` WASM SQLite.
 - Persists database to the filesystem via `FileStorageDriver` after each write operation.
 - Used as fallback when native `sqlite3` is unavailable (browser, certain CI environments).
 - Loads the WASM binary from the `dist/` directory alongside the CLI bundle.
 
 ### `VirtualFileSystem`
+
 - In-memory filesystem for tests.
 - Stores files in a `Map<string, string>`.
 

@@ -75,9 +75,10 @@ export function validateTargetCodeFile(targetCodeFile: string): string | null {
     return 'target_code_file contains invalid path traversal (.. or absolute path)';
   }
 
-  // Ensure it ends with .ts (our convention for target code files)
-  if (!targetCodeFile.endsWith('.ts')) {
-    return 'target_code_file must end with .ts extension';
+  // Ensure target_code_file has an extension and is not an unadorned directory or bare file
+  const base = targetCodeFile.replace(/\\/g, '/').split('/').pop() || '';
+  if (!base.includes('.') || base.endsWith('.')) {
+    return 'target_code_file must specify a target file extension';
   }
 
   return null;

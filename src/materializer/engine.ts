@@ -98,7 +98,8 @@ export class MaterializerEngine {
     if (!targetCodeFile) {
       return {
         success: false,
-        error: 'The sidecar frontmatter is missing "target_code_file" parameter.',
+        error:
+          'This file is a concept documentation file and does not define a "target_code_file". It cannot be materialized into executable code.',
       };
     }
 
@@ -154,8 +155,7 @@ export class MaterializerEngine {
 
     const extractedCode = extraction.code;
 
-    // 4. Construct virtual code with @sidecar header
-    // The path should be relative from the target code file to the sidecar file
+    // 4. Construct virtual code with @sidecar header (language-appropriate comment syntax)
     const sidecarRelativeFromTarget = path
       .relative(path.dirname(absoluteTargetFilePath), absoluteSidecarPath)
       .replace(/\\/g, '/');
@@ -163,37 +163,48 @@ export class MaterializerEngine {
       ? sidecarRelativeFromTarget
       : `./${sidecarRelativeFromTarget}`;
 
-    const sidecarHeader = `// @sidecar ${sidecarRef}\n\n`;
+    const ext = path.extname(absoluteTargetFilePath).toLowerCase();
+    let commentPrefix = '//';
+    if (['.py', '.sh', '.rb', '.yaml', '.yml', '.toml'].includes(ext)) {
+      commentPrefix = '#';
+    } else if (['.sql', '.lua'].includes(ext)) {
+      commentPrefix = '--';
+    }
+
+    const sidecarHeader = `${commentPrefix} @sidecar ${sidecarRef}\n\n`;
     const finalCodeWithHeader = `${sidecarHeader}${extractedCode}`;
 
-    // 5. In-Memory Type-Checking
-    const typecheck = typeCheckVirtualFile(absoluteTargetFilePath, finalCodeWithHeader);
+    // 5. Type-Checking (TypeScript/JavaScript only)
+    const isTypeScriptTarget = ext === '.ts' || ext === '.tsx' || ext === '.js' || ext === '.jsx';
+    if (isTypeScriptTarget) {
+      const typecheck = typeCheckVirtualFile(absoluteTargetFilePath, finalCodeWithHeader);
 
-    if (!typecheck.success) {
-      // Compilation / Diagnostics failed
-      const errorsJoined = typecheck.diagnostics.join('\n');
-      const updatedFrontmatter: OkfFrontmatter = {
-        ...frontmatter,
-        status_flag: 'typecheck-failed',
-        stale_details: errorsJoined,
-      };
+      if (!typecheck.success) {
+        // Compilation / Diagnostics failed
+        const errorsJoined = typecheck.diagnostics.join('\n');
+        const updatedFrontmatter: OkfFrontmatter = {
+          ...frontmatter,
+          status_flag: 'typecheck-failed',
+          stale_details: errorsJoined,
+        };
 
-      const newSidecarContent = stringifyOkfSpec(updatedFrontmatter, body);
-      await this.writeAtomic(absoluteSidecarPath, newSidecarContent);
+        const newSidecarContent = stringifyOkfSpec(updatedFrontmatter, body);
+        await this.writeAtomic(absoluteSidecarPath, newSidecarContent);
 
-      const fileHash = this.computeSha256(newSidecarContent);
-      await this.graphEngine.upsertSidecar({
-        filePath: relativeSidecarPath,
-        frontmatter: updatedFrontmatter,
-        body,
-        fileHash,
-      });
+        const fileHash = this.computeSha256(newSidecarContent);
+        await this.graphEngine.upsertSidecar({
+          filePath: relativeSidecarPath,
+          frontmatter: updatedFrontmatter,
+          body,
+          fileHash,
+        });
 
-      return {
-        success: false,
-        error: 'Type-check diagnostics failed.',
-        diagnostics: typecheck.diagnostics,
-      };
+        return {
+          success: false,
+          error: 'Type-check diagnostics failed.',
+          diagnostics: typecheck.diagnostics,
+        };
+      }
     }
 
     // 6. Diagnostics Passed -> Complete Materialization

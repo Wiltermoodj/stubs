@@ -49,17 +49,19 @@ Uses a simplified AES-256-GCM scheme with a machine-unique key derived from `hos
 The main API client class. Constructed with a PAT and optional base repo/branch:
 
 ### Key Methods
-| Method | GitHub API |
-|---|---|
-| `getAuthenticatedUser()` | `GET /user` |
-| `listUserRepos()` | `GET /user/repos` |
-| `listBranches(repo)` | `GET /repos/{repo}/branches` |
-| `getFile(repo, path, branch?)` | `GET /repos/{repo}/contents/{path}` |
-| `listDirectory(repo, path, branch?)` | `GET /repos/{repo}/contents/{path}` |
-| `createOrUpdateFile(repo, path, content, message, sha?, branch?)` | `PUT /repos/{repo}/contents/{path}` |
-| `deleteFile(repo, path, message, sha, branch?)` | `DELETE /repos/{repo}/contents/{path}` |
+
+| Method                                                            | GitHub API                             |
+| ----------------------------------------------------------------- | -------------------------------------- |
+| `getAuthenticatedUser()`                                          | `GET /user`                            |
+| `listUserRepos()`                                                 | `GET /user/repos`                      |
+| `listBranches(repo)`                                              | `GET /repos/{repo}/branches`           |
+| `getFile(repo, path, branch?)`                                    | `GET /repos/{repo}/contents/{path}`    |
+| `listDirectory(repo, path, branch?)`                              | `GET /repos/{repo}/contents/{path}`    |
+| `createOrUpdateFile(repo, path, content, message, sha?, branch?)` | `PUT /repos/{repo}/contents/{path}`    |
+| `deleteFile(repo, path, message, sha, branch?)`                   | `DELETE /repos/{repo}/contents/{path}` |
 
 ### Authentication
+
 All requests use `Authorization: token {pat}` header. Rate limit information is available via `X-RateLimit-*` response headers.
 
 ## Key Design Decisions

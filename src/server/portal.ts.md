@@ -68,19 +68,19 @@ The server watches the `specs_dir` (default: `src/`) for `*.ts.md` file changes 
 
 ## Key API Endpoints
 
-| Method | Path | Action |
-|---|---|---|
-| `GET` | `/api/graph/ego/:path` | 1-hop ego graph for a sidecar |
-| `GET` | `/api/graph/search?q=` | FTS5 search |
-| `GET` | `/api/sidecars` | List all indexed sidecars |
-| `GET` | `/api/sidecars/:path` | Get sidecar record |
-| `POST` | `/api/materialize` | Materialize sidecar to code |
-| `POST` | `/api/sand` | Run sanding sync |
-| `POST` | `/api/grill` | Run grill engine |
-| `GET` | `/api/templates` | List templates |
-| `POST` | `/api/templates/render` | Render a template |
-| `GET` | `/api/github/repos` | List GitHub repos |
-| `GET` | `/api/events` | SSE event stream |
+| Method | Path                    | Action                        |
+| ------ | ----------------------- | ----------------------------- |
+| `GET`  | `/api/graph/ego/:path`  | 1-hop ego graph for a sidecar |
+| `GET`  | `/api/graph/search?q=`  | FTS5 search                   |
+| `GET`  | `/api/sidecars`         | List all indexed sidecars     |
+| `GET`  | `/api/sidecars/:path`   | Get sidecar record            |
+| `POST` | `/api/materialize`      | Materialize sidecar to code   |
+| `POST` | `/api/sand`             | Run sanding sync              |
+| `POST` | `/api/grill`            | Run grill engine              |
+| `GET`  | `/api/templates`        | List templates                |
+| `POST` | `/api/templates/render` | Render a template             |
+| `GET`  | `/api/github/repos`     | List GitHub repos             |
+| `GET`  | `/api/events`           | SSE event stream              |
 
 ## Key Design Decisions
 

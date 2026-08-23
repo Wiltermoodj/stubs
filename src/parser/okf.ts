@@ -2,7 +2,13 @@ import * as yaml from 'js-yaml';
 
 export interface OkfFrontmatter {
   title: string;
-  type: 'subsystem-index' | 'sidecar-spec' | 'module-stub';
+  type:
+    | 'subsystem-index'
+    | 'sidecar-spec'
+    | 'module-stub'
+    | 'concept-doc'
+    | 'architecture-decision'
+    | 'architecture-doc';
   description: string;
   tags: string[];
   module_depth?: 'deep' | 'shallow';
@@ -12,7 +18,7 @@ export interface OkfFrontmatter {
   status:
     'skeleton' | 'spec' | 'implemented' | 'materialized' | 'grilling' | 'partially-materialized';
   version: number;
-  target_code_file: string;
+  target_code_file?: string;
   exports?: string[];
   depends_on?: string[];
   used_by?: string[];
@@ -47,6 +53,26 @@ export interface ParsedOkfSpec {
   body: string;
   isValid: boolean;
   errors: string[];
+}
+
+/**
+ * Checks if a spec represents an executable code sidecar rather than a pure concept document.
+ */
+export function isCodeSidecar(frontmatter: OkfFrontmatter | null, filePath?: string): boolean {
+  if (frontmatter?.target_code_file) {
+    return true;
+  }
+  if (frontmatter?.type === 'sidecar-spec' || frontmatter?.type === 'module-stub') {
+    return true;
+  }
+  if (filePath) {
+    const base = filePath.replace(/\\/g, '/').split('/').pop() || '';
+    // Matches patterns like foo.ts.md, service.py.md, handler.go.md (has an inner extension before .md)
+    if (/\.[a-zA-Z0-9_-]+\.md$/i.test(base)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 /**
@@ -108,7 +134,7 @@ export function parseOkfSpec(content: string): ParsedOkfSpec {
 }
 
 function validateFrontmatter(raw: any, result: ParsedOkfSpec): void {
-  // Required fields
+  // Required fields (target_code_file is optional for pure concept documentation)
   const requiredFields = [
     'title',
     'type',
@@ -116,7 +142,6 @@ function validateFrontmatter(raw: any, result: ParsedOkfSpec): void {
     'tags',
     'status',
     'version',
-    'target_code_file',
     'status_flag',
   ];
   for (const field of requiredFields) {
@@ -130,7 +155,14 @@ function validateFrontmatter(raw: any, result: ParsedOkfSpec): void {
     result.errors.push('Field "title" must be a string.');
   }
 
-  const validTypes = ['subsystem-index', 'sidecar-spec', 'module-stub'];
+  const validTypes = [
+    'subsystem-index',
+    'sidecar-spec',
+    'module-stub',
+    'concept-doc',
+    'architecture-decision',
+    'architecture-doc',
+  ];
   if (raw.type !== undefined && !validTypes.includes(raw.type)) {
     result.errors.push(`Field "type" must be one of: ${validTypes.join(', ')}.`);
   }

@@ -75,10 +75,10 @@ sidecar path
 interface MaterializeResult {
   success: boolean;
   error?: string;
-  diagnostics?: string[];  // TypeScript compiler diagnostics on typecheck-failed
+  diagnostics?: string[]; // TypeScript compiler diagnostics on typecheck-failed
 }
 
-function stringifyOkfSpec(frontmatter: OkfFrontmatter, body: string): string
+function stringifyOkfSpec(frontmatter: OkfFrontmatter, body: string): string;
 // Reconstructs the full ---YAML---\nbody file content
 ```
 

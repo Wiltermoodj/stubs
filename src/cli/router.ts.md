@@ -44,28 +44,28 @@ The outermost layer of the stubs application. Parses raw `process.argv`, routes 
 
 ```typescript
 interface CliContext {
-  configPath?: string;    // -c / --config override
-  command?: string;       // First positional argument
-  args: string[];         // Remaining positional and flag arguments
+  configPath?: string; // -c / --config override
+  command?: string; // First positional argument
+  args: string[]; // Remaining positional and flag arguments
 }
 ```
 
 ## Command Routing Table
 
-| Command | Handler | Engine Delegate |
-|---|---|---|
-| `init` | `handleInit` | Direct file write of `DEFAULT_CONFIG` |
-| `grill <file>` | `handleGrill` | `GrillEngine.grill()` |
-| `materialize <file>` | `handleMaterialize` | `MaterializerEngine.materialize()` |
-| `audit <file>` / `reconcile <file>` | `handleReconcile` | `AutonomyProtocol.reconcile()` |
-| `sand [file]` / `sync [file]` | `handleSync` | `SandingEngine.sync()` or `syncAll()` |
-| `validate <file>` | `handleValidate` | `parseOkfSpec()` direct |
-| `template list` | `handleTemplate` | `TemplateEngine.listTemplates()` |
-| `template render <name> <data>` | `handleTemplate` | `TemplateEngine.renderTemplate()` |
-| `evaluate <action>` | `handleEvaluate` | `AutonomyProtocol.evaluateAction()` |
-| `auth login` | `handleAuth` | `saveCredentials()` |
-| `install` | `handleInstall` | GitHub API fetch + file write |
-| `serve` | `handleServe` | `PortalServer.start()` |
+| Command                             | Handler             | Engine Delegate                       |
+| ----------------------------------- | ------------------- | ------------------------------------- |
+| `init`                              | `handleInit`        | Direct file write of `DEFAULT_CONFIG` |
+| `grill <file>`                      | `handleGrill`       | `GrillEngine.grill()`                 |
+| `materialize <file>`                | `handleMaterialize` | `MaterializerEngine.materialize()`    |
+| `audit <file>` / `reconcile <file>` | `handleReconcile`   | `AutonomyProtocol.reconcile()`        |
+| `sand [file]` / `sync [file]`       | `handleSync`        | `SandingEngine.sync()` or `syncAll()` |
+| `validate <file>`                   | `handleValidate`    | `parseOkfSpec()` direct               |
+| `template list`                     | `handleTemplate`    | `TemplateEngine.listTemplates()`      |
+| `template render <name> <data>`     | `handleTemplate`    | `TemplateEngine.renderTemplate()`     |
+| `evaluate <action>`                 | `handleEvaluate`    | `AutonomyProtocol.evaluateAction()`   |
+| `auth login`                        | `handleAuth`        | `saveCredentials()`                   |
+| `install`                           | `handleInstall`     | GitHub API fetch + file write         |
+| `serve`                             | `handleServe`       | `PortalServer.start()`                |
 
 ## Startup Sequence
 

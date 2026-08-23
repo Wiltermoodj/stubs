@@ -327,14 +327,14 @@ export class SandingEngine {
     const cleanSidecarContent = stripSyncStateFromContent(content);
     const currentSidecarHash = sha256(cleanSidecarContent);
 
-    // Extract TypeScript code from specification
+    // Extract implementation code from specification
     const extractedCode = extractImplementationCode(body);
     if (extractedCode === null) {
       return {
         filePath: sidecarPath,
         targetCodeFile,
         status: 'error',
-        error: `No TypeScript block found under ## Implementation or as a fallback in sidecar.`,
+        error: `No implementation code block found under ## Implementation or as a fallback in sidecar.`,
       };
     }
 
@@ -350,26 +350,40 @@ export class SandingEngine {
       .relative(path.dirname(resolvedTarget), resolvedSidecar)
       .replace(/\\/g, '/');
     const headerPrefix = `./`.startsWith(relSidecarPath) ? relSidecarPath : `./${relSidecarPath}`;
-    const codeHeader = `// @sidecar ${headerPrefix}\n// This file is materialized from the sidecar specification.\n// Do not edit this header.\n\n`;
 
-    // 1. Materialization path if target .ts code file does not exist
+    const targetExt = path.extname(resolvedTarget).toLowerCase();
+    let commentChar = '//';
+    if (['.py', '.sh', '.rb', '.yaml', '.yml', '.toml'].includes(targetExt)) {
+      commentChar = '#';
+    } else if (['.sql', '.lua'].includes(targetExt)) {
+      commentChar = '--';
+    }
+
+    const codeHeader = `${commentChar} @sidecar ${headerPrefix}\n${commentChar} This file is materialized from the sidecar specification.\n${commentChar} Do not edit this header.\n\n`;
+
+    const isTypeScriptTarget =
+      targetExt === '.ts' || targetExt === '.tsx' || targetExt === '.js' || targetExt === '.jsx';
+
+    // 1. Materialization path if target code file does not exist
     if (!codeExists) {
-      // Run Typechecking
-      const typeCheck = typeCheckCode(resolvedTarget, extractedCode);
-      if (!typeCheck.success) {
-        // Halt materialization, write failure status to frontmatter
-        frontmatter.status_flag = 'typecheck-failed';
-        frontmatter.stale_details = `Type-checking failed:\n${typeCheck.diagnostics.join('\n')}`;
+      // Run Typechecking if TypeScript
+      if (isTypeScriptTarget) {
+        const typeCheck = typeCheckCode(resolvedTarget, extractedCode);
+        if (!typeCheck.success) {
+          // Halt materialization, write failure status to frontmatter
+          frontmatter.status_flag = 'typecheck-failed';
+          frontmatter.stale_details = `Type-checking failed:\n${typeCheck.diagnostics.join('\n')}`;
 
-        const updatedContent = `---\n${yaml.dump(frontmatter)}---\n${body}`;
-        writeFileSync(resolvedSidecar, updatedContent, 'utf8');
+          const updatedContent = `---\n${yaml.dump(frontmatter)}---\n${body}`;
+          writeFileSync(resolvedSidecar, updatedContent, 'utf8');
 
-        return {
-          filePath: sidecarPath,
-          targetCodeFile,
-          status: 'error',
-          error: `Type-checking failed during materialization. Code file not written. Diagnostics:\n${typeCheck.diagnostics.join('\n')}`,
-        };
+          return {
+            filePath: sidecarPath,
+            targetCodeFile,
+            status: 'error',
+            error: `Type-checking failed during materialization. Code file not written. Diagnostics:\n${typeCheck.diagnostics.join('\n')}`,
+          };
+        }
       }
 
       // Typecheck passed, write file
@@ -435,20 +449,22 @@ export class SandingEngine {
 
     // Sidecar was updated, code is untouched
     if (sidecarChanged && !codeChanged) {
-      const typeCheck = typeCheckCode(resolvedTarget, extractedCode);
-      if (!typeCheck.success) {
-        frontmatter.status_flag = 'typecheck-failed';
-        frontmatter.stale_details = `Type-checking failed:\n${typeCheck.diagnostics.join('\n')}`;
+      if (isTypeScriptTarget) {
+        const typeCheck = typeCheckCode(resolvedTarget, extractedCode);
+        if (!typeCheck.success) {
+          frontmatter.status_flag = 'typecheck-failed';
+          frontmatter.stale_details = `Type-checking failed:\n${typeCheck.diagnostics.join('\n')}`;
 
-        const updatedContent = `---\n${yaml.dump(frontmatter)}---\n${body}`;
-        writeFileSync(resolvedSidecar, updatedContent, 'utf8');
+          const updatedContent = `---\n${yaml.dump(frontmatter)}---\n${body}`;
+          writeFileSync(resolvedSidecar, updatedContent, 'utf8');
 
-        return {
-          filePath: sidecarPath,
-          targetCodeFile,
-          status: 'error',
-          error: `Typechecking failed during sidecar-to-code sync. Diagnostics:\n${typeCheck.diagnostics.join('\n')}`,
-        };
+          return {
+            filePath: sidecarPath,
+            targetCodeFile,
+            status: 'error',
+            error: `Typechecking failed during sidecar-to-code sync. Diagnostics:\n${typeCheck.diagnostics.join('\n')}`,
+          };
+        }
       }
 
       const materializedCode = codeHeader + extractedCode;
@@ -691,6 +707,12 @@ export class SandingEngine {
         const content = readFileSync(path.resolve(file), 'utf8');
         // Ignore files that don't have valid OKF layout structure
         if (!content.trim().startsWith('---')) {
+          continue;
+        }
+
+        const parsed = parseOkfSpec(content);
+        // Only synchronize files that define a target_code_file (code sidecars)
+        if (!parsed.frontmatter?.target_code_file) {
           continue;
         }
 

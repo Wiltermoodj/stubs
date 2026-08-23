@@ -58,11 +58,30 @@ status_flag: "clean"
     expect(result.isValid).toBe(false);
     expect(result.errors.length).toBeGreaterThan(0);
     expect(result.errors).toContain('Field "title" must be a string.');
-    expect(result.errors).toContain(
-      'Field "type" must be one of: subsystem-index, sidecar-spec, module-stub.',
-    );
+    expect(result.errors.some((e) => e.startsWith('Field "type" must be one of:'))).toBe(true);
     expect(result.errors).toContain('Field "tags" must be an array of strings.');
     expect(result.errors).toContain('Field "version" must be a number.');
+  });
+
+  it('should successfully parse concept documentation without target_code_file', () => {
+    const conceptDoc = `---
+title: "System Architecture & Domain Model"
+type: "concept-doc"
+description: "Core architectural principles and domain models for the repository."
+tags:
+  - architecture
+  - domain
+status: "spec"
+version: 1
+status_flag: "clean"
+---
+# Architecture Overview
+This is a pure concept document and will not be turned into code.
+`;
+    const result = parseOkfSpec(conceptDoc);
+    expect(result.isValid).toBe(true);
+    expect(result.frontmatter?.type).toBe('concept-doc');
+    expect(result.frontmatter?.target_code_file).toBeUndefined();
   });
 
   it('should fail when frontmatter does not start with three dashes', () => {

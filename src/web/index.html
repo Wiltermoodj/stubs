@@ -3,7 +3,10 @@
   <head>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
     <meta charset="UTF-8" />
     <meta
       name="viewport"
@@ -93,21 +96,27 @@
       (function () {
         function initScrollbarAutoHide(el) {
           let timer;
-          el.addEventListener('scroll', function () {
-            el.classList.add('is-scrolling');
-            clearTimeout(timer);
-            timer = setTimeout(function () {
-              el.classList.remove('is-scrolling');
-            }, 300);
-          }, { passive: true });
+          el.addEventListener(
+            'scroll',
+            function () {
+              el.classList.add('is-scrolling');
+              clearTimeout(timer);
+              timer = setTimeout(function () {
+                el.classList.remove('is-scrolling');
+              }, 300);
+            },
+            { passive: true },
+          );
         }
         // Observe dynamically added custom-scroll elements
         const observer = new MutationObserver(function (mutations) {
           mutations.forEach(function (m) {
             m.addedNodes.forEach(function (node) {
               if (node.nodeType !== 1) return;
-              if (node.classList && node.classList.contains('custom-scroll')) initScrollbarAutoHide(node);
-              node.querySelectorAll && node.querySelectorAll('.custom-scroll').forEach(initScrollbarAutoHide);
+              if (node.classList && node.classList.contains('custom-scroll'))
+                initScrollbarAutoHide(node);
+              node.querySelectorAll &&
+                node.querySelectorAll('.custom-scroll').forEach(initScrollbarAutoHide);
             });
           });
         });

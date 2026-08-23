@@ -52,15 +52,16 @@ INIT → PARSING → GENERATING_QUESTIONS → GRILLING → SAVING → DONE
 
 ## Grill Depth Matrix
 
-| Depth | Questions | Focus |
-|---|---|---|
-| `light_probe` | ~3 | Public interface, happy-path inputs/outputs |
-| `standard_drill` | ~5–7 | Interface + constraints + error handling + context object |
-| `deep_interrogation` | ~10+ | All of above + edge cases + performance + security |
+| Depth                | Questions | Focus                                                     |
+| -------------------- | --------- | --------------------------------------------------------- |
+| `light_probe`        | ~3        | Public interface, happy-path inputs/outputs               |
+| `standard_drill`     | ~5–7      | Interface + constraints + error handling + context object |
+| `deep_interrogation` | ~10+      | All of above + edge cases + performance + security        |
 
 ## Q&A Recording
 
 Each question-answer pair is appended to `user_notes` with:
+
 - `id`: `NOTE-GRILL-{timestamp}-{index}`
 - `timestamp`: ISO string
 - `text`: `Q: {question} | A: {answer}`

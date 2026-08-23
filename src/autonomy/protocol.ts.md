@@ -40,11 +40,11 @@ The policy and reconciliation engine. It enforces action gates before code is wr
 
 ## 3-Tier Autonomy Matrix
 
-| Level | `draft_template_proposal` | `scaffold_sidecar` | `materialize_code` |
-|---|---|---|---|
-| `strict_gate` | ✅ | ❌ | ❌ |
-| `guided_execution` | ✅ | ✅ | ❌ |
-| `autonomous` | ✅ | ✅ | ✅ |
+| Level              | `draft_template_proposal` | `scaffold_sidecar` | `materialize_code` |
+| ------------------ | ------------------------- | ------------------ | ------------------ |
+| `strict_gate`      | ✅                        | ❌                 | ❌                 |
+| `guided_execution` | ✅                        | ✅                 | ❌                 |
+| `autonomous`       | ✅                        | ✅                 | ✅                 |
 
 `evaluateAction(actionType)` returns `{ allowed: boolean; reason: string }` — callers display the reason to users when blocked.
 

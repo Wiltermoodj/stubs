@@ -9,27 +9,45 @@ export interface TypeCheckResult {
 }
 
 /**
- * Computes an AST structural hash for TypeScript code, ignoring formatting, spacing, and comments.
+ * Computes an AST structural hash for code, ignoring cosmetic formatting, spacing, and comments.
+ * For TypeScript/JavaScript, parses TS AST. For other languages, uses normalized token/line hashing.
  */
-export function getAstStructuralHash(code: string): string {
-  // Parse code into TypeScript AST
-  const sourceFile = ts.createSourceFile('file.ts', code, ts.ScriptTarget.Latest, true);
+export function getAstStructuralHash(code: string, fileName = 'file.ts'): string {
+  const ext = path.extname(fileName).toLowerCase();
+  const isTsOrJs = ext === '.ts' || ext === '.tsx' || ext === '.js' || ext === '.jsx' || !ext;
 
-  const nodes: string[] = [];
+  if (isTsOrJs) {
+    try {
+      // Parse code into TypeScript AST
+      const sourceFile = ts.createSourceFile(fileName, code, ts.ScriptTarget.Latest, true);
 
-  function visit(node: ts.Node) {
-    let detail = '';
-    if (ts.isIdentifier(node)) {
-      detail = `:${node.text}`;
+      const nodes: string[] = [];
+
+      function visit(node: ts.Node) {
+        let detail = '';
+        if (ts.isIdentifier(node)) {
+          detail = `:${node.text}`;
+        }
+        // Record node kind and identifier detail (ignore literal values for structural comparison)
+        nodes.push(`${node.kind}${detail}`);
+        ts.forEachChild(node, visit);
+      }
+
+      visit(sourceFile);
+      const serialized = nodes.join(',');
+      return crypto.createHash('sha256').update(serialized).digest('hex');
+    } catch {
+      // Fall through to normalized hash on parse errors
     }
-    // Record node kind and identifier detail (ignore literal values for structural comparison)
-    nodes.push(`${node.kind}${detail}`);
-    ts.forEachChild(node, visit);
   }
 
-  visit(sourceFile);
-  const serialized = nodes.join(',');
-  return crypto.createHash('sha256').update(serialized).digest('hex');
+  // Non-TS / Fallback structural hash: strips comments and normalizes whitespace
+  const normalized = code
+    .replace(/\/\*[\s\S]*?\*\/|([^:]|^)\/\/.*$/gm, '')
+    .replace(/^\s*#.*$/gm, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return crypto.createHash('sha256').update(normalized).digest('hex');
 }
 
 interface CachedAstConfig {

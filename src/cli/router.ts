@@ -117,7 +117,7 @@ Commands:
   sync [file]         Synchronize sidecars and code files.
   template <action>   Manage template molds. Actions: list, render <name> <json_data_or_file>
   evaluate <action>   Evaluate autonomy permission. Actions: draft_template_proposal, scaffold_sidecar, materialize_code
-  validate <file>     Parse and validate an OKF sidecar (*.ts.md) file.
+  validate <file>     Parse and validate an OKF specification (*.md) file.
   serve               Start the local Web Portal and Event Bridge background server.
   help                Display this help message.
   version             Display version information.
@@ -151,20 +151,31 @@ Options:
         return 0;
       }
 
-      const { DEFAULT_CONFIG } = await import('../config/schema');
-      await fs.writeFile(resolvedPath, JSON.stringify(DEFAULT_CONFIG, null, 2), 'utf8');
-      console.log(`Initialized stubs workspace configuration at ${resolvedPath}`);
+      const defaultConfig = {
+        project_name: 'stubs-workspace',
+        version: '1.0.0',
+        autonomy_level: 'guided_execution',
+        paths: {
+          specs_dir: 'src',
+          templates_dir: '.stubs/templates',
+          database_path: '.stubs/graph.sqlite',
+        },
+      };
+
+      await fs.writeFile(resolvedPath, JSON.stringify(defaultConfig, null, 2), 'utf8');
+      console.log(`Initialized stubs configuration at "${configPath}".`);
       return 0;
-    } catch (err: any) {
-      console.error(`Failed to initialize workspace configuration: ${err.message || err}`);
+    } catch (error: any) {
+      console.error(`Failed to initialize configuration: ${error.message || error}`);
       return 1;
     }
   }
 
   private async printVersion(): Promise<void> {
     const candidatePaths = [
-      path.resolve(__dirname, '../../../package.json'),
       path.resolve(__dirname, '../../package.json'),
+      path.resolve(__dirname, '../package.json'),
+      path.resolve(__dirname, '../../../package.json'),
       path.resolve(process.cwd(), 'package.json'),
     ];
 
@@ -239,7 +250,7 @@ Options:
 
     if (!targetFile) {
       console.error('Error: "grill" command requires a file path argument.');
-      console.error('Usage: stubs grill <file.ts.md> [options]');
+      console.error('Usage: stubs grill <file.md> [options]');
       return 1;
     }
 
@@ -309,7 +320,7 @@ Options:
   private async handleMaterialize(ctx: CliContext): Promise<number> {
     if (ctx.args.length === 0) {
       console.error('Error: "materialize" command requires a file path argument.');
-      console.error('Usage: stubs materialize <file.ts.md>');
+      console.error('Usage: stubs materialize <file.md>');
       return 1;
     }
     const targetFile = path.resolve(ctx.args[0]);
@@ -347,7 +358,7 @@ Options:
   private async handleValidate(ctx: CliContext): Promise<number> {
     if (ctx.args.length === 0) {
       console.error('Error: "validate" command requires a file path argument.');
-      console.error('Usage: stubs validate <file.ts.md>');
+      console.error('Usage: stubs validate <file.md>');
       return 1;
     }
     const targetFile = path.resolve(ctx.args[0]);
@@ -374,6 +385,9 @@ Options:
       console.log(`  Status:      ${result.frontmatter?.status}`);
       console.log(`  Status Flag: ${result.frontmatter?.status_flag}`);
       console.log(`  Version:     v${result.frontmatter?.version}`);
+      if (result.frontmatter?.target_code_file) {
+        console.log(`  Target File: ${result.frontmatter.target_code_file}`);
+      }
       return 0;
     } catch (error: any) {
       console.error(`Error reading or validating file: ${error.message || error}`);
@@ -441,7 +455,7 @@ Options:
   private async handleReconcile(ctx: CliContext): Promise<number> {
     if (ctx.args.length === 0) {
       console.error('Error: "reconcile" command requires a sidecar file path.');
-      console.error('Usage: stubs reconcile <sidecar_file.ts.md>');
+      console.error('Usage: stubs reconcile <sidecar_file.md>');
       return 1;
     }
 
