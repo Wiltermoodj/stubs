@@ -23,29 +23,42 @@ const path = require('path');
 
 const repoRoot = path.resolve(__dirname, '..');
 const distDir = path.join(repoRoot, '.agents/skills/stubs/dist');
-const tsLibSrc = path.join(repoRoot, 'node_modules/typescript/lib');
+
+// Resolve sql-wasm.wasm location robustly (works in repo, hoisted node_modules, and nested node_modules)
+let sqlWasmSrc;
+try {
+  const sqlPackageJson = require.resolve('sql.js/package.json', { paths: [repoRoot] });
+  sqlWasmSrc = path.join(path.dirname(sqlPackageJson), 'dist/sql-wasm.wasm');
+} catch {
+  sqlWasmSrc = path.join(repoRoot, 'node_modules/sql.js/dist/sql-wasm.wasm');
+}
+
+// Resolve typescript lib location robustly
+let tsLibSrc;
+try {
+  const tsPackageJson = require.resolve('typescript/package.json', { paths: [repoRoot] });
+  tsLibSrc = path.join(path.dirname(tsPackageJson), 'lib');
+} catch {
+  tsLibSrc = path.join(repoRoot, 'node_modules/typescript/lib');
+}
+
 const tsLibDest = path.join(distDir, 'typescript-lib');
 
 fs.mkdirSync(distDir, { recursive: true });
 
 // sql.js WebAssembly binary
-fs.copyFileSync(
-  path.join(repoRoot, 'node_modules/sql.js/dist/sql-wasm.wasm'),
-  path.join(distDir, 'sql-wasm.wasm'),
-);
+if (fs.existsSync(sqlWasmSrc)) {
+  fs.copyFileSync(sqlWasmSrc, path.join(distDir, 'sql-wasm.wasm'));
+} else {
+  console.error(`sql-wasm.wasm not found at ${sqlWasmSrc}`);
+  process.exit(1);
+}
 
-// TypeScript standard library declaration files. Only `lib*.d.ts` is copied —
-// the rest of node_modules/typescript/lib is compiler source the bundle
-// already contains, and shipping it would multiply the artifact size.
-//
-// The bundle's compiler host resolves lib files from its own directory
-// (`getDefaultLibLocation` => bundle dir). Stage copies in both `dist/`
-// (what the bundle looks for first) and `dist/typescript-lib/` (kept for
-// any tooling that expects the subdir).
+// TypeScript standard library declaration files.
 fs.mkdirSync(tsLibDest, { recursive: true });
-const libFiles = fs
-  .readdirSync(tsLibSrc)
-  .filter((name) => name.startsWith('lib') && name.endsWith('.d.ts'));
+const libFiles = fs.existsSync(tsLibSrc)
+  ? fs.readdirSync(tsLibSrc).filter((name) => name.startsWith('lib') && name.endsWith('.d.ts'))
+  : [];
 
 if (libFiles.length === 0) {
   console.error(`No lib*.d.ts found in ${tsLibSrc}; typechecking would be broken at runtime.`);
