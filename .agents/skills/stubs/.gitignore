@@ -1,0 +1,9 @@
+# stubs skill artifacts and large build bundles
+dist/cli.cjs
+dist/*.wasm
+dist/typescript-lib/
+dist/templates/
+*.log
+*.sqlite
+*.sqlite*
+.DS_Store

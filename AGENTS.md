@@ -10,7 +10,9 @@ Before making any code changes, read the architecture context map to understand 
 - **[`knowledge/ARCHITECTURE.md`](knowledge/ARCHITECTURE.md)** — Repository layout, dependency layer map, core concepts, CLI quick reference, and module sidecar index.
 
 ### Domain Context Maps
+
 Domain-specific context maps live under [`knowledge/architecture/domains/`](knowledge/architecture/domains/). Each domain map deep-dives into that domain's purpose, design invariants, and lists all key source files and sidecar specs:
+
 - **Graph Engine:** [`knowledge/architecture/domains/graph-domain-map.md`](knowledge/architecture/domains/graph-domain-map.md)
 - **Sanding & Sync Engine:** [`knowledge/architecture/domains/sanding-domain-map.md`](knowledge/architecture/domains/sanding-domain-map.md)
 - **Materializer Engine:** [`knowledge/architecture/domains/materializer-domain-map.md`](knowledge/architecture/domains/materializer-domain-map.md)

@@ -14,19 +14,21 @@ tags:
 [← Back to Root Context Map](../context-map.md)
 
 ## Domain Purpose & Responsibilities
+
 The **CLI & Router** domain serves as the primary command-line interface for humans and AI agents. It handles all argument parsing, config loading, and routes commands (`init`, `grill`, `materialize`, `sand`, `audit`, `map`, `serve`, `auth`, `install`) downward to their respective subsystem engines.
 
 ---
 
 ## Key Files & Sidecars
 
-| File / Sidecar | Purpose & Exported Symbols | Depends On |
-| :--- | :--- | :--- |
-| [`src/cli/router.ts`](file:///Users/lappier/code/projects/stubs/src/cli/router.ts) / [`router.ts.md`](file:///Users/lappier/code/projects/stubs/src/cli/router.ts.md) | `CliRouter` class handling command parsing, execution, and exit codes | Subsystem engines (`graph`, `grill`, `sanding`, `materializer`, etc.) |
-| [`src/cli.ts`](file:///Users/lappier/code/projects/stubs/src/cli.ts) / [`cli.ts.md`](file:///Users/lappier/code/projects/stubs/src/cli.ts.md) | Executable entry point instantiating `CliRouter` and invoking `.route(process.argv)` | `cli/router.ts` |
+| File / Sidecar                                                                                                                                                        | Purpose & Exported Symbols                                                           | Depends On                                                            |
+| :-------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :----------------------------------------------------------------------------------- | :-------------------------------------------------------------------- |
+| [`src/cli/router.ts`](file:///Users/lappier/code/projects/stubs/src/cli/router.ts) / [`router.ts.md`](file:///Users/lappier/code/projects/stubs/src/cli/router.ts.md) | `CliRouter` class handling command parsing, execution, and exit codes                | Subsystem engines (`graph`, `grill`, `sanding`, `materializer`, etc.) |
+| [`src/cli.ts`](file:///Users/lappier/code/projects/stubs/src/cli.ts) / [`cli.ts.md`](file:///Users/lappier/code/projects/stubs/src/cli.ts.md)                         | Executable entry point instantiating `CliRouter` and invoking `.route(process.argv)` | `cli/router.ts`                                                       |
 
 ---
 
 ## Domain Invariants
+
 - `CliRouter` pulls all CLI argument complexity downward and returns exit code integers (`0` for success, `1` for error).
 - All paths are resolved dynamically relative to `process.cwd()`.

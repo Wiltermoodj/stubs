@@ -46,15 +46,15 @@ tags:
 
 Each domain in the `stubs` framework has a dedicated deep-dive context map located in [`knowledge/architecture/domains/`](domains/).
 
-| Domain | Subsystem Responsibility | Context Map Link |
-| :--- | :--- | :--- |
-| **Graph Engine** | SQLite-backed dependency graphs, node states, and OKF entity queries | [Graph Domain Map](domains/graph-domain-map.md) |
-| **Sanding & Sync Engine** | AST-based bi-directional synchronization and drift reconciliation | [Sanding Domain Map](domains/sanding-domain-map.md) |
-| **Materializer Engine** | Multi-language code extraction, compilation checks, and disk writing | [Materializer Domain Map](domains/materializer-domain-map.md) |
-| **Interactive Grill Engine**| Dynamic spec interrogation, frontier-based Q&A, and design recording | [Grill Domain Map](domains/grill-domain-map.md) |
-| **Server & Live Portal** | Local Express/SSE background daemon, file watcher, and dashboard UI | [Server Domain Map](domains/server-domain-map.md) |
-| **Autonomy Protocol** | Permission gates, human-in-the-loop policies, and action proposals | [Autonomy Domain Map](domains/autonomy-domain-map.md) |
-| **CLI & Router** | Argument parsing, sub-command dispatching, and skill installer | [CLI Domain Map](domains/cli-domain-map.md) |
+| Domain                       | Subsystem Responsibility                                             | Context Map Link                                              |
+| :--------------------------- | :------------------------------------------------------------------- | :------------------------------------------------------------ |
+| **Graph Engine**             | SQLite-backed dependency graphs, node states, and OKF entity queries | [Graph Domain Map](domains/graph-domain-map.md)               |
+| **Sanding & Sync Engine**    | AST-based bi-directional synchronization and drift reconciliation    | [Sanding Domain Map](domains/sanding-domain-map.md)           |
+| **Materializer Engine**      | Multi-language code extraction, compilation checks, and disk writing | [Materializer Domain Map](domains/materializer-domain-map.md) |
+| **Interactive Grill Engine** | Dynamic spec interrogation, frontier-based Q&A, and design recording | [Grill Domain Map](domains/grill-domain-map.md)               |
+| **Server & Live Portal**     | Local Express/SSE background daemon, file watcher, and dashboard UI  | [Server Domain Map](domains/server-domain-map.md)             |
+| **Autonomy Protocol**        | Permission gates, human-in-the-loop policies, and action proposals   | [Autonomy Domain Map](domains/autonomy-domain-map.md)         |
+| **CLI & Router**             | Argument parsing, sub-command dispatching, and skill installer       | [CLI Domain Map](domains/cli-domain-map.md)                   |
 
 ---
 

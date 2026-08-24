@@ -151,6 +151,7 @@ title: "Temp Spec"
 
       // Verify directory structure and files
       expect(fs.existsSync(path.join(tempDir, '.agents/skills/stubs/SKILL.md'))).toBe(true);
+      expect(fs.existsSync(path.join(tempDir, '.agents/skills/stubs/.gitignore'))).toBe(true);
       expect(
         fs.existsSync(path.join(tempDir, '.agents/skills/stubs/sub-skills/auditing/SKILL.md')),
       ).toBe(true);

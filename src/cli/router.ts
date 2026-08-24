@@ -638,6 +638,7 @@ Options:
 
     const SKILL_FILES = [
       '.agents/skills/stubs/SKILL.md',
+      '.agents/skills/stubs/.gitignore',
       '.agents/skills/stubs/sub-skills/auditing/SKILL.md',
       '.agents/skills/stubs/sub-skills/grilling/SKILL.md',
       '.agents/skills/stubs/sub-skills/materialization/SKILL.md',
@@ -746,7 +747,9 @@ Describe the primary purpose and execution model of the application.
 
     // Default: Audit / Inspect context map files
     if (!existsSync(rootMapFile)) {
-      console.warn(`⚠️ Warning: Root context map not found at ${rootMapFile}. Run 'stubs map --scaffold' to create it.`);
+      console.warn(
+        `⚠️ Warning: Root context map not found at ${rootMapFile}. Run 'stubs map --scaffold' to create it.`,
+      );
       return 0;
     }
 
@@ -761,7 +764,9 @@ Describe the primary purpose and execution model of the application.
 
       for (const dFile of domainMapFiles) {
         if (!rootContent.includes(dFile)) {
-          console.warn(`⚠️ Warning: Domain map "${dFile}" exists in ${domainsDir} but is not linked in context-map.md`);
+          console.warn(
+            `⚠️ Warning: Domain map "${dFile}" exists in ${domainsDir} but is not linked in context-map.md`,
+          );
         }
       }
     }
