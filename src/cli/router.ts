@@ -640,6 +640,7 @@ Options:
       '.agents/skills/stubs/SKILL.md',
       '.agents/skills/stubs/.gitignore',
       '.agents/skills/stubs/sub-skills/auditing/SKILL.md',
+      '.agents/skills/stubs/sub-skills/context-mapping/SKILL.md',
       '.agents/skills/stubs/sub-skills/grilling/SKILL.md',
       '.agents/skills/stubs/sub-skills/materialization/SKILL.md',
       '.agents/skills/stubs/sub-skills/sanding/SKILL.md',
