@@ -4,9 +4,10 @@
   "description": "stubs AI Agent Skill",
   "main": ".agents/skills/stubs/dist/cli.cjs",
   "bin": {
-    "stubs": ".agents/skills/stubs/dist/cli.cjs"
+    "stubs": "bin/stubs.js"
   },
   "files": [
+    "bin/",
     ".agents/skills/stubs/",
     ".stubs/templates/",
     "src/",
