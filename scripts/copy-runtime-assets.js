@@ -24,44 +24,56 @@ const path = require('path');
 const repoRoot = path.resolve(__dirname, '..');
 const distDir = path.join(repoRoot, '.agents/skills/stubs/dist');
 
-// Resolve sql-wasm.wasm location robustly (works in repo, hoisted node_modules, and nested node_modules)
-let sqlWasmSrc;
+// Search candidate locations for sql-wasm.wasm
+const sqlCandidates = [
+  path.join(repoRoot, 'node_modules/sql.js/dist/sql-wasm.wasm'),
+  path.join(repoRoot, '../sql.js/dist/sql-wasm.wasm'),
+  path.join(repoRoot, '../../node_modules/sql.js/dist/sql-wasm.wasm'),
+];
 try {
-  const sqlPackageJson = require.resolve('sql.js/package.json', { paths: [repoRoot] });
-  sqlWasmSrc = path.join(path.dirname(sqlPackageJson), 'dist/sql-wasm.wasm');
-} catch {
-  sqlWasmSrc = path.join(repoRoot, 'node_modules/sql.js/dist/sql-wasm.wasm');
-}
+  const resolvedSql = require.resolve('sql.js/dist/sql-wasm.wasm', { paths: [repoRoot, process.cwd()] });
+  sqlCandidates.unshift(resolvedSql);
+} catch {}
+try {
+  const sqlPkg = require.resolve('sql.js/package.json', { paths: [repoRoot, process.cwd()] });
+  sqlCandidates.unshift(path.join(path.dirname(sqlPkg), 'dist/sql-wasm.wasm'));
+} catch {}
 
-// Resolve typescript lib location robustly
-let tsLibSrc;
+const sqlWasmSrc = sqlCandidates.find((p) => fs.existsSync(p));
+
+// Search candidate locations for typescript lib files
+const tsCandidates = [
+  path.join(repoRoot, 'node_modules/typescript/lib'),
+  path.join(repoRoot, '../typescript/lib'),
+  path.join(repoRoot, '../../node_modules/typescript/lib'),
+];
 try {
-  const tsPackageJson = require.resolve('typescript/package.json', { paths: [repoRoot] });
-  tsLibSrc = path.join(path.dirname(tsPackageJson), 'lib');
-} catch {
-  tsLibSrc = path.join(repoRoot, 'node_modules/typescript/lib');
-}
+  const tsPkg = require.resolve('typescript/package.json', { paths: [repoRoot, process.cwd()] });
+  tsCandidates.unshift(path.join(path.dirname(tsPkg), 'lib'));
+} catch {}
+
+const tsLibSrc = tsCandidates.find((p) => fs.existsSync(p));
 
 const tsLibDest = path.join(distDir, 'typescript-lib');
 
 fs.mkdirSync(distDir, { recursive: true });
 
 // sql.js WebAssembly binary
-if (fs.existsSync(sqlWasmSrc)) {
+if (sqlWasmSrc && fs.existsSync(sqlWasmSrc)) {
   fs.copyFileSync(sqlWasmSrc, path.join(distDir, 'sql-wasm.wasm'));
 } else {
-  console.error(`sql-wasm.wasm not found at ${sqlWasmSrc}`);
+  console.error(`sql-wasm.wasm not found in candidates: ${sqlCandidates.join(', ')}`);
   process.exit(1);
 }
 
 // TypeScript standard library declaration files.
 fs.mkdirSync(tsLibDest, { recursive: true });
-const libFiles = fs.existsSync(tsLibSrc)
+const libFiles = tsLibSrc && fs.existsSync(tsLibSrc)
   ? fs.readdirSync(tsLibSrc).filter((name) => name.startsWith('lib') && name.endsWith('.d.ts'))
   : [];
 
 if (libFiles.length === 0) {
-  console.error(`No lib*.d.ts found in ${tsLibSrc}; typechecking would be broken at runtime.`);
+  console.error(`No lib*.d.ts found in candidate typescript directories.`);
   process.exit(1);
 }
 
