@@ -19,16 +19,14 @@ description: Architecture-as-code planning & multi-language sidecar framework. S
 
 ## Invocation Rules & CLI Entry Point
 
-When operating within a project that includes `stubs`, host agents invoke the CLI binary via node using the pre-compiled distribution bundle:
+When operating within a project, invoke the `stubs` CLI directly via:
 
 ```bash
-node .agents/skills/stubs/dist/cli.cjs <command> [options]
-```
-
-Or via `npx stubs` / `stubs` if installed globally or linked in package binaries:
-
-```bash
+npx stubs <command> [options]
+# Or globally / via npm script:
 stubs <command> [options]
+# Or via pre-compiled distribution bundle directly:
+node .agents/skills/stubs/dist/cli.cjs <command> [options]
 ```
 
 ### Dynamic Workspace Root Rules
@@ -54,48 +52,54 @@ The `stubs` skill delegates to modular sub-skills located under `.agents/skills/
 ### 1. `stubs init`
 Initializes standard workspace configuration `.stubs/config.json` in the current project directory.
 ```bash
-node .agents/skills/stubs/dist/cli.cjs init
+npx stubs init
 ```
 
-### 2. `stubs map`
+### 2. `stubs update` / `stubs upgrade`
+Refreshes and updates the installed stubs agent skill and assets to the latest version.
+```bash
+npx stubs update
+```
+
+### 3. `stubs map`
 Scaffolds or audits the architectural context map hierarchy (`knowledge/architecture/context-map.md` and domain maps).
 ```bash
-node .agents/skills/stubs/dist/cli.cjs map --scaffold
-node .agents/skills/stubs/dist/cli.cjs map
+npx stubs map --scaffold
+npx stubs map
 ```
 
-### 3. `stubs grill <file.md>`
+### 4. `stubs grill <file.md>`
 Runs the Interactive Grill Engine to interrogate underspecified areas, resolve ambiguities, and record design decisions in concept or sidecar specs.
 ```bash
-node .agents/skills/stubs/dist/cli.cjs grill src/service.md --depth standard_drill
-node .agents/skills/stubs/dist/cli.cjs grill src/service.md --non-interactive
+npx stubs grill src/service.md --depth standard_drill
+npx stubs grill src/service.md --non-interactive
 ```
 - `--depth <light_probe | standard_drill | deep_interrogation>`: Sets question matrix depth.
 - `--non-interactive`: Automates response generation for non-interactive agent execution.
 
-### 4. `stubs materialize <file.md>`
+### 5. `stubs materialize <file.md>`
 Parses an executable sidecar specification, extracts embedded code blocks (TS, Python, Go, Rust, etc.), and writes executable code to the target code file.
 ```bash
-node .agents/skills/stubs/dist/cli.cjs materialize src/service.py.md
+npx stubs materialize src/service.py.md
 ```
 
-### 5. `stubs audit <file.md>` / `stubs reconcile <file.md>`
+### 6. `stubs audit <file.md>` / `stubs reconcile <file.md>`
 Audits sidecar specs and executes the 5-phase retroactive reconciliation engine (parsing, target checks, AST structural hashing, frontmatter healing, and conflict resolution).
 ```bash
-node .agents/skills/stubs/dist/cli.cjs audit src/service.ts.md
+npx stubs audit src/service.ts.md
 ```
 
-### 6. `stubs sand [file.md]` / `stubs sync [file.md]`
+### 7. `stubs sand [file.md]` / `stubs sync [file.md]`
 Executes AST-based bi-directional synchronization between sidecar specs and implementation code files across the workspace.
 ```bash
-node .agents/skills/stubs/dist/cli.cjs sand
-node .agents/skills/stubs/dist/cli.cjs sand src/service.ts.md
+npx stubs sand
+npx stubs sand src/service.ts.md
 ```
 
-### 7. `stubs serve`
+### 8. `stubs serve`
 Starts the local background Web Portal server and OS filesystem event bridge for live visualization and real-time SSE broadcasts.
 ```bash
-node .agents/skills/stubs/dist/cli.cjs serve --port 3000
+npx stubs serve --port 3000
 ```
 
 

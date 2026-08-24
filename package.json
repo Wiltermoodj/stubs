@@ -6,8 +6,17 @@
   "bin": {
     "stubs": ".agents/skills/stubs/dist/cli.cjs"
   },
+  "files": [
+    ".agents/skills/stubs/",
+    ".stubs/templates/",
+    "src/",
+    "README.md",
+    "AGENTS.md",
+    "LICENSE"
+  ],
   "scripts": {
-    "build": "esbuild src/cli.ts --bundle --platform=node --target=node18 --outfile=.agents/skills/stubs/dist/cli.cjs --banner:js=\"#!/usr/bin/env node\" --external:sqlite3 && node -e \"fs.mkdirSync('.agents/skills/stubs/dist', { recursive: true }); fs.copyFileSync('node_modules/sql.js/dist/sql-wasm.wasm', '.agents/skills/stubs/dist/sql-wasm.wasm')\"",
+    "prepare": "npm run build",
+    "build": "esbuild src/cli.ts --bundle --platform=node --target=node18 --outfile=.agents/skills/stubs/dist/cli.cjs --banner:js=\"#!/usr/bin/env node\" --external:sqlite3 && node scripts/copy-runtime-assets.js",
     "build:web": "node scripts/build-web.js",
     "predeploy:pages": "npm run build:web",
     "deploy:pages": "gh-pages -d dist/web",
@@ -20,7 +29,14 @@
     "type": "git",
     "url": "git+https://github.com/Wiltermoodj/stubs.git"
   },
-  "keywords": [],
+  "keywords": [
+    "stubs",
+    "agent",
+    "sidecar",
+    "architecture",
+    "okf",
+    "specification"
+  ],
   "author": "",
   "license": "ISC",
   "type": "commonjs",
@@ -50,7 +66,7 @@
     "typescript": "^5.5.4",
     "typescript-eslint": "^8.66.0"
   },
-  "dependencies": {
+  "optionalDependencies": {
     "sqlite3": "^6.0.1"
   }
 }

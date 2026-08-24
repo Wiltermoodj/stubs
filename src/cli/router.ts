@@ -68,6 +68,9 @@ export class CliRouter {
           return await this.handleAuth(context);
         case 'install':
           return await this.handleInstall(context);
+        case 'update':
+        case 'upgrade':
+          return await this.handleUpdate(context);
         default:
           console.error(`Error: Unknown command "${context.command}". Use --help for usage.`);
           return 1;
@@ -111,6 +114,7 @@ Commands:
   init                Initialize workspace configuration (.stubs/config.json).
   auth login          Authenticate via Personal Access Tokens (PATs) and store globally.
   install             Fetch and install stubs skill and assets into the workspace.
+  update, upgrade     Update installed stubs skill bundle or display package update instructions.
   grill <file>       Execute the Interactive Grill Engine on a sidecar specification.
   materialize <file>  Parse, extract, typecheck, and write executable code from sidecar.
   audit <file>        Audit sidecar specifications and run retroactive reconciliation.
@@ -152,22 +156,38 @@ Options:
 
       if (existsSync(resolvedPath)) {
         console.log(`Configuration file already exists at ${resolvedPath}`);
-        return 0;
+      } else {
+        const defaultConfig = {
+          project_name: 'stubs-workspace',
+          version: '1.0.0',
+          autonomy_level: 'guided_execution',
+          paths: {
+            specs_dir: 'src',
+            templates_dir: '.stubs/templates',
+            database_path: '.stubs/graph.sqlite',
+          },
+        };
+
+        await fs.writeFile(resolvedPath, JSON.stringify(defaultConfig, null, 2), 'utf8');
+        console.log(`Initialized stubs configuration at "${configPath}".`);
       }
 
-      const defaultConfig = {
-        project_name: 'stubs-workspace',
-        version: '1.0.0',
-        autonomy_level: 'guided_execution',
-        paths: {
-          specs_dir: 'src',
-          templates_dir: '.stubs/templates',
-          database_path: '.stubs/graph.sqlite',
-        },
-      };
+      // Check if target directory has a package.json and advise on npm script shortcut
+      const targetPackageJsonPath = path.join(process.cwd(), 'package.json');
+      if (existsSync(targetPackageJsonPath)) {
+        try {
+          const pkgContent = await fs.readFile(targetPackageJsonPath, 'utf8');
+          const pkg = JSON.parse(pkgContent);
+          if (!pkg.scripts?.stubs) {
+            console.log(
+              `Tip: You can add '"stubs": "stubs"' to scripts in package.json to run with 'npm run stubs -- <command>' or directly 'npx stubs <command>'.`,
+            );
+          }
+        } catch {
+          // Ignore parse errors on target package.json
+        }
+      }
 
-      await fs.writeFile(resolvedPath, JSON.stringify(defaultConfig, null, 2), 'utf8');
-      console.log(`Initialized stubs configuration at "${configPath}".`);
       return 0;
     } catch (error: any) {
       console.error(`Failed to initialize configuration: ${error.message || error}`);
@@ -588,9 +608,47 @@ Options:
   }
 
   private async handleInstall(ctx: CliContext): Promise<number> {
+    return await this.syncSkillBundle(ctx, false);
+  }
+
+  private async handleUpdate(ctx: CliContext): Promise<number> {
+    const targetDir = process.cwd();
+    const skillDir = path.join(targetDir, '.agents/skills/stubs');
+
+    // Check if stubs is installed in package.json node_modules
+    const pkgJsonPath = path.join(targetDir, 'package.json');
+    let hasNpmDependency = false;
+    if (existsSync(pkgJsonPath)) {
+      try {
+        const pkg = JSON.parse(await fs.readFile(pkgJsonPath, 'utf8'));
+        if (pkg.dependencies?.stubs || pkg.devDependencies?.stubs) {
+          hasNpmDependency = true;
+        }
+      } catch {
+        // Ignore JSON read errors
+      }
+    }
+
+    if (hasNpmDependency) {
+      console.log('Detected stubs installed as an npm package dependency.');
+      console.log('To update to the latest version, run:');
+      console.log('  npm update stubs');
+      console.log('or reinstall from GitHub:');
+      console.log('  npm install --save-dev github:Wiltermoodj/stubs\n');
+    }
+
+    if (existsSync(skillDir) || !hasNpmDependency) {
+      console.log('Updating stubs agent skill in .agents/skills/stubs/...');
+      return await this.syncSkillBundle(ctx, true);
+    }
+
+    return 0;
+  }
+
+  private async syncSkillBundle(ctx: CliContext, isUpdate: boolean): Promise<number> {
     let repo = 'Wiltermoodj/stubs';
     let branch = 'main';
-    let force = false;
+    let force = isUpdate;
 
     let i = 0;
     while (i < ctx.args.length) {
@@ -619,7 +677,9 @@ Options:
         force = true;
         i++;
       } else {
-        console.error(`Error: Unknown option "${arg}" for install command.`);
+        console.error(
+          `Error: Unknown option "${arg}" for ${isUpdate ? 'update' : 'install'} command.`,
+        );
         return 1;
       }
     }
@@ -629,12 +689,12 @@ Options:
 
     if (existsSync(destDir) && !force) {
       console.error(
-        `Error: Installation directory already exists at "${destDir}". Use --force or -f to overwrite.`,
+        `Error: Installation directory already exists at "${destDir}". Use --force or -f to overwrite, or run 'stubs update' to refresh.`,
       );
       return 1;
     }
 
-    console.log(`Installing stubs skill from ${repo} (${branch})...`);
+    console.log(`${isUpdate ? 'Updating' : 'Installing'} stubs skill from ${repo} (${branch})...`);
 
     const SKILL_FILES = [
       '.agents/skills/stubs/SKILL.md',
@@ -670,10 +730,10 @@ Options:
 
       await this.updateGitignore(targetDir);
 
-      console.log('stubs installation completed successfully!');
+      console.log(`stubs ${isUpdate ? 'update' : 'installation'} completed successfully!`);
       return 0;
     } catch (err: any) {
-      console.error(`Installation failed: ${err.message || err}`);
+      console.error(`${isUpdate ? 'Update' : 'Installation'} failed: ${err.message || err}`);
       return 1;
     }
   }

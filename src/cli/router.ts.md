@@ -6,7 +6,7 @@ description: >-
   masking, routes commands to the appropriate engine handlers, and returns Unix
   exit codes. Provides the CliContext interface and CliRouter class that wraps
   all stubs operations: init, grill, materialize, audit/reconcile, sand/sync,
-  validate, template, evaluate, auth, install, serve, help, version.
+  validate, template, evaluate, auth, install, update, upgrade, serve, help, version.
 tags:
   - cli
   - router
@@ -65,6 +65,7 @@ interface CliContext {
 | `evaluate <action>`                 | `handleEvaluate`    | `AutonomyProtocol.evaluateAction()`   |
 | `auth login`                        | `handleAuth`        | `saveCredentials()`                   |
 | `install`                           | `handleInstall`     | GitHub API fetch + file write         |
+| `update` / `upgrade`                | `handleUpdate`      | GitHub API refresh + file write       |
 | `serve`                             | `handleServe`       | `PortalServer.start()`                |
 
 ## Startup Sequence

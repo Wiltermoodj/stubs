@@ -228,5 +228,66 @@ title: "Temp Spec"
       expect(code).toBe(1);
       expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('Failed to download'));
     });
+
+    it('should update skill and files directly without error when update command is invoked', async () => {
+      fs.mkdirSync(path.join(tempDir, '.agents/skills/stubs'), { recursive: true });
+
+      global.fetch = jest.fn().mockImplementation((url: string) => {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          statusText: 'OK',
+          arrayBuffer: () => Promise.resolve(Buffer.from(`updated mock content for ${url}`).buffer),
+        });
+      }) as any;
+
+      const code = await router.route(['update']);
+      expect(code).toBe(0);
+      expect(fs.existsSync(path.join(tempDir, '.agents/skills/stubs/SKILL.md'))).toBe(true);
+      expect(logSpy).toHaveBeenCalledWith(
+        expect.stringContaining('stubs update completed successfully!'),
+      );
+    });
+
+    it('should support upgrade alias for update command', async () => {
+      fs.mkdirSync(path.join(tempDir, '.agents/skills/stubs'), { recursive: true });
+
+      global.fetch = jest.fn().mockImplementation((url: string) => {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          statusText: 'OK',
+          arrayBuffer: () => Promise.resolve(Buffer.from(`updated mock content for ${url}`).buffer),
+        });
+      }) as any;
+
+      const code = await router.route(['upgrade']);
+      expect(code).toBe(0);
+      expect(logSpy).toHaveBeenCalledWith(
+        expect.stringContaining('stubs update completed successfully!'),
+      );
+    });
+
+    it('should print npm update instructions when package.json dependency is detected', async () => {
+      fs.writeFileSync(
+        path.join(tempDir, 'package.json'),
+        JSON.stringify({ devDependencies: { stubs: 'github:Wiltermoodj/stubs' } }),
+      );
+
+      global.fetch = jest.fn().mockImplementation((url: string) => {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          statusText: 'OK',
+          arrayBuffer: () => Promise.resolve(Buffer.from(`mock content for ${url}`).buffer),
+        });
+      }) as any;
+
+      const code = await router.route(['update']);
+      expect(code).toBe(0);
+      expect(logSpy).toHaveBeenCalledWith(
+        expect.stringContaining('Detected stubs installed as an npm package dependency'),
+      );
+    });
   });
 });

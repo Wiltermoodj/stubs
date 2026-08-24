@@ -109,10 +109,12 @@ Bi-directional sync using SHA-256 content hashes + TypeScript AST structural has
 ## CLI Commands Quick Reference
 
 ```bash
-# All commands via the compiled binary:
-node .agents/skills/stubs/dist/cli.cjs <command> [options]
+# Direct execution (via npx, npm script, global stubs, or node binary):
+npx stubs <command> [options]
+# Or: node .agents/skills/stubs/dist/cli.cjs <command> [options]
 
 stubs init                          # Write .stubs/config.json
+stubs update                        # Refresh / update installed skill bundle
 stubs validate src/parser/okf.ts.md # Validate OKF frontmatter
 stubs grill src/foo.ts.md           # Interactive spec interrogation
 stubs materialize src/foo.ts.md     # Extract code → write foo.ts
