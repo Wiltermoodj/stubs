@@ -704,8 +704,6 @@ Options:
       '.agents/skills/stubs/sub-skills/grilling/SKILL.md',
       '.agents/skills/stubs/sub-skills/materialization/SKILL.md',
       '.agents/skills/stubs/sub-skills/sanding/SKILL.md',
-      '.agents/skills/stubs/dist/cli.cjs',
-      '.agents/skills/stubs/dist/sql-wasm.wasm',
     ];
 
     try {
