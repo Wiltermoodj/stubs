@@ -10,6 +10,7 @@
     ".agents/skills/stubs/",
     ".stubs/templates/",
     "src/",
+    "scripts/",
     "README.md",
     "AGENTS.md",
     "LICENSE"
