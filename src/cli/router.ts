@@ -60,6 +60,8 @@ export class CliRouter {
         case 'sand':
         case 'sync':
           return await this.handleSync(context);
+        case 'map':
+          return await this.handleMap(context);
         case 'materialize':
           return await this.handleMaterialize(context);
         case 'auth':
@@ -115,6 +117,7 @@ Commands:
   sand [file]         Synchronize sidecars and code files.
   reconcile <file>    Execute the 5-phase retroactive reconciliation engine on a sidecar.
   sync [file]         Synchronize sidecars and code files.
+  map [options]       Audit or scaffold architectural context maps (knowledge/architecture/context-map.md).
   template <action>   Manage template molds. Actions: list, render <name> <json_data_or_file>
   evaluate <action>   Evaluate autonomy permission. Actions: draft_template_proposal, scaffold_sidecar, materialize_code
   validate <file>     Parse and validate an OKF specification (*.md) file.
@@ -126,6 +129,7 @@ Options:
   -c, --config <path>  Specify path to stubs configuration file (default: .stubs/config.json)
   --depth <depth>      Specify grill depth (light_probe | standard_drill | deep_interrogation)
   --non-interactive    Run the grill engine in non-interactive (automated) mode
+  --scaffold, --init   Scaffold root context-map.md and domains/ directory structure
   --token <pat>        [DEPRECATED] Provide a GitHub Personal Access Token directly (auth login). Prefer STDIN pipe or environment variables.
   --provider <name>    Specify auth provider (default: github) (auth login)
   --repo <owner/repo>  Override default target repo (Defaults to Wiltermoodj/stubs)
@@ -697,6 +701,74 @@ Options:
       );
       console.log(`Updated .gitignore at ${gitignorePath}`);
     }
+  }
+
+  private async handleMap(ctx: CliContext): Promise<number> {
+    const isScaffold =
+      ctx.args.includes('--scaffold') ||
+      ctx.args.includes('--init') ||
+      ctx.args.includes('init') ||
+      ctx.args.includes('scaffold');
+
+    const architectureDir = path.join(process.cwd(), 'knowledge', 'architecture');
+    const domainsDir = path.join(architectureDir, 'domains');
+    const rootMapFile = path.join(architectureDir, 'context-map.md');
+
+    if (isScaffold) {
+      await fs.mkdir(domainsDir, { recursive: true });
+      if (!existsSync(rootMapFile)) {
+        const skeletonContent = `---
+title: Project Architecture Context Map
+type: context-map
+description: High-level architectural map of core domains, subsystem responsibilities, and data flows.
+tags:
+  - architecture
+  - context-map
+---
+
+# Project Architecture Context Map
+
+## Purpose & Overview
+Describe the primary purpose and execution model of the application.
+
+## Domain Index
+| Domain | Subsystem / Responsibility | Context Map |
+| :--- | :--- | :--- |
+| Core | Main entry points and routing | [Core Domain Map](domains/core-domain-map.md) |
+`;
+        await fs.writeFile(rootMapFile, skeletonContent, 'utf8');
+        console.log(`Created skeleton context map at ${rootMapFile}`);
+      } else {
+        console.log(`Context map already exists at ${rootMapFile}`);
+      }
+      return 0;
+    }
+
+    // Default: Audit / Inspect context map files
+    if (!existsSync(rootMapFile)) {
+      console.warn(`⚠️ Warning: Root context map not found at ${rootMapFile}. Run 'stubs map --scaffold' to create it.`);
+      return 0;
+    }
+
+    console.log(`Validating architecture context maps...`);
+    const rootContent = await fs.readFile(rootMapFile, 'utf8');
+    let domainCount = 0;
+
+    if (existsSync(domainsDir)) {
+      const files = await fs.readdir(domainsDir);
+      const domainMapFiles = files.filter((f) => f.endsWith('-domain-map.md') || f.endsWith('.md'));
+      domainCount = domainMapFiles.length;
+
+      for (const dFile of domainMapFiles) {
+        if (!rootContent.includes(dFile)) {
+          console.warn(`⚠️ Warning: Domain map "${dFile}" exists in ${domainsDir} but is not linked in context-map.md`);
+        }
+      }
+    }
+
+    console.log(`✓ Architecture map found: ${rootMapFile}`);
+    console.log(`✓ Indexed domain maps: ${domainCount} found in ${domainsDir}`);
+    return 0;
   }
 
   private printSyncResult(result: SyncResult): void {

@@ -41,10 +41,11 @@ stubs <command> [options]
 
 The `stubs` skill delegates to modular sub-skills located under `.agents/skills/stubs/sub-skills/`:
 
-1. **[Grilling](./sub-skills/grilling/SKILL.md):** Stress-test software designs using frontier-based dependency tree rounds.
-2. **[Sanding](./sub-skills/sanding/SKILL.md):** Reconcile code-to-spec or spec-to-code drift using AST structural hashes and bi-directional synchronization.
-3. **[Materialization](./sub-skills/materialization/SKILL.md):** Extract implementation blocks from sidecar specs into runnable code files (.ts, .py, .go, etc.).
-4. **[Auditing](./sub-skills/auditing/SKILL.md):** Perform static analysis, health checks, and graph validation across the workspace.
+1. **[Context Mapping](./sub-skills/context-mapping/SKILL.md):** Build, maintain, and audit hierarchical architectural context maps (`knowledge/architecture/context-map.md` and domain maps).
+2. **[Grilling](./sub-skills/grilling/SKILL.md):** Stress-test software designs using frontier-based dependency tree rounds.
+3. **[Sanding](./sub-skills/sanding/SKILL.md):** Reconcile code-to-spec or spec-to-code drift using AST structural hashes and bi-directional synchronization.
+4. **[Materialization](./sub-skills/materialization/SKILL.md):** Extract implementation blocks from sidecar specs into runnable code files (.ts, .py, .go, etc.).
+5. **[Auditing](./sub-skills/auditing/SKILL.md):** Perform static analysis, health checks, and graph validation across the workspace.
 
 ---
 
@@ -56,7 +57,14 @@ Initializes standard workspace configuration `.stubs/config.json` in the current
 node .agents/skills/stubs/dist/cli.cjs init
 ```
 
-### 2. `stubs grill <file.md>`
+### 2. `stubs map`
+Scaffolds or audits the architectural context map hierarchy (`knowledge/architecture/context-map.md` and domain maps).
+```bash
+node .agents/skills/stubs/dist/cli.cjs map --scaffold
+node .agents/skills/stubs/dist/cli.cjs map
+```
+
+### 3. `stubs grill <file.md>`
 Runs the Interactive Grill Engine to interrogate underspecified areas, resolve ambiguities, and record design decisions in concept or sidecar specs.
 ```bash
 node .agents/skills/stubs/dist/cli.cjs grill src/service.md --depth standard_drill
@@ -65,28 +73,29 @@ node .agents/skills/stubs/dist/cli.cjs grill src/service.md --non-interactive
 - `--depth <light_probe | standard_drill | deep_interrogation>`: Sets question matrix depth.
 - `--non-interactive`: Automates response generation for non-interactive agent execution.
 
-### 3. `stubs materialize <file.md>`
+### 4. `stubs materialize <file.md>`
 Parses an executable sidecar specification, extracts embedded code blocks (TS, Python, Go, Rust, etc.), and writes executable code to the target code file.
 ```bash
 node .agents/skills/stubs/dist/cli.cjs materialize src/service.py.md
 ```
 
-### 4. `stubs audit <file.md>` / `stubs reconcile <file.md>`
+### 5. `stubs audit <file.md>` / `stubs reconcile <file.md>`
 Audits sidecar specs and executes the 5-phase retroactive reconciliation engine (parsing, target checks, AST structural hashing, frontmatter healing, and conflict resolution).
 ```bash
 node .agents/skills/stubs/dist/cli.cjs audit src/service.ts.md
 ```
 
-### 5. `stubs sand [file.md]` / `stubs sync [file.md]`
+### 6. `stubs sand [file.md]` / `stubs sync [file.md]`
 Executes AST-based bi-directional synchronization between sidecar specs and implementation code files across the workspace.
 ```bash
 node .agents/skills/stubs/dist/cli.cjs sand
 node .agents/skills/stubs/dist/cli.cjs sand src/service.ts.md
 ```
 
-### 6. `stubs serve`
+### 7. `stubs serve`
 Starts the local background Web Portal server and OS filesystem event bridge for live visualization and real-time SSE broadcasts.
 ```bash
 node .agents/skills/stubs/dist/cli.cjs serve --port 3000
 ```
+
 

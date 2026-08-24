@@ -6,7 +6,18 @@ This document outlines the conventions and tooling rules AI agents must follow w
 
 Before making any code changes, read the architecture context map to understand the module structure, dependency layers, and core concepts:
 
-**[`knowledge/ARCHITECTURE.md`](knowledge/ARCHITECTURE.md)** — Repository layout, dependency layer map, core concepts, CLI quick reference, and links to all module sidecar specs.
+- **[`knowledge/architecture/context-map.md`](knowledge/architecture/context-map.md)** — Master application context map linking to all domain-specific maps under `knowledge/architecture/domains/`.
+- **[`knowledge/ARCHITECTURE.md`](knowledge/ARCHITECTURE.md)** — Repository layout, dependency layer map, core concepts, CLI quick reference, and module sidecar index.
+
+### Domain Context Maps
+Domain-specific context maps live under [`knowledge/architecture/domains/`](knowledge/architecture/domains/). Each domain map deep-dives into that domain's purpose, design invariants, and lists all key source files and sidecar specs:
+- **Graph Engine:** [`knowledge/architecture/domains/graph-domain-map.md`](knowledge/architecture/domains/graph-domain-map.md)
+- **Sanding & Sync Engine:** [`knowledge/architecture/domains/sanding-domain-map.md`](knowledge/architecture/domains/sanding-domain-map.md)
+- **Materializer Engine:** [`knowledge/architecture/domains/materializer-domain-map.md`](knowledge/architecture/domains/materializer-domain-map.md)
+- **Interactive Grill Engine:** [`knowledge/architecture/domains/grill-domain-map.md`](knowledge/architecture/domains/grill-domain-map.md)
+- **Server & Live Portal:** [`knowledge/architecture/domains/server-domain-map.md`](knowledge/architecture/domains/server-domain-map.md)
+- **Autonomy Protocol:** [`knowledge/architecture/domains/autonomy-domain-map.md`](knowledge/architecture/domains/autonomy-domain-map.md)
+- **CLI & Router:** [`knowledge/architecture/domains/cli-domain-map.md`](knowledge/architecture/domains/cli-domain-map.md)
 
 For a detailed module status matrix and full OKF subsystem index, see [`src/INDEX.md`](src/INDEX.md).
 
