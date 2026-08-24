@@ -1,8 +1,4 @@
-# stubs skill artifacts and large build bundles
-dist/cli.cjs
-dist/*.wasm
-dist/typescript-lib/
-dist/templates/
+# stubs skill runtime state
 *.log
 *.sqlite
 *.sqlite*

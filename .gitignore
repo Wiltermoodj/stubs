@@ -96,8 +96,6 @@ knowledge/analysis/
 # local eslint config
 .eslintrc.cjs
 
-.agents/skills/stubs/dist/cli.cjs
-
 # design-system skill (sourced from design project — not committed here)
 .agents/skills/design-system/
 knowledge/design/0041-surface-tier-system.md
