@@ -15,6 +15,7 @@
     "LICENSE"
   ],
   "scripts": {
+    "postinstall": "npm run build",
     "prepare": "npm run build",
     "build": "esbuild src/cli.ts --bundle --platform=node --target=node18 --outfile=.agents/skills/stubs/dist/cli.cjs --banner:js=\"#!/usr/bin/env node\" --external:sqlite3 && node scripts/copy-runtime-assets.js",
     "build:web": "node scripts/build-web.js",
