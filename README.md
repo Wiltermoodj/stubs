@@ -33,7 +33,7 @@ Instead of jumping directly from natural language prompts to executable code—a
 
 ## Installation Guide
 
-### Option 1: Install as a Project Dependency (Recommended for Repositories)
+### Option 1: Install as a Project Dependency (Recommended)
 
 Install directly into your target repository's `devDependencies`:
 
@@ -47,10 +47,10 @@ Once installed, invoke commands directly via `npx`:
 npx stubs init
 npx stubs map --scaffold
 npx stubs sand
+npx stubs grill <file.md>
 ```
 
 Or add a shortcut script in `package.json`:
-
 ```json
 {
   "scripts": {
@@ -60,13 +60,11 @@ Or add a shortcut script in `package.json`:
 ```
 
 Then invoke with:
-
 ```bash
 npm run stubs -- init
 ```
 
 To update `stubs` to the latest version at any time:
-
 ```bash
 npm update stubs
 # or
@@ -75,47 +73,7 @@ npm install --save-dev github:Wiltermoodj/stubs
 
 ---
 
-### Option 2: Install into Any Target Codebase (Agent Skill Directory)
-
-To install the standalone `stubs` agent skill into any active repository's `.agents/skills/stubs/` directory:
-
-#### Direct One-Liner (Remote via npx):
-
-Run from the root of the target codebase:
-
-```bash
-npx github:Wiltermoodj/stubs install
-```
-
-#### From Local Clone:
-
-If you have a local clone of the `stubs` repository on your machine:
-
-```bash
-mkdir -p .agents/skills && cp -r /path/to/stubs/.agents/skills/stubs .agents/skills/
-```
-
-#### Initialize the Workspace:
-
-After installing, initialize the `.stubs/` configuration and SQLite graph database:
-
-```bash
-npx stubs init
-# or: node .agents/skills/stubs/dist/cli.cjs init
-```
-
-#### Update the Installed Skill:
-
-To update the installed agent skill to the latest version without removing the directory:
-
-```bash
-npx stubs update
-# or: node .agents/skills/stubs/dist/cli.cjs update
-```
-
----
-
-### Option 3: Global CLI Install
+### Option 2: Global CLI Install
 
 To install the `stubs` command globally so it can be run from any directory:
 
@@ -124,14 +82,12 @@ npm install -g github:Wiltermoodj/stubs
 ```
 
 Or link from a local clone:
-
 ```bash
 cd /path/to/stubs
 npm link
 ```
 
 Then invoke anywhere:
-
 ```bash
 stubs init
 stubs map
