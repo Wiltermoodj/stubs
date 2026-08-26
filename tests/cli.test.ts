@@ -285,5 +285,90 @@ title: "Temp Spec"
         expect.stringContaining('Detected stubs installed as an npm package dependency'),
       );
     });
+
+    it('should detect various package managers correctly', () => {
+      expect(router.detectPackageManager(tempDir)).toBe('npm');
+
+      fs.writeFileSync(path.join(tempDir, 'pnpm-lock.yaml'), '');
+      expect(router.detectPackageManager(tempDir)).toBe('pnpm');
+      fs.unlinkSync(path.join(tempDir, 'pnpm-lock.yaml'));
+
+      fs.writeFileSync(path.join(tempDir, 'yarn.lock'), '');
+      expect(router.detectPackageManager(tempDir)).toBe('yarn');
+      fs.unlinkSync(path.join(tempDir, 'yarn.lock'));
+
+      fs.writeFileSync(path.join(tempDir, 'bun.lockb'), '');
+      expect(router.detectPackageManager(tempDir)).toBe('bun');
+      fs.unlinkSync(path.join(tempDir, 'bun.lockb'));
+    });
+
+    it('should perform comprehensive initialization with templates, skills, and multi-agent adapters', async () => {
+      global.fetch = jest.fn().mockImplementation((url: string) => {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          statusText: 'OK',
+          arrayBuffer: () => Promise.resolve(Buffer.from(`mock content for ${url}`).buffer),
+        });
+      }) as any;
+
+      const code = await router.route(['init', '--all-agents', '--scaffold']);
+      expect(code).toBe(0);
+
+      // Verify config
+      expect(fs.existsSync(path.join(tempDir, '.stubs/config.json'))).toBe(true);
+
+      // Verify templates seeded
+      expect(fs.existsSync(path.join(tempDir, '.stubs/templates'))).toBe(true);
+      const templates = fs.readdirSync(path.join(tempDir, '.stubs/templates'));
+      expect(templates.length).toBeGreaterThan(0);
+
+      // Verify gitignore
+      expect(fs.existsSync(path.join(tempDir, '.gitignore'))).toBe(true);
+      const gitignore = fs.readFileSync(path.join(tempDir, '.gitignore'), 'utf8');
+      expect(gitignore).toContain('.stubs/graph.sqlite*');
+
+      // Verify Antigravity skills
+      expect(fs.existsSync(path.join(tempDir, '.agents/skills/stubs/SKILL.md'))).toBe(true);
+
+      // Verify Claude adapter
+      expect(fs.existsSync(path.join(tempDir, '.claude/skills/stubs/SKILL.md'))).toBe(true);
+
+      // Verify Cursor adapter
+      expect(fs.existsSync(path.join(tempDir, '.cursor/rules/stubs.mdc'))).toBe(true);
+
+      // Verify scaffolded context map
+      expect(fs.existsSync(path.join(tempDir, 'knowledge/architecture/context-map.md'))).toBe(true);
+    });
+
+    it('should preserve customized templates during update', async () => {
+      global.fetch = jest.fn().mockImplementation((url: string) => {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          statusText: 'OK',
+          arrayBuffer: () => Promise.resolve(Buffer.from(`mock content for ${url}`).buffer),
+        });
+      }) as any;
+
+      await router.route(['init']);
+
+      const customTemplatePath = path.join(tempDir, '.stubs/templates/my-custom.tpl');
+      fs.writeFileSync(customTemplatePath, 'custom mold content', 'utf8');
+
+      const existingServicePath = path.join(tempDir, '.stubs/templates/service.ts.md.tpl');
+      if (fs.existsSync(existingServicePath)) {
+        fs.writeFileSync(existingServicePath, 'user modified service template', 'utf8');
+      }
+
+      const updateCode = await router.route(['update']);
+      expect(updateCode).toBe(0);
+
+      // Verify custom template remains intact
+      expect(fs.readFileSync(customTemplatePath, 'utf8')).toBe('custom mold content');
+      if (fs.existsSync(existingServicePath)) {
+        expect(fs.readFileSync(existingServicePath, 'utf8')).toBe('user modified service template');
+      }
+    });
   });
 });

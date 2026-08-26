@@ -505,6 +505,39 @@ Using EJS/Handlebars to render a standard service module.
         return;
       }
 
+      // GET Planning Hub state and aggregated task metrics
+      if (
+        (pathname === '/api/planning' || pathname === '/api/v1/planning') &&
+        req.method === 'GET'
+      ) {
+        const { engine } = await this.resolveGraphEngine(parsedUrl);
+        const planningHub = await engine.getPlanningHub();
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(planningHub));
+        return;
+      }
+
+      // GET 5-Phase Lifecycle Matrix and status summary
+      if ((pathname === '/api/phases' || pathname === '/api/v1/phases') && req.method === 'GET') {
+        const { engine } = await this.resolveGraphEngine(parsedUrl);
+        const phaseStatus = await engine.getPhaseStatus();
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(phaseStatus));
+        return;
+      }
+
+      // GET Unified Project File Tree with planned blueprints
+      if ((pathname === '/api/tree' || pathname === '/api/v1/tree') && req.method === 'GET') {
+        const { engine } = await this.resolveGraphEngine(parsedUrl);
+        const includePlanned = parsedUrl.searchParams.get('planned') !== 'false';
+        const plannedOnly = parsedUrl.searchParams.get('plannedOnly') === 'true';
+        const rootDir = parsedUrl.searchParams.get('dir') || '.';
+        const treeData = await engine.getProjectFileTree({ includePlanned, plannedOnly, rootDir });
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(treeData));
+        return;
+      }
+
       // GET directives with optional status filter support
       if (
         (pathname === '/api/directives' || pathname === '/api/v1/directives') &&

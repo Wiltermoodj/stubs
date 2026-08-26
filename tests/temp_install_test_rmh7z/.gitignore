@@ -1,0 +1,3 @@
+# stubs framework
+.stubs/graph.sqlite*
+.stubs/*.sqlite

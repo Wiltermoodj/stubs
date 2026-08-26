@@ -17,6 +17,7 @@ export interface FileStorageDriver {
   writeFile(path: string, content: string): Promise<void>;
   exists(path: string): Promise<boolean>;
   readDir(path: string): Promise<string[]>;
+  mkdir(path: string, options?: { recursive?: boolean }): Promise<void>;
 }
 
 export interface FileSystemDriver extends FileStorageDriver {
@@ -64,6 +65,10 @@ export class NodeFileSystem implements FileSystemDriver {
 
   public async readDir(dirPath: string): Promise<string[]> {
     return await fs.readdir(dirPath);
+  }
+
+  public async mkdir(dirPath: string, options?: { recursive?: boolean }): Promise<void> {
+    await fs.mkdir(dirPath, options || { recursive: true });
   }
 
   public async glob(pattern: string): Promise<string[]> {
@@ -307,6 +312,10 @@ export class VirtualFileSystem implements FileSystemDriver {
       }
     }
     return Array.from(results);
+  }
+
+  public async mkdir(_dirPath: string, _options?: { recursive?: boolean }): Promise<void> {
+    // Virtual file system manages paths implicitly
   }
 
   public async glob(pattern: string): Promise<string[]> {

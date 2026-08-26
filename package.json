@@ -2,12 +2,13 @@
   "name": "stubs",
   "version": "1.0.0",
   "description": "stubs AI Agent Skill",
-  "main": ".agents/skills/stubs/dist/cli.cjs",
+  "main": "dist/cli.cjs",
   "bin": {
     "stubs": "bin/stubs.js"
   },
   "files": [
     "bin/",
+    "dist/",
     ".agents/skills/stubs/",
     ".stubs/templates/",
     "src/",
@@ -19,6 +20,7 @@
   "scripts": {
     "postinstall": "npm run build",
     "prepare": "npm run build",
+    "prepack": "npm run build",
     "build": "esbuild src/cli.ts --bundle --platform=node --target=node18 --outfile=.agents/skills/stubs/dist/cli.cjs --banner:js=\"#!/usr/bin/env node\" --external:sqlite3 && node scripts/copy-runtime-assets.js",
     "build:web": "node scripts/build-web.js",
     "predeploy:pages": "npm run build:web",

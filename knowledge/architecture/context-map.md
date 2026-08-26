@@ -58,6 +58,12 @@ Each domain in the `stubs` framework has a dedicated deep-dive context map locat
 
 ---
 
+## Planning Hub & Active Initiatives
+
+- **[Planning Hub & Initiative Map](../planning/planning-map.md)** — Central operational hub tracking active conceptual blueprints, lifecycle phases, and multi-agent task trackers.
+
+---
+
 ## Architectural Principles
 
 1. **Deep Modules:** Large, simple interface contracts hiding dense implementation details.

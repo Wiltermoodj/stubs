@@ -8,7 +8,9 @@ export interface OkfFrontmatter {
     | 'module-stub'
     | 'concept-doc'
     | 'architecture-decision'
-    | 'architecture-doc';
+    | 'architecture-doc'
+    | 'planning-map'
+    | 'initiative-plan';
   description: string;
   tags: string[];
   module_depth?: 'deep' | 'shallow';
@@ -16,8 +18,22 @@ export interface OkfFrontmatter {
   template_source?: string;
   template_version?: number | string;
   status:
-    'skeleton' | 'spec' | 'implemented' | 'materialized' | 'grilling' | 'partially-materialized';
+    | 'skeleton'
+    | 'spec'
+    | 'implemented'
+    | 'materialized'
+    | 'grilling'
+    | 'partially-materialized'
+    | 'active'
+    | 'clean'
+    | 'draft';
   version: number;
+  phase?: 'conceptualize' | 'grill' | 'spec' | 'materialize' | 'sand' | 'sand-audit' | string;
+  initiative?: string;
+  planned_files?: Array<
+    string | { path: string; type?: 'file' | 'dir' | 'spec'; description?: string }
+  >;
+  tasks?: Array<{ text: string; completed: boolean; line?: number }>;
   target_code_file?: string;
   exports?: string[];
   depends_on?: string[];
@@ -55,6 +71,12 @@ export interface ParsedOkfSpec {
   errors: string[];
 }
 
+export interface FileTreeEntry {
+  path: string;
+  type: 'file' | 'dir' | 'spec';
+  description?: string;
+}
+
 /**
  * Checks if a spec represents an executable code sidecar rather than a pure concept document.
  */
@@ -73,6 +95,122 @@ export function isCodeSidecar(frontmatter: OkfFrontmatter | null, filePath?: str
     }
   }
   return false;
+}
+
+/**
+ * Extracts content from ```filetree ... ``` or ````filetree ... ```` code blocks in markdown.
+ */
+export function extractFileTreeBlocks(markdown: string): string[] {
+  if (!markdown) return [];
+  const blocks: string[] = [];
+  const regex = /(?:`{4}|`{3})filetree[^\n]*\n([\s\S]*?)(?:`{4}|`{3})/gi;
+  let match: RegExpExecArray | null;
+  while ((match = regex.exec(markdown)) !== null) {
+    blocks.push(match[1].trim());
+  }
+  return blocks;
+}
+
+/**
+ * Parses ASCII or indented file tree declarations into structured file/directory entries.
+ */
+export function parseFileTreeEntries(treeText: string): FileTreeEntry[] {
+  if (!treeText) return [];
+
+  const lines = treeText.split(/\r?\n/);
+  const entries: FileTreeEntry[] = [];
+  const stack: Array<{ indent: number; name: string; isDir: boolean }> = [];
+
+  for (const rawLine of lines) {
+    if (!rawLine.trim()) continue;
+
+    // Extract comment / description if present
+    let lineContent = rawLine;
+    let description: string | undefined;
+
+    const commentMatch = lineContent.match(/\s*(?:#|\/\/)\s*(.*)$/);
+    if (commentMatch) {
+      description = commentMatch[1].trim();
+      lineContent = lineContent.substring(0, commentMatch.index);
+    }
+
+    if (!lineContent.trim()) continue;
+
+    // Calculate indentation depth before stripping drawing symbols
+    const leadingWhitespaceMatch = lineContent.match(/^(\s*)/);
+    const indent = leadingWhitespaceMatch ? leadingWhitespaceMatch[1].length : 0;
+
+    // Clean drawing characters: ├──, └──, │, |, +--, \--, *
+    let cleaned = lineContent.trim();
+    cleaned = cleaned.replace(/^(?:[│|├└+`\-–—\\/]\s*)+/g, '').trim();
+    cleaned = cleaned.replace(/^[├└+`\-–—\\/]+[─-]*\s*/g, '').trim();
+
+    if (!cleaned) continue;
+
+    const isExplicitDir = cleaned.endsWith('/');
+    const name = isExplicitDir ? cleaned.slice(0, -1) : cleaned;
+
+    // Pop stack entries that are at equal or deeper indentation
+    while (stack.length > 0 && stack[stack.length - 1].indent >= indent) {
+      stack.pop();
+    }
+
+    // Build the full path
+    const parentSegments = stack.map((s) => s.name);
+    const fullSegments = [...parentSegments, name];
+    const fullPath = fullSegments.join('/').replace(/\/+/g, '/');
+
+    // Determine type: 'dir', 'spec', or 'file'
+    let type: 'file' | 'dir' | 'spec';
+    if (isExplicitDir) {
+      type = 'dir';
+    } else if (name.endsWith('.md') || name.endsWith('.ts.md') || name.endsWith('.py.md')) {
+      type = 'spec';
+    } else {
+      type = 'file';
+    }
+
+    entries.push({
+      path: fullPath,
+      type,
+      ...(description ? { description } : {}),
+    });
+
+    stack.push({
+      indent,
+      name,
+      isDir: isExplicitDir || type === 'dir',
+    });
+  }
+
+  return entries;
+}
+
+/**
+ * Extracts markdown checklist items (- [ ] / - [x]) with line numbers.
+ */
+export function extractMarkdownChecklists(
+  markdown: string,
+): Array<{ text: string; completed: boolean; line: number }> {
+  if (!markdown) return [];
+  const lines = markdown.split(/\r?\n/);
+  const tasks: Array<{ text: string; completed: boolean; line: number }> = [];
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const match = line.match(/^\s*-\s*\[([ xX])\]\s*(.*)$/);
+    if (match) {
+      const isCompleted = match[1].toLowerCase() === 'x';
+      const text = match[2].trim();
+      tasks.push({
+        text,
+        completed: isCompleted,
+        line: i + 1,
+      });
+    }
+  }
+
+  return tasks;
 }
 
 /**
@@ -162,6 +300,8 @@ function validateFrontmatter(raw: any, result: ParsedOkfSpec): void {
     'concept-doc',
     'architecture-decision',
     'architecture-doc',
+    'planning-map',
+    'initiative-plan',
   ];
   if (raw.type !== undefined && !validTypes.includes(raw.type)) {
     result.errors.push(`Field "type" must be one of: ${validTypes.join(', ')}.`);
@@ -207,6 +347,9 @@ function validateFrontmatter(raw: any, result: ParsedOkfSpec): void {
     'materialized',
     'grilling',
     'partially-materialized',
+    'active',
+    'clean',
+    'draft',
   ];
   if (raw.status !== undefined && !validStatuses.includes(raw.status)) {
     result.errors.push(`Field "status" must be one of: ${validStatuses.join(', ')}.`);
@@ -214,6 +357,14 @@ function validateFrontmatter(raw: any, result: ParsedOkfSpec): void {
 
   if (raw.version !== undefined && typeof raw.version !== 'number') {
     result.errors.push('Field "version" must be a number.');
+  }
+
+  if (raw.phase !== undefined && typeof raw.phase !== 'string') {
+    result.errors.push('Field "phase" must be a string.');
+  }
+
+  if (raw.initiative !== undefined && typeof raw.initiative !== 'string') {
+    result.errors.push('Field "initiative" must be a string.');
   }
 
   if (raw.target_code_file !== undefined && typeof raw.target_code_file !== 'string') {

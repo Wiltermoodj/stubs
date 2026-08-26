@@ -2,6 +2,18 @@
 
 This document outlines the conventions and tooling rules AI agents must follow when operating in the `stubs` repository.
 
+## Planning Hub & 5-Phase Lifecycle
+
+All repository initiatives, conceptual blueprints, and multi-agent task trackers live under **[`knowledge/planning/`](knowledge/planning/)**:
+
+- **[`knowledge/planning/planning-map.md`](knowledge/planning/planning-map.md)** — Master Planning Hub index and active initiative map.
+- **5-Phase Lifecycle:**
+  1. `Conceptualize` (Problem framing, file tree blueprint: `stubs concept`)
+  2. `Grill` (Stress-testing decisions & ADRs: `stubs grill`)
+  3. `Spec / Scaffold` (OKF sidecar definitions & types: `stubs concept scaffold`)
+  4. `Materialize` (Executable code extraction: `stubs materialize`)
+  5. `Sand & Audit` (AST drift sync & health check: `stubs sand`, `stubs phase check`)
+
 ## Context Map — Read First
 
 Before making any code changes, read the architecture context map to understand the module structure, dependency layers, and core concepts:

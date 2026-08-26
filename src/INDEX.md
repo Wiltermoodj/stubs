@@ -91,6 +91,9 @@ exports:
 | [autonomy/protocol.ts.md](./autonomy/protocol.ts.md)       | `autonomy/protocol.ts`    | `spec` | `clean`     |
 | [compiler/typechecker.ts.md](./compiler/typechecker.ts.md) | `compiler/typechecker.ts` | `spec` | `clean`     |
 | [templates/engine.ts.md](./templates/engine.ts.md)         | `templates/engine.ts`     | `spec` | `clean`     |
+| [concept/engine.ts.md](./concept/engine.ts.md)             | `concept/engine.ts`       | `spec` | `clean`     |
+| [concept/tree.ts.md](./concept/tree.ts.md)                 | `concept/tree.ts`         | `spec` | `clean`     |
+| [phase/engine.ts.md](./phase/engine.ts.md)                 | `phase/engine.ts`         | `spec` | `clean`     |
 | [cli/router.ts.md](./cli/router.ts.md)                     | `cli/router.ts`           | `spec` | `clean`     |
 | [server/portal.ts.md](./server/portal.ts.md)               | `server/portal.ts`        | `spec` | `clean`     |
 | [server/github.ts.md](./server/github.ts.md)               | `server/github.ts`        | `spec` | `clean`     |

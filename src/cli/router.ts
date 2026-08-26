@@ -1,5 +1,6 @@
 import { promises as fs, existsSync } from 'fs';
 import * as path from 'path';
+import { execSync } from 'child_process';
 import { parseOkfSpec } from '../parser/okf';
 import { GraphEngine } from '../graph/engine';
 import { TemplateEngine } from '../templates/engine';
@@ -8,6 +9,9 @@ import { PortalServer } from '../server/portal';
 import { loadConfig } from '../config/schema';
 import { SandingEngine, SyncResult } from '../sanding/engine';
 import { MaterializerEngine } from '../materializer/engine';
+import { ConceptEngine } from '../concept/engine';
+import { TreeEngine } from '../concept/tree';
+import { PhaseEngine } from '../phase/engine';
 import { applyGlobalConsoleMasking } from '../storage/credentials';
 
 export interface CliContext {
@@ -71,6 +75,12 @@ export class CliRouter {
         case 'update':
         case 'upgrade':
           return await this.handleUpdate(context);
+        case 'concept':
+          return await this.handleConcept(context);
+        case 'tree':
+          return await this.handleTree(context);
+        case 'phase':
+          return await this.handlePhase(context);
         default:
           console.error(`Error: Unknown command "${context.command}". Use --help for usage.`);
           return 1;
@@ -115,6 +125,9 @@ Commands:
   auth login          Authenticate via Personal Access Tokens (PATs) and store globally.
   install             Fetch and install stubs skill and assets into the workspace.
   update, upgrade     Update installed stubs skill bundle or display package update instructions.
+  concept <action>    Manage concepts and blueprints. Actions: new <title>, scaffold <doc>, list
+  tree [options]      Display visual ASCII/Unicode file tree with planned & status markers.
+  phase <action>      Manage 5-phase lifecycle. Actions: status [file], check <file>, advance <file> [targetPhase]
   grill <file>       Execute the Interactive Grill Engine on a sidecar specification.
   materialize <file>  Parse, extract, typecheck, and write executable code from sidecar.
   audit <file>        Audit sidecar specifications and run retroactive reconciliation.
@@ -131,6 +144,10 @@ Commands:
 
 Options:
   -c, --config <path>  Specify path to stubs configuration file (default: .stubs/config.json)
+  --planned            Include planned blueprint files in visual tree
+  --status             Display phase and health status in tree / report
+  --all                Display all files and directories
+  --dry-run            Preview filetree scaffolding without writing to disk
   --depth <depth>      Specify grill depth (light_probe | standard_drill | deep_interrogation)
   --non-interactive    Run the grill engine in non-interactive (automated) mode
   --scaffold, --init   Scaffold root context-map.md and domains/ directory structure
@@ -145,9 +162,22 @@ Options:
   }
 
   private async handleInit(ctx: CliContext): Promise<number> {
+    const targetDir = process.cwd();
     const configPath = ctx.configPath || '.stubs/config.json';
-    const resolvedPath = path.resolve(configPath);
+    const resolvedPath = path.resolve(targetDir, configPath);
     const dir = path.dirname(resolvedPath);
+
+    const isScaffold =
+      ctx.args.includes('--scaffold') ||
+      ctx.args.includes('--init') ||
+      ctx.args.includes('--full') ||
+      ctx.args.includes('init') ||
+      ctx.args.includes('scaffold');
+
+    const isClaude = ctx.args.includes('--claude');
+    const isCursor = ctx.args.includes('--cursor');
+    const isAllAgents = ctx.args.includes('--all-agents') || ctx.args.includes('--all');
+    const force = ctx.args.includes('--force') || ctx.args.includes('-f');
 
     try {
       if (!existsSync(dir)) {
@@ -158,7 +188,7 @@ Options:
         console.log(`Configuration file already exists at ${resolvedPath}`);
       } else {
         const defaultConfig = {
-          project_name: 'stubs-workspace',
+          project_name: path.basename(targetDir) || 'stubs-workspace',
           version: '1.0.0',
           autonomy_level: 'guided_execution',
           paths: {
@@ -172,8 +202,27 @@ Options:
         console.log(`Initialized stubs configuration at "${configPath}".`);
       }
 
-      // Check if target directory has a package.json and advise on npm script shortcut
-      const targetPackageJsonPath = path.join(process.cwd(), 'package.json');
+      // 1. Seed standard templates
+      await this.seedDefaultTemplates(targetDir, force);
+
+      // 2. Configure .gitignore
+      await this.updateGitignore(targetDir);
+
+      // 3. Seed agent skills
+      await this.seedAgentSkills(targetDir, {
+        force,
+        claude: isClaude,
+        cursor: isCursor,
+        allAgents: isAllAgents,
+      });
+
+      // 4. Scaffold architecture context map if requested
+      if (isScaffold) {
+        await this.handleMap({ ...ctx, args: ['--scaffold'] });
+      }
+
+      // 5. Advise on package.json shortcut
+      const targetPackageJsonPath = path.join(targetDir, 'package.json');
       if (existsSync(targetPackageJsonPath)) {
         try {
           const pkgContent = await fs.readFile(targetPackageJsonPath, 'utf8');
@@ -188,6 +237,7 @@ Options:
         }
       }
 
+      console.log('stubs workspace initialized successfully.');
       return 0;
     } catch (error: any) {
       console.error(`Failed to initialize configuration: ${error.message || error}`);
@@ -608,47 +658,14 @@ Options:
   }
 
   private async handleInstall(ctx: CliContext): Promise<number> {
-    return await this.syncSkillBundle(ctx, false);
-  }
-
-  private async handleUpdate(ctx: CliContext): Promise<number> {
     const targetDir = process.cwd();
-    const skillDir = path.join(targetDir, '.agents/skills/stubs');
+    const force = ctx.args.includes('--force') || ctx.args.includes('-f');
+    const isClaude = ctx.args.includes('--claude');
+    const isCursor = ctx.args.includes('--cursor');
+    const isAllAgents = ctx.args.includes('--all-agents');
 
-    // Check if stubs is installed in package.json node_modules
-    const pkgJsonPath = path.join(targetDir, 'package.json');
-    let hasNpmDependency = false;
-    if (existsSync(pkgJsonPath)) {
-      try {
-        const pkg = JSON.parse(await fs.readFile(pkgJsonPath, 'utf8'));
-        if (pkg.dependencies?.stubs || pkg.devDependencies?.stubs) {
-          hasNpmDependency = true;
-        }
-      } catch {
-        // Ignore JSON read errors
-      }
-    }
-
-    if (hasNpmDependency) {
-      console.log('Detected stubs installed as an npm package dependency.');
-      console.log('To update to the latest version, run:');
-      console.log('  npm update stubs');
-      console.log('or reinstall from GitHub:');
-      console.log('  npm install --save-dev github:Wiltermoodj/stubs\n');
-    }
-
-    if (existsSync(skillDir) || !hasNpmDependency) {
-      console.log('Updating stubs agent skill in .agents/skills/stubs/...');
-      return await this.syncSkillBundle(ctx, true);
-    }
-
-    return 0;
-  }
-
-  private async syncSkillBundle(ctx: CliContext, isUpdate: boolean): Promise<number> {
     let repo = 'Wiltermoodj/stubs';
     let branch = 'main';
-    let force = isUpdate;
 
     let i = 0;
     while (i < ctx.args.length) {
@@ -673,20 +690,21 @@ Options:
       } else if (arg.startsWith('--branch=')) {
         branch = arg.split('=')[1];
         i++;
-      } else if (arg === '--force' || arg === '-f') {
-        force = true;
+      } else if (
+        arg === '--force' ||
+        arg === '-f' ||
+        arg === '--claude' ||
+        arg === '--cursor' ||
+        arg === '--all-agents'
+      ) {
         i++;
       } else {
-        console.error(
-          `Error: Unknown option "${arg}" for ${isUpdate ? 'update' : 'install'} command.`,
-        );
+        console.error(`Error: Unknown option "${arg}" for install command.`);
         return 1;
       }
     }
 
-    const targetDir = process.cwd();
     const destDir = path.join(targetDir, '.agents/skills/stubs');
-
     if (existsSync(destDir) && !force) {
       console.error(
         `Error: Installation directory already exists at "${destDir}". Use --force or -f to overwrite, or run 'stubs update' to refresh.`,
@@ -694,45 +712,513 @@ Options:
       return 1;
     }
 
-    console.log(`${isUpdate ? 'Updating' : 'Installing'} stubs skill from ${repo} (${branch})...`);
+    console.log(`Installing stubs skills and templates into workspace from ${repo} (${branch})...`);
+    try {
+      await this.seedDefaultTemplates(targetDir, force);
+      await this.seedAgentSkills(targetDir, {
+        force: true,
+        claude: isClaude,
+        cursor: isCursor,
+        allAgents: isAllAgents,
+        repo,
+        branch,
+        isInstall: true,
+      });
+      await this.updateGitignore(targetDir);
 
+      console.log('stubs installation completed successfully!');
+      return 0;
+    } catch (err: any) {
+      console.error(`Installation failed: ${err.message || err}`);
+      return 1;
+    }
+  }
+
+  private async handleUpdate(ctx: CliContext): Promise<number> {
+    const targetDir = process.cwd();
+    const force = ctx.args.includes('--force') || ctx.args.includes('-f');
+    const noPkgUpdate = ctx.args.includes('--no-package-update') || ctx.args.includes('--no-pkg');
+
+    let repo: string | undefined;
+    let branch: string | undefined;
+
+    let i = 0;
+    while (i < ctx.args.length) {
+      const arg = ctx.args[i];
+      if (arg === '--repo') {
+        if (i + 1 >= ctx.args.length) {
+          console.error('Error: Missing value for option --repo');
+          return 1;
+        }
+        repo = ctx.args[i + 1];
+        i += 2;
+      } else if (arg.startsWith('--repo=')) {
+        repo = arg.split('=')[1];
+        i++;
+      } else if (arg === '--branch') {
+        if (i + 1 >= ctx.args.length) {
+          console.error('Error: Missing value for option --branch');
+          return 1;
+        }
+        branch = ctx.args[i + 1];
+        i += 2;
+      } else if (arg.startsWith('--branch=')) {
+        branch = arg.split('=')[1];
+        i++;
+      } else if (
+        arg === '--force' ||
+        arg === '-f' ||
+        arg === '--no-package-update' ||
+        arg === '--no-pkg'
+      ) {
+        i++;
+      } else {
+        console.error(`Error: Unknown option "${arg}" for update command.`);
+        return 1;
+      }
+    }
+
+    console.log('Checking stubs components for updates...');
+
+    // 1. Check & update package manager dependency
+    const pkgJsonPath = path.join(targetDir, 'package.json');
+    let hasNpmDependency = false;
+    let isGitDep = false;
+    if (existsSync(pkgJsonPath)) {
+      try {
+        const pkg = JSON.parse(await fs.readFile(pkgJsonPath, 'utf8'));
+        const depVersion = pkg.dependencies?.stubs || pkg.devDependencies?.stubs;
+        if (depVersion) {
+          hasNpmDependency = true;
+          if (
+            typeof depVersion === 'string' &&
+            (depVersion.includes('github:') ||
+              depVersion.includes('git+') ||
+              depVersion.includes('git:'))
+          ) {
+            isGitDep = true;
+          }
+        }
+      } catch {
+        // Ignore JSON read errors
+      }
+    }
+
+    const pm = this.detectPackageManager(targetDir);
+
+    if (hasNpmDependency) {
+      console.log('Detected stubs installed as an npm package dependency.');
+      console.log('To update to the latest version, run:');
+      console.log('  npm update stubs');
+      console.log('or reinstall from GitHub:');
+      console.log('  npm install --save-dev github:Wiltermoodj/stubs\n');
+
+      if (!noPkgUpdate && process.env.NODE_ENV !== 'test') {
+        this.runPackageUpdate(targetDir, pm, isGitDep, repo, branch);
+      }
+    }
+
+    // 2. Refresh agent skills
+    console.log('Updating stubs agent skill in .agents/skills/stubs/...');
+    try {
+      await this.seedAgentSkills(targetDir, { force: true, repo, branch });
+    } catch (err: any) {
+      console.error(`Update failed: ${err.message || err}`);
+      return 1;
+    }
+
+    // 3. Refresh templates non-destructively
+    try {
+      await this.seedDefaultTemplates(targetDir, force);
+    } catch (err: any) {
+      console.warn(`Template refresh note: ${err.message || err}`);
+    }
+
+    // 4. Update .gitignore
+    await this.updateGitignore(targetDir);
+
+    // 5. Run database migrations
+    await this.runDatabaseMigrations(targetDir);
+
+    console.log('stubs update completed successfully!');
+    return 0;
+  }
+
+  public detectPackageManager(targetDir: string): string {
+    if (existsSync(path.join(targetDir, 'pnpm-lock.yaml'))) return 'pnpm';
+    if (existsSync(path.join(targetDir, 'yarn.lock'))) return 'yarn';
+    if (
+      existsSync(path.join(targetDir, 'bun.lockb')) ||
+      existsSync(path.join(targetDir, 'bun.lock'))
+    ) {
+      return 'bun';
+    }
+    return 'npm';
+  }
+
+  public runPackageUpdate(
+    targetDir: string,
+    pm: string,
+    isGitDep: boolean,
+    repo?: string,
+    branch?: string,
+  ): void {
+    const targetRepo = repo || 'Wiltermoodj/stubs';
+    const gitTarget = `github:${targetRepo}${branch && branch !== 'main' ? '#' + branch : ''}`;
+    let cmd: string;
+
+    switch (pm) {
+      case 'pnpm':
+        cmd = isGitDep ? `pnpm add -D ${gitTarget}` : 'pnpm add -D stubs@latest';
+        break;
+      case 'yarn':
+        cmd = isGitDep ? `yarn add -D ${gitTarget}` : 'yarn add -D stubs@latest';
+        break;
+      case 'bun':
+        cmd = isGitDep ? `bun add -d ${gitTarget}` : 'bun add -d stubs@latest';
+        break;
+      case 'npm':
+      default:
+        cmd = isGitDep
+          ? `npm install --save-dev ${gitTarget}`
+          : 'npm install --save-dev stubs@latest';
+        break;
+    }
+
+    try {
+      execSync(cmd, { cwd: targetDir, stdio: 'inherit' });
+    } catch (err: any) {
+      console.warn(
+        `Note: Package manager update via '${cmd}' encountered an error (${err.message || err}).`,
+      );
+    }
+  }
+
+  public async runDatabaseMigrations(targetDir: string): Promise<void> {
+    const dbPath = path.join(targetDir, '.stubs/graph.sqlite');
+    if (existsSync(dbPath)) {
+      try {
+        const graph = new GraphEngine({ dbPath });
+        await graph.initialize();
+        await graph.close();
+      } catch (err: any) {
+        console.warn(`Database migration check note: ${err.message || err}`);
+      }
+    }
+  }
+
+  public async seedDefaultTemplates(targetDir: string, force: boolean = false): Promise<string[]> {
+    const templatesDir = path.join(targetDir, '.stubs/templates');
+    await fs.mkdir(templatesDir, { recursive: true });
+
+    // Look for candidate bundled mold sources
+    const candidateMoldDirs = [
+      path.join(__dirname, 'templates'),
+      path.join(__dirname, '../templates'),
+      path.join(__dirname, '../../.stubs/templates'),
+      path.join(__dirname, '../../../.stubs/templates'),
+    ];
+
+    const seeded: string[] = [];
+    let foundDir: string | undefined;
+    for (const dir of candidateMoldDirs) {
+      if (dir !== templatesDir && existsSync(dir)) {
+        try {
+          const files = await fs.readdir(dir);
+          const tpls = files.filter((f) => f.endsWith('.tpl'));
+          if (tpls.length > 0) {
+            foundDir = dir;
+            break;
+          }
+        } catch {
+          // Ignore read errors
+        }
+      }
+    }
+
+    if (foundDir) {
+      const files = await fs.readdir(foundDir);
+      for (const file of files.filter((f) => f.endsWith('.tpl'))) {
+        const destFile = path.join(templatesDir, file);
+        if (!existsSync(destFile) || force) {
+          const content = await fs.readFile(path.join(foundDir, file), 'utf8');
+          await fs.writeFile(destFile, content, 'utf8');
+          seeded.push(file);
+        }
+      }
+    }
+
+    // Built-in fallback molds
+    const fallbackMolds: Record<string, string> = {
+      'concept-doc.md.tpl': `---
+title: "{{title}}"
+type: "concept-doc"
+description: "{{description}}"
+tags:
+  - concept
+status: "concept"
+version: 1
+---
+
+# {{title}}
+
+## Problem Statement & Context
+{{description}}
+
+## Architectural Decisions
+<!-- Key decisions and rationale -->
+
+## Next Steps
+<!-- Actions to advance this concept -->
+`,
+      'initiative-plan.md.tpl': `---
+title: "{{title}}"
+type: "initiative-plan"
+description: "{{description}}"
+tags:
+  - initiative
+status: "concept"
+version: 1
+---
+
+# {{title}} — Initiative Plan
+
+## Overview
+{{description}}
+
+## Planned File Blueprint
+<!-- Blueprint of target files -->
+
+## Phase Roadmap
+- [ ] Phase 1: Conceptualize
+- [ ] Phase 2: Grill
+- [ ] Phase 3: Scaffold & Types
+- [ ] Phase 4: Materialize
+- [ ] Phase 5: Sand & Audit
+`,
+      'planning-map.md.tpl': `---
+title: "Planning Map"
+type: "planning-map"
+description: "Master project planning and initiative roadmap"
+tags:
+  - planning
+status: "spec"
+version: 1
+---
+
+# Master Planning Map
+
+## Active Initiatives
+| Initiative | Target Subsystem | Status |
+| :--- | :--- | :--- |
+| Initial Setup | Core | In Progress |
+`,
+      'service.ts.md.tpl': `---
+title: "{{title}}"
+type: "sidecar-spec"
+description: "{{description}}"
+tags:
+  - service
+status: "spec"
+version: 1
+target_code_file: "./{{name}}.ts"
+status_flag: "clean"
+---
+
+# {{title}}
+
+## Interfaces
+\`\`\`typescript
+export interface {{pascalName}}Config {
+  enabled: boolean;
+}
+\`\`\`
+
+## Implementation
+\`\`\`typescript
+export class {{pascalName}} {
+  constructor(private config: {{pascalName}}Config) {}
+}
+\`\`\`
+`,
+    };
+
+    for (const [name, content] of Object.entries(fallbackMolds)) {
+      const destFile = path.join(templatesDir, name);
+      if (!existsSync(destFile)) {
+        await fs.writeFile(destFile, content, 'utf8');
+        if (!seeded.includes(name)) {
+          seeded.push(name);
+        }
+      }
+    }
+
+    return seeded;
+  }
+
+  public async seedAgentSkills(
+    targetDir: string,
+    options: {
+      force?: boolean;
+      claude?: boolean;
+      cursor?: boolean;
+      allAgents?: boolean;
+      repo?: string;
+      branch?: string;
+      isInstall?: boolean;
+    } = {},
+  ): Promise<void> {
+    const destDir = path.join(targetDir, '.agents/skills/stubs');
     const SKILL_FILES = [
       '.agents/skills/stubs/SKILL.md',
       '.agents/skills/stubs/.gitignore',
       '.agents/skills/stubs/sub-skills/auditing/SKILL.md',
+      '.agents/skills/stubs/sub-skills/conceptualizing/SKILL.md',
       '.agents/skills/stubs/sub-skills/context-mapping/SKILL.md',
       '.agents/skills/stubs/sub-skills/grilling/SKILL.md',
       '.agents/skills/stubs/sub-skills/materialization/SKILL.md',
       '.agents/skills/stubs/sub-skills/sanding/SKILL.md',
     ];
 
-    try {
+    const isCustomRemote = Boolean(options.repo || options.branch || options.isInstall);
+    let copiedLocally = false;
+
+    if (!isCustomRemote) {
+      const candidateRoots = [
+        path.resolve(__dirname, '..'),
+        path.resolve(__dirname, '../..'),
+        path.resolve(__dirname, '../../..'),
+      ];
+
+      for (const root of candidateRoots) {
+        const rootMainSkill = path.join(root, '.agents/skills/stubs/SKILL.md');
+        if (existsSync(rootMainSkill) && path.resolve(root) !== path.resolve(targetDir)) {
+          try {
+            await fs.mkdir(destDir, { recursive: true });
+            for (const file of SKILL_FILES) {
+              const srcPath = path.join(root, file);
+              if (existsSync(srcPath)) {
+                const localPath = path.join(targetDir, file);
+                await fs.mkdir(path.dirname(localPath), { recursive: true });
+                const content = await fs.readFile(srcPath);
+                await fs.writeFile(localPath, content);
+              }
+            }
+            copiedLocally = true;
+            break;
+          } catch {
+            // Fall back to remote fetch if local copy fails
+          }
+        }
+      }
+    }
+
+    if (!copiedLocally) {
+      const repo = options.repo || 'Wiltermoodj/stubs';
+      const branch = options.branch || 'main';
       await fs.mkdir(destDir, { recursive: true });
 
       for (const file of SKILL_FILES) {
         const url = `https://raw.githubusercontent.com/${repo}/${branch}/${file}`;
-        console.log(`Downloading ${file} from ${url}...`);
-
-        const res = await fetch(url);
-        if (!res.ok) {
-          throw new Error(
-            `Failed to download ${file}: HTTP status ${res.status} ${res.statusText}`,
-          );
+        try {
+          const res = await fetch(url);
+          if (!res.ok) {
+            if (!options.isInstall) {
+              // If remote fetch returns error during non-install, try local root fallback
+              const candidateRoots = [
+                path.resolve(__dirname, '..'),
+                path.resolve(__dirname, '../..'),
+                path.resolve(__dirname, '../../..'),
+              ];
+              let fallbackFound = false;
+              for (const root of candidateRoots) {
+                const srcPath = path.join(root, file);
+                if (existsSync(srcPath)) {
+                  const localPath = path.join(targetDir, file);
+                  await fs.mkdir(path.dirname(localPath), { recursive: true });
+                  const content = await fs.readFile(srcPath);
+                  await fs.writeFile(localPath, content);
+                  fallbackFound = true;
+                  break;
+                }
+              }
+              if (!fallbackFound) {
+                throw new Error(
+                  `Failed to download ${file}: HTTP status ${res.status} ${res.statusText}`,
+                );
+              }
+            } else {
+              throw new Error(
+                `Failed to download ${file}: HTTP status ${res.status} ${res.statusText}`,
+              );
+            }
+          } else {
+            const buffer = Buffer.from(await res.arrayBuffer());
+            const localPath = path.join(targetDir, file);
+            await fs.mkdir(path.dirname(localPath), { recursive: true });
+            await fs.writeFile(localPath, buffer);
+          }
+        } catch (fetchErr: any) {
+          if (!options.isInstall) {
+            // If fetch fails (network/offline) during non-install, try local file fallback
+            const candidateRoots = [
+              path.resolve(__dirname, '..'),
+              path.resolve(__dirname, '../..'),
+              path.resolve(__dirname, '../../..'),
+            ];
+            let fallbackFound = false;
+            for (const root of candidateRoots) {
+              const srcPath = path.join(root, file);
+              if (existsSync(srcPath)) {
+                const localPath = path.join(targetDir, file);
+                await fs.mkdir(path.dirname(localPath), { recursive: true });
+                const content = await fs.readFile(srcPath);
+                await fs.writeFile(localPath, content);
+                fallbackFound = true;
+                break;
+              }
+            }
+            if (!fallbackFound) {
+              throw fetchErr;
+            }
+          } else {
+            throw fetchErr;
+          }
         }
-        const buffer = Buffer.from(await res.arrayBuffer());
-
-        const localPath = path.join(targetDir, file);
-        await fs.mkdir(path.dirname(localPath), { recursive: true });
-        await fs.writeFile(localPath, buffer);
       }
+    }
 
-      await this.updateGitignore(targetDir);
+    // Claude Code adapter (.claude/skills/stubs/SKILL.md)
+    if (options.claude || options.allAgents) {
+      const claudeSkillDir = path.join(targetDir, '.claude/skills/stubs');
+      await fs.mkdir(claudeSkillDir, { recursive: true });
+      const mainSkillPath = path.join(destDir, 'SKILL.md');
+      if (existsSync(mainSkillPath)) {
+        const skillContent = await fs.readFile(mainSkillPath, 'utf8');
+        await fs.writeFile(path.join(claudeSkillDir, 'SKILL.md'), skillContent, 'utf8');
+      }
+      console.log(`Configured Claude Code skill adapter at "${claudeSkillDir}".`);
+    }
 
-      console.log(`stubs ${isUpdate ? 'update' : 'installation'} completed successfully!`);
-      return 0;
-    } catch (err: any) {
-      console.error(`${isUpdate ? 'Update' : 'Installation'} failed: ${err.message || err}`);
-      return 1;
+    // Cursor Rules adapter (.cursor/rules/stubs.mdc)
+    if (options.cursor || options.allAgents) {
+      const cursorRulesDir = path.join(targetDir, '.cursor/rules');
+      await fs.mkdir(cursorRulesDir, { recursive: true });
+      const cursorRuleContent = `---
+description: stubs architecture-as-code specification and sanding rules
+globs: **/*.ts, **/*.py, **/*.go, **/*.md
+---
+
+# stubs Framework Instructions
+
+This project uses the \`stubs\` architecture-as-code sidecar framework.
+- **Specification Layer**: Specification sidecars (*.<ext>.md) define interfaces, types, and ADRs.
+- **Code Sanding**: Keep code and specs in sync with \`npx stubs sand\`.
+- **Grilling**: Stress-test designs with \`npx stubs grill <file.md>\`.
+- **Materialization**: Extract executable code with \`npx stubs materialize <file.md>\`.
+`;
+      await fs.writeFile(path.join(cursorRulesDir, 'stubs.mdc'), cursorRuleContent, 'utf8');
+      console.log(`Configured Cursor rules adapter at "${cursorRulesDir}/stubs.mdc".`);
     }
   }
 
@@ -851,5 +1337,289 @@ Describe the primary purpose and execution model of the application.
     } else {
       console.error(`  - ${result.filePath}: Error: ${result.error}`);
     }
+  }
+
+  private async handleConcept(ctx: CliContext): Promise<number> {
+    const config = loadConfig(ctx.configPath);
+    const graphEngine = new GraphEngine(config.paths.db_path);
+    await graphEngine.initialize();
+    const conceptEngine = new ConceptEngine({
+      graphEngine,
+      templatesDir: config.paths.templates_dir,
+    });
+
+    const action = ctx.args[0];
+
+    if (action === 'new') {
+      const title = ctx.args[1];
+      if (!title) {
+        console.error(
+          'Error: Concept title is required. Usage: stubs concept new <title> [options]',
+        );
+        return 1;
+      }
+
+      let type: 'concept-doc' | 'initiative-plan' | 'planning-map' = 'concept-doc';
+      let domain: string | undefined;
+      let initiative: string | undefined;
+      let targetPath: string | undefined;
+      let description: string | undefined;
+
+      for (let i = 2; i < ctx.args.length; i++) {
+        const arg = ctx.args[i];
+        if (arg === '--type' && ctx.args[i + 1]) {
+          type = ctx.args[i + 1] as any;
+          i++;
+        } else if (arg.startsWith('--type=')) {
+          type = arg.split('=')[1] as any;
+        } else if (arg === '--domain' && ctx.args[i + 1]) {
+          domain = ctx.args[i + 1];
+          i++;
+        } else if (arg.startsWith('--domain=')) {
+          domain = arg.split('=')[1];
+        } else if (arg === '--initiative' && ctx.args[i + 1]) {
+          initiative = ctx.args[i + 1];
+          i++;
+        } else if (arg.startsWith('--initiative=')) {
+          initiative = arg.split('=')[1];
+        } else if (arg === '--target' && ctx.args[i + 1]) {
+          targetPath = ctx.args[i + 1];
+          i++;
+        } else if (arg.startsWith('--target=')) {
+          targetPath = arg.split('=')[1];
+        } else if (arg === '--description' || arg === '--desc') {
+          description = ctx.args[i + 1];
+          i++;
+        }
+      }
+
+      const result = await conceptEngine.createConcept({
+        title,
+        type,
+        domain,
+        initiative,
+        targetPath,
+        description,
+      });
+
+      console.log(`✓ Created ${type} at "${result.filePath}".`);
+      return 0;
+    }
+
+    if (action === 'scaffold') {
+      const docPath = ctx.args[1];
+      if (!docPath) {
+        console.error('Error: Document path is required. Usage: stubs concept scaffold <docPath>');
+        return 1;
+      }
+
+      const dryRun = ctx.args.includes('--dry-run');
+      const overwrite = ctx.args.includes('--overwrite') || ctx.args.includes('-f');
+
+      const result = await conceptEngine.scaffoldFileTreeFromDoc(docPath, { dryRun, overwrite });
+
+      if (result.errors.length > 0) {
+        console.error(`Scaffold completed with errors:\n${result.errors.join('\n')}`);
+      }
+
+      console.log(`Scaffolding blueprint from "${docPath}" ${dryRun ? '[DRY RUN]' : ''}:`);
+      console.log(`  ✓ Created: ${result.created.length} file(s)/directory(s)`);
+      result.created.forEach((c) => console.log(`    + ${c}`));
+      if (result.skipped.length > 0) {
+        console.log(`  ↷ Skipped (already exists): ${result.skipped.length} file(s)`);
+        result.skipped.forEach((s) => console.log(`    - ${s}`));
+      }
+
+      return result.errors.length > 0 ? 1 : 0;
+    }
+
+    if (action === 'list') {
+      const dir = ctx.args[1] || '.';
+      const concepts = await conceptEngine.listConcepts(dir);
+      if (concepts.length === 0) {
+        console.log('No concept documents or initiative plans found in workspace.');
+        return 0;
+      }
+
+      console.log(`Found ${concepts.length} conceptual blueprint(s):`);
+      console.log(
+        '--------------------------------------------------------------------------------',
+      );
+      console.log(`${'Type'.padEnd(16)} | ${'Phase'.padEnd(14)} | ${'Title'.padEnd(30)} | Path`);
+      console.log(
+        '--------------------------------------------------------------------------------',
+      );
+      concepts.forEach((c) => {
+        console.log(
+          `${c.type.padEnd(16)} | ${c.phase.padEnd(14)} | ${c.title.slice(0, 28).padEnd(30)} | ${c.filePath}`,
+        );
+      });
+      return 0;
+    }
+
+    console.log(`
+Usage:
+  stubs concept <action> [options]
+
+Actions:
+  new <title>        Create new concept document, initiative plan, or planning map
+  scaffold <doc>     Scaffold file tree blueprint and skeleton sidecars from a doc
+  list [dir]         List all concept docs and initiative plans in the workspace
+
+Options:
+  --type <type>      Document type (concept-doc | initiative-plan | planning-map)
+  --domain <name>    Domain name to co-locate concept in src/<domain>/
+  --initiative <key> Initiative identifier
+  --dry-run          Preview scaffolding without modifying filesystem
+  --overwrite        Overwrite existing files
+`);
+    return 0;
+  }
+
+  private async handleTree(ctx: CliContext): Promise<number> {
+    const config = loadConfig(ctx.configPath);
+    const graphEngine = new GraphEngine(config.paths.db_path);
+    await graphEngine.initialize();
+    const treeEngine = new TreeEngine({ graphEngine });
+
+    let rootDir = '.';
+    let includePlanned = true;
+    let plannedOnly = false;
+    let showStatus = true;
+    let maxDepth = 8;
+
+    for (let i = 0; i < ctx.args.length; i++) {
+      const arg = ctx.args[i];
+      if (arg === '--planned') {
+        includePlanned = true;
+      } else if (arg === '--no-planned') {
+        includePlanned = false;
+      } else if (arg === '--planned-only') {
+        plannedOnly = true;
+      } else if (arg === '--status') {
+        showStatus = true;
+      } else if (arg === '--no-status') {
+        showStatus = false;
+      } else if (arg === '--dir' && ctx.args[i + 1]) {
+        rootDir = ctx.args[i + 1];
+        i++;
+      } else if (arg.startsWith('--dir=')) {
+        rootDir = arg.split('=')[1];
+      } else if (arg === '--depth' && ctx.args[i + 1]) {
+        maxDepth = parseInt(ctx.args[i + 1], 10) || 8;
+        i++;
+      } else if (!arg.startsWith('-') && !rootDir) {
+        rootDir = arg;
+      }
+    }
+
+    const treeOutput = await treeEngine.generateVisualTree({
+      rootDir,
+      includePlanned,
+      plannedOnly,
+      showStatus,
+      maxDepth,
+    });
+
+    console.log(treeOutput);
+    return 0;
+  }
+
+  private async handlePhase(ctx: CliContext): Promise<number> {
+    const config = loadConfig(ctx.configPath);
+    const graphEngine = new GraphEngine(config.paths.db_path);
+    await graphEngine.initialize();
+    const phaseEngine = new PhaseEngine({ graphEngine });
+
+    const action = ctx.args[0];
+
+    if (action === 'check') {
+      const file = ctx.args[1];
+      if (!file) {
+        console.error('Error: File path is required. Usage: stubs phase check <file>');
+        return 1;
+      }
+
+      const result = await phaseEngine.checkPhase(file);
+      console.log(`\nPhase Verification: ${result.filePath}`);
+      console.log(`Current Phase : [${result.currentPhase.toUpperCase()}]`);
+      console.log(
+        `Next Phase    : ${result.nextPhase ? `[${result.nextPhase.toUpperCase()}]` : 'None (Terminal Phase)'}`,
+      );
+      console.log(
+        `Status        : ${result.canAdvance ? '✓ Ready to Advance' : '✗ Gating Rules Not Met'}\n`,
+      );
+
+      console.log('Requirements:');
+      result.requirements.forEach((req) => {
+        const mark = req.passed ? '✓' : '✗';
+        console.log(`  ${mark} ${req.rule}${req.details ? ` (${req.details})` : ''}`);
+      });
+
+      if (result.errors.length > 0) {
+        console.log('\nBlocking Issues:');
+        result.errors.forEach((err) => console.log(`  - ${err}`));
+      }
+
+      return result.canAdvance ? 0 : 1;
+    }
+
+    if (action === 'advance') {
+      const file = ctx.args[1];
+      if (!file) {
+        console.error(
+          'Error: File path is required. Usage: stubs phase advance <file> [targetPhase]',
+        );
+        return 1;
+      }
+
+      const targetPhase = ctx.args[2] && !ctx.args[2].startsWith('-') ? ctx.args[2] : undefined;
+      const force = ctx.args.includes('--force') || ctx.args.includes('-f');
+
+      const result = await phaseEngine.advancePhase(file, targetPhase, { force });
+      if (result.success) {
+        console.log(
+          `✓ Advanced phase for "${result.filePath}": ${result.fromPhase.toUpperCase()} ──► ${result.toPhase.toUpperCase()}`,
+        );
+        return 0;
+      } else {
+        console.error(`✗ Failed to advance phase for "${result.filePath}":`);
+        result.errors.forEach((e) => console.error(`  - ${e}`));
+        return 1;
+      }
+    }
+
+    // Default or 'status'
+    const targetFile =
+      action === 'status' ? ctx.args[1] : action && !action.startsWith('-') ? action : undefined;
+    if (targetFile) {
+      const result = await phaseEngine.checkPhase(targetFile);
+      console.log(
+        `File: ${result.filePath} | Phase: [${result.currentPhase.toUpperCase()}] | Next: ${result.nextPhase ? `[${result.nextPhase.toUpperCase()}]` : 'N/A'}`,
+      );
+      return 0;
+    }
+
+    // Workspace-wide summary
+    const matrix = await phaseEngine.getWorkspacePhaseMatrix();
+    console.log('\nStubs 5-Phase Lifecycle Matrix');
+    console.log('================================================================================');
+    console.log(
+      `Summary: Conceptualize: ${matrix.summary.conceptualize} | Grill: ${matrix.summary.grill} | Spec: ${matrix.summary.spec} | Materialize: ${matrix.summary.materialize} | Sand: ${matrix.summary.sand} | Total: ${matrix.summary.total}`,
+    );
+    console.log('--------------------------------------------------------------------------------');
+    console.log(
+      `${'Phase'.padEnd(15)} | ${'Ready'.padEnd(6)} | ${'Status'.padEnd(12)} | File Path`,
+    );
+    console.log('--------------------------------------------------------------------------------');
+    matrix.sidecars.forEach((s) => {
+      console.log(
+        `${s.phase.padEnd(15)} | ${(s.canAdvance ? '✓' : '-').padEnd(6)} | ${s.status_flag.padEnd(12)} | ${s.filePath}`,
+      );
+    });
+    console.log(
+      '================================================================================\n',
+    );
+    return 0;
   }
 }

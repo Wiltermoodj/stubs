@@ -33,24 +33,32 @@ Instead of jumping directly from natural language prompts to executable code—a
 
 ## Installation Guide
 
-### Option 1: Install as a Project Dependency (Recommended)
+### Option 1: Quickstart with `npx` (Zero Installation Required)
 
-Install directly into your target repository's `devDependencies`:
+Initialize `stubs` immediately in any repository:
 
 ```bash
+# Initialize configuration, templates, gitignore, and agent skills
+npx stubs init
+
+# Or initialize with all agent adapters (Claude, Cursor, Antigravity) and architecture scaffolding:
+npx stubs init --all-agents --scaffold
+```
+
+---
+
+### Option 2: Install as a Project Dependency (Recommended)
+
+Add `stubs` to your project's `devDependencies`:
+
+```bash
+npm install --save-dev stubs
+# Or from GitHub repository:
 npm install --save-dev github:Wiltermoodj/stubs
 ```
 
-Once installed, invoke commands directly via `npx`:
+Once installed, invoke commands directly via `npx` or add a script in `package.json`:
 
-```bash
-npx stubs init
-npx stubs map --scaffold
-npx stubs sand
-npx stubs grill <file.md>
-```
-
-Or add a shortcut script in `package.json`:
 ```json
 {
   "scripts": {
@@ -59,41 +67,43 @@ Or add a shortcut script in `package.json`:
 }
 ```
 
-Then invoke with:
+Then run:
+
 ```bash
 npm run stubs -- init
-```
-
-To update `stubs` to the latest version at any time:
-```bash
-npm update stubs
-# or
-npm install --save-dev github:Wiltermoodj/stubs
+npm run stubs -- sand
+npm run stubs -- grill <file.md>
 ```
 
 ---
 
-### Option 2: Global CLI Install
+### Option 3: Global CLI Install
 
-To install the `stubs` command globally so it can be run from any directory:
+To install the `stubs` command globally:
 
 ```bash
+npm install -g stubs
+# Or from GitHub:
 npm install -g github:Wiltermoodj/stubs
 ```
 
-Or link from a local clone:
-```bash
-cd /path/to/stubs
-npm link
-```
+---
 
-Then invoke anywhere:
+## Updating `stubs`
+
+To update `stubs` to the latest version in your repository without manual reinstallations:
+
 ```bash
-stubs init
-stubs map
-stubs serve
+npx stubs update
+# Or if installed:
 stubs update
 ```
+
+The smart updater will:
+1. Detect your package manager (`npm`, `pnpm`, `yarn`, `bun`) and update the dependency.
+2. Refresh agent skills in `.agents/skills/stubs/` and configured adapters (`.claude/`, `.cursor/`).
+3. Seed any new standard templates while **preserving your custom and modified templates**.
+4. Automatically perform in-place SQLite schema migrations in `.stubs/graph.sqlite`.
 
 ---
 

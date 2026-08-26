@@ -3,26 +3,36 @@
  * Copy the runtime assets the bundled CLI needs at execution time.
  *
  * `npm run build` produces a single esbuild bundle at
- * `.agents/skills/stubs/dist/cli.cjs`. Bundling inlines module *code*, but any
- * dependency that reads a real file off disk at runtime breaks, because the
- * path it derives points into the dist directory rather than node_modules.
+ * `.agents/skills/stubs/dist/cli.cjs` and mirrors to `dist/cli.cjs`.
+ * Bundling inlines module *code*, but any dependency that reads a real
+ * file off disk at runtime breaks, because the path it derives points
+ * into the dist directory rather than node_modules.
  * Two dependencies do exactly that:
  *
  *   - sql.js  -> loads `sql-wasm.wasm`
  *   - typescript -> loads `lib.*.d.ts` (the standard library) via the compiler
- *     host's getDefaultLibLocation(). Without these, every `stubs materialize`
- *     run outside this repository failed with "Cannot find global type
- *     'String'" — a missing-toolchain fault reported as a user spec error.
+ *     host's getDefaultLibLocation().
  *
- * Both are therefore staged next to the bundle. The resolvers in
- * src/storage/index.ts (locateFile) and src/compiler/typechecker.ts
- * (resolveDefaultLibLocation) probe these locations first.
+ * Both are therefore staged next to the bundle in both target dist locations.
  */
 const fs = require('fs');
 const path = require('path');
 
 const repoRoot = path.resolve(__dirname, '..');
-const distDir = path.join(repoRoot, '.agents/skills/stubs/dist');
+const primaryDist = path.join(repoRoot, '.agents/skills/stubs/dist');
+const rootDist = path.join(repoRoot, 'dist');
+const targetDirs = [primaryDist, rootDist];
+
+for (const dir of targetDirs) {
+  fs.mkdirSync(dir, { recursive: true });
+}
+
+// Mirror cli.cjs into root dist if it was generated in primaryDist
+const primaryBundle = path.join(primaryDist, 'cli.cjs');
+const rootBundle = path.join(rootDist, 'cli.cjs');
+if (fs.existsSync(primaryBundle)) {
+  fs.copyFileSync(primaryBundle, rootBundle);
+}
 
 // Search candidate locations for sql-wasm.wasm
 const sqlCandidates = [
@@ -31,7 +41,9 @@ const sqlCandidates = [
   path.join(repoRoot, '../../node_modules/sql.js/dist/sql-wasm.wasm'),
 ];
 try {
-  const resolvedSql = require.resolve('sql.js/dist/sql-wasm.wasm', { paths: [repoRoot, process.cwd()] });
+  const resolvedSql = require.resolve('sql.js/dist/sql-wasm.wasm', {
+    paths: [repoRoot, process.cwd()],
+  });
   sqlCandidates.unshift(resolvedSql);
 } catch {}
 try {
@@ -54,50 +66,50 @@ try {
 
 const tsLibSrc = tsCandidates.find((p) => fs.existsSync(p));
 
-const tsLibDest = path.join(distDir, 'typescript-lib');
-
-fs.mkdirSync(distDir, { recursive: true });
-
 // sql.js WebAssembly binary
 if (sqlWasmSrc && fs.existsSync(sqlWasmSrc)) {
-  fs.copyFileSync(sqlWasmSrc, path.join(distDir, 'sql-wasm.wasm'));
+  for (const dir of targetDirs) {
+    fs.copyFileSync(sqlWasmSrc, path.join(dir, 'sql-wasm.wasm'));
+  }
 } else {
   console.error(`sql-wasm.wasm not found in candidates: ${sqlCandidates.join(', ')}`);
   process.exit(1);
 }
 
 // TypeScript standard library declaration files.
-fs.mkdirSync(tsLibDest, { recursive: true });
-const libFiles = tsLibSrc && fs.existsSync(tsLibSrc)
-  ? fs.readdirSync(tsLibSrc).filter((name) => name.startsWith('lib') && name.endsWith('.d.ts'))
-  : [];
+const libFiles =
+  tsLibSrc && fs.existsSync(tsLibSrc)
+    ? fs.readdirSync(tsLibSrc).filter((name) => name.startsWith('lib') && name.endsWith('.d.ts'))
+    : [];
 
 if (libFiles.length === 0) {
   console.error(`No lib*.d.ts found in candidate typescript directories.`);
   process.exit(1);
 }
 
-for (const name of libFiles) {
-  const srcPath = path.join(tsLibSrc, name);
-  fs.copyFileSync(srcPath, path.join(distDir, name));
-  fs.copyFileSync(srcPath, path.join(tsLibDest, name));
+for (const dir of targetDirs) {
+  const tsLibDest = path.join(dir, 'typescript-lib');
+  fs.mkdirSync(tsLibDest, { recursive: true });
+
+  for (const name of libFiles) {
+    const srcPath = path.join(tsLibSrc, name);
+    fs.copyFileSync(srcPath, path.join(dir, name));
+    fs.copyFileSync(srcPath, path.join(tsLibDest, name));
+  }
+
+  // lib.d.ts is the existence discriminator used by resolveDefaultLibLocation().
+  if (!fs.existsSync(path.join(tsLibDest, 'lib.d.ts'))) {
+    console.error(`lib.d.ts missing after copy in ${dir}`);
+    process.exit(1);
+  }
 }
 
-// lib.d.ts is the existence discriminator used by resolveDefaultLibLocation().
-if (!fs.existsSync(path.join(tsLibDest, 'lib.d.ts'))) {
-  console.error('lib.d.ts missing after copy; resolveDefaultLibLocation() would reject this dir.');
-  process.exit(1);
-}
+console.log(
+  `Runtime assets staged: sql-wasm.wasm + ${libFiles.length} TypeScript lib files across ${targetDirs.length} dist folders.`,
+);
 
-console.log(`Runtime assets staged: sql-wasm.wasm + ${libFiles.length} TypeScript lib files.`);
-
-// Template molds. These are data, not code, so esbuild cannot inline them.
-// `stubs init` copies them into a new workspace via seedWorkspaceTemplates();
-// without staging them here a shipped CLI initializes a workspace whose
-// templates_dir is empty.
+// Template molds staging
 const moldSrc = path.join(repoRoot, '.stubs/templates');
-const moldDest = path.join(distDir, 'templates');
-fs.mkdirSync(moldDest, { recursive: true });
 const molds = fs.existsSync(moldSrc)
   ? fs.readdirSync(moldSrc).filter((name) => name.endsWith('.tpl'))
   : [];
@@ -107,8 +119,12 @@ if (molds.length === 0) {
   process.exit(1);
 }
 
-for (const name of molds) {
-  fs.copyFileSync(path.join(moldSrc, name), path.join(moldDest, name));
+for (const dir of targetDirs) {
+  const moldDest = path.join(dir, 'templates');
+  fs.mkdirSync(moldDest, { recursive: true });
+  for (const name of molds) {
+    fs.copyFileSync(path.join(moldSrc, name), path.join(moldDest, name));
+  }
 }
 
-console.log(`Template molds staged: ${molds.length}.`);
+console.log(`Template molds staged: ${molds.length} across ${targetDirs.length} dist folders.`);
