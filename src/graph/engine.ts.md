@@ -31,6 +31,7 @@ exports:
   - PlannedFileRow
   - PlanningHubSummary
   - PhaseStatusReport
+  - TieredNeighborhood
   - normalizePosixPath
   - resolvePosixPath
 depends_on:
@@ -45,6 +46,7 @@ used_by:
   - src/materializer/engine.ts
   - src/sanding/engine.ts
   - src/autonomy/protocol.ts
+  - src/context/engine.ts
   - src/cli/router.ts
   - src/server/portal.ts
 ---

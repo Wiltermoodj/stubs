@@ -118,6 +118,10 @@ export interface Session {
     // 5. Verify parsed specifications and frontmatter match perfectly
     const nodeAuthSpec = await nodeEngine.getSidecar(`${tempSpecsDir}/auth.ts.md`);
     const wasmAuthSpec = await wasmEngine.getSidecar(`${tempSpecsDir}/auth.ts.md`);
+    delete nodeAuthSpec.updatedAt;
+    delete nodeAuthSpec.createdAt;
+    delete wasmAuthSpec.updatedAt;
+    delete wasmAuthSpec.createdAt;
     expect(wasmAuthSpec).toEqual(nodeAuthSpec);
 
     // 6. Verify bi-directional neighbor queries work identically

@@ -14,7 +14,7 @@ module_depth: shallow
 status: spec
 version: 1
 target_code_file: ./schema.ts
-status_flag: clean
+status_flag: needs-human-review-resolution
 exports:
   - StubsConfig
   - DEFAULT_CONFIG
@@ -26,6 +26,9 @@ used_by:
   - src/sanding/engine.ts
   - src/autonomy/protocol.ts
   - src/cli/router.ts
+stale_details: >-
+  Conflict detected: Both sidecar and code files have been modified with
+  structural AST differences.
 ---
 
 # Config Schema — StubsConfig

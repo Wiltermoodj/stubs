@@ -2,10 +2,10 @@
 title: Portal Server — HTTP & SSE Web Portal
 type: sidecar-spec
 description: >-
-  HTTP server that serves the stubs Web Portal UI dashboard, provides REST
-  API endpoints for graph queries, planning hub state, 5-phase lifecycle matrix,
-  file tree blueprints, and broadcasts real-time filesystem events via Server-Sent
-  Events (SSE).
+  HTTP server that serves the stubs Web Portal UI dashboard, provides REST API
+  endpoints for graph queries, planning hub state, 5-phase lifecycle matrix,
+  file tree blueprints, and broadcasts real-time filesystem events via
+  Server-Sent Events (SSE).
 tags:
   - server
   - portal
@@ -19,7 +19,7 @@ context_object: PortalServer
 status: spec
 version: 2
 target_code_file: ./portal.ts
-status_flag: clean
+status_flag: needs-human-review-resolution
 exports:
   - PortalServer
 depends_on:
@@ -33,6 +33,9 @@ depends_on:
   - src/storage/credentials.ts
 used_by:
   - src/cli/router.ts
+stale_details: >-
+  Conflict detected: Both sidecar and code files have been modified with
+  structural AST differences.
 ---
 
 # Portal Server — HTTP & SSE Web Portal

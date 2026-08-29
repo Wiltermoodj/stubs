@@ -5,8 +5,9 @@ description: >-
   Implements the 3-Tier Autonomy Matrix that governs which actions an AI agent
   may execute autonomously, and runs the 5-Phase Retroactive Reconciliation
   Engine that detects drift, drafts proposals, performs 3-way merges, validates
-  changes, and commits synchronized file updates. Used by the CLI audit/reconcile
-  commands and integrates with the GraphEngine for hash synchronization.
+  changes, and commits synchronized file updates. Used by the CLI
+  audit/reconcile commands and integrates with the GraphEngine for hash
+  synchronization.
 tags:
   - autonomy
   - reconciliation
@@ -18,7 +19,7 @@ context_object: AutonomyLevel
 status: spec
 version: 1
 target_code_file: ./protocol.ts
-status_flag: clean
+status_flag: needs-human-review-resolution
 exports:
   - AutonomyLevel
   - DriftReport
@@ -31,7 +32,9 @@ depends_on:
   - src/graph/engine.ts
 used_by:
   - src/cli/router.ts
-  - src/materializer/engine.ts
+stale_details: >-
+  Conflict detected: Both sidecar and code files have been modified with
+  structural AST differences.
 ---
 
 # Autonomy Protocol — 3-Tier Gate & 5-Phase Reconciliation

@@ -1,5 +1,6 @@
 import * as path from 'path';
-import { GraphEngine, normalizePosixPath } from '../graph/engine';
+import { existsSync } from 'fs';
+import { GraphEngine, normalizePosixPath, PlannedFileRow } from '../graph/engine';
 import { FileStorageDriver, NodeFileSystem } from '../storage';
 import { extractFileTreeBlocks, parseFileTreeEntries } from '../parser/okf';
 
@@ -8,6 +9,7 @@ export interface VisualTreeOptions {
   includePlanned?: boolean;
   plannedOnly?: boolean;
   showStatus?: boolean;
+  showGraph?: boolean;
   maxDepth?: number;
   ignorePatterns?: string[];
 }
@@ -22,6 +24,11 @@ interface TreeNode {
   status?: string;
   statusFlag?: string;
   description?: string;
+  graphDegree?: {
+    inDegree: number;
+    outDegree: number;
+    isHub: boolean;
+  };
   children: Map<string, TreeNode>;
 }
 
@@ -71,14 +78,23 @@ export class TreeEngine {
     }
 
     // 3. Annotate with GraphEngine metadata if available
-    if (this.graphEngine && showStatus) {
-      await this.annotateMetadata(rootNode);
+    if (this.graphEngine && (showStatus || options.showGraph)) {
+      let centralities: Map<string, any> | undefined;
+      if (options.showGraph) {
+        try {
+          const topo = await this.graphEngine.getTopologyEngine();
+          centralities = topo.getNodeCentralities();
+        } catch {
+          // Ignore graph centrality load errors
+        }
+      }
+      await this.annotateMetadata(rootNode, centralities);
     }
 
     // 4. Render to string
     const lines: string[] = [];
     lines.push(rootNode.name + '/');
-    this.renderNode(rootNode, '', lines, showStatus, true);
+    this.renderNode(rootNode, '', lines, showStatus, options.showGraph || false, true);
 
     return lines.join('\n');
   }
@@ -132,58 +148,63 @@ export class TreeEngine {
   }
 
   private async integratePlannedFiles(rootDir: string, rootNode: TreeNode): Promise<void> {
-    const plannedItems: Array<{ path: string; type: string; description?: string }> = [];
+    let planned: PlannedFileRow[] = [];
 
     if (this.graphEngine) {
       try {
-        const rows = await this.graphEngine.getPlannedFiles();
-        for (const row of rows) {
-          plannedItems.push({
-            path: row.path,
-            type: row.type,
-            description: row.description || undefined,
-          });
-        }
+        planned = await this.graphEngine.getPlannedFiles();
       } catch {
-        // Fallback to disk scan
+        // Fallback to empty if db query fails
       }
     }
 
-    // Direct scan fallback if no items from graph engine
-    if (plannedItems.length === 0) {
-      const scanForBlueprints = async (dir: string) => {
+    if (planned.length === 0) {
+      const specsDir = path.resolve('specs');
+      const srcDir = path.resolve('src');
+      const searchDirs = [specsDir, srcDir].filter((d) => existsSync(d));
+
+      for (const d of searchDirs) {
         try {
-          const files = await this.fsDriver.readDir(dir);
-          for (const file of files) {
-            if (['node_modules', '.git', '.stubs', 'dist'].includes(file)) continue;
-            const fullPath = dir === '.' ? file : `${dir}/${file}`;
-            try {
-              const sub = await this.fsDriver.readDir(fullPath);
-              if (sub) await scanForBlueprints(fullPath);
-            } catch {
-              if (file.endsWith('.md')) {
-                try {
-                  const content = await this.fsDriver.readFile(fullPath);
-                  const blocks = extractFileTreeBlocks(content);
-                  for (const b of blocks) {
-                    plannedItems.push(...parseFileTreeEntries(b));
+          const files = await this.fsDriver.readDir(d);
+          for (const f of files) {
+            if (f.endsWith('.md')) {
+              const fullP = path.join(d, f);
+              try {
+                const content = await this.fsDriver.readFile(fullP);
+                const treeBlocks = extractFileTreeBlocks(content);
+                for (const b of treeBlocks) {
+                  const entries = parseFileTreeEntries(b);
+                  for (const entry of entries) {
+                    planned.push({
+                      id: `${f}#${entry.path}`,
+                      source_doc: f,
+                      path: entry.path,
+                      type: entry.type,
+                      description: entry.description || null,
+                      status: 'planned',
+                    });
                   }
-                } catch {
-                  // Ignore read error
                 }
+              } catch {
+                // Ignore read errors
               }
             }
           }
         } catch {
-          // Ignore directory scan error
+          // Ignore dir read error
         }
-      };
-      await scanForBlueprints(rootDir);
+      }
     }
 
-    for (const item of plannedItems) {
-      const normalized = normalizePosixPath(item.path);
-      const parts = normalized.split('/');
+    for (const item of planned) {
+      let relPath = item.path;
+      if (rootDir !== '.' && relPath.startsWith(rootDir + '/')) {
+        relPath = relPath.substring(rootDir.length + 1);
+      } else if (rootDir !== '.' && relPath === rootDir) {
+        continue;
+      }
+
+      const parts = relPath.split('/').filter(Boolean);
       let curr = rootNode;
 
       for (let i = 0; i < parts.length; i++) {
@@ -192,7 +213,7 @@ export class TreeEngine {
         const isDir = isLast ? item.type === 'dir' : true;
 
         if (!curr.children.has(part)) {
-          const nodePath = parts.slice(0, i + 1).join('/');
+          const nodePath = curr.fullPath === '.' ? part : `${curr.fullPath}/${part}`;
           const exists = await this.fsDriver.exists(nodePath);
           const newNode: TreeNode = {
             name: part,
@@ -200,7 +221,7 @@ export class TreeEngine {
             isDir,
             isPlanned: !exists,
             existsOnDisk: exists,
-            description: isLast ? item.description : undefined,
+            description: isLast ? item.description || undefined : undefined,
             children: new Map(),
           };
           curr.children.set(part, newNode);
@@ -215,7 +236,7 @@ export class TreeEngine {
     }
   }
 
-  private async annotateMetadata(node: TreeNode): Promise<void> {
+  private async annotateMetadata(node: TreeNode, centralities?: Map<string, any>): Promise<void> {
     if (!this.graphEngine) return;
 
     if (!node.isDir) {
@@ -240,13 +261,25 @@ export class TreeEngine {
           node.statusFlag =
             sidecar.statusFlag || sidecar.status_flag || sidecar.frontmatter?.status_flag;
         }
+
+        if (centralities) {
+          const norm = normalizePosixPath(node.fullPath);
+          const c = centralities.get(norm);
+          if (c) {
+            node.graphDegree = {
+              inDegree: c.inDegree,
+              outDegree: c.outDegree,
+              isHub: c.isHub,
+            };
+          }
+        }
       } catch {
         // Ignore metadata fetch error
       }
     }
 
     for (const child of node.children.values()) {
-      await this.annotateMetadata(child);
+      await this.annotateMetadata(child, centralities);
     }
   }
 
@@ -255,6 +288,7 @@ export class TreeEngine {
     prefix: string,
     lines: string[],
     showStatus: boolean,
+    showGraph: boolean,
     _isRoot: boolean = false,
   ): void {
     const children = Array.from(node.children.values());
@@ -272,6 +306,11 @@ export class TreeEngine {
 
       let line = `${prefix}${connector}${child.name}${child.isDir ? '/' : ''}`;
 
+      if (showGraph && child.graphDegree) {
+        const hubMarker = child.graphDegree.isHub ? ' 🔥 (Hub)' : '';
+        line += `  [In: ${child.graphDegree.inDegree} | Out: ${child.graphDegree.outDegree}]${hubMarker}`;
+      }
+
       if (showStatus) {
         if (child.isPlanned && !child.existsOnDisk) {
           line += '  [PLANNED]';
@@ -286,7 +325,7 @@ export class TreeEngine {
       lines.push(line);
 
       if (child.isDir) {
-        this.renderNode(child, prefix + subPrefix, lines, showStatus, false);
+        this.renderNode(child, prefix + subPrefix, lines, showStatus, showGraph, false);
       }
     });
   }

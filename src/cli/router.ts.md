@@ -5,8 +5,9 @@ description: >-
   The main CLI command dispatcher. Parses argv, applies global console secret
   masking, routes commands to the appropriate engine handlers, and returns Unix
   exit codes. Provides the CliContext interface and CliRouter class that wraps
-  all stubs operations: init, concept, tree, phase, grill, materialize, audit/reconcile,
-  sand/sync, validate, template, evaluate, auth, install, update, upgrade, serve, help, version.
+  all stubs operations: init, concept, tree, phase, grill, materialize,
+  audit/reconcile, sand/sync, validate, template, evaluate, auth, install,
+  update, upgrade, serve, help, version.
 tags:
   - cli
   - router
@@ -21,7 +22,7 @@ context_object: CliContext
 status: spec
 version: 2
 target_code_file: ./router.ts
-status_flag: clean
+status_flag: needs-human-review-resolution
 exports:
   - CliContext
   - CliRouter
@@ -39,8 +40,13 @@ depends_on:
   - src/concept/engine.ts
   - src/concept/tree.ts
   - src/phase/engine.ts
+  - src/context/engine.ts
+  - src/impact/engine.ts
 used_by:
   - src/cli.ts
+stale_details: >-
+  Conflict detected: Both sidecar and code files have been modified with
+  structural AST differences.
 ---
 
 # CLI Router — Command Dispatcher
@@ -65,6 +71,8 @@ interface CliContext {
 | `concept new/scaffold/list`         | `handleConcept`     | `ConceptEngine.createConcept()` / `scaffoldFileTree()` |
 | `tree [options]`                    | `handleTree`        | `TreeEngine.generateVisualTree()`                      |
 | `phase status/check/advance`        | `handlePhase`       | `PhaseEngine.checkPhase()` / `advancePhase()`          |
+| `context <file>`                    | `handleContext`     | `ContextEngine.generateContextPackage()`               |
+| `impact <target>`                   | `handleImpact`      | `ImpactEngine.analyzeImpact()`                         |
 | `grill <file>`                      | `handleGrill`       | `GrillEngine.grill()`                                  |
 | `materialize <file>`                | `handleMaterialize` | `MaterializerEngine.materialize()`                     |
 | `audit <file>` / `reconcile <file>` | `handleReconcile`   | `AutonomyProtocol.reconcile()`                         |

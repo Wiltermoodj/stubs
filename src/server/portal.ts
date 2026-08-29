@@ -505,6 +505,65 @@ Using EJS/Handlebars to render a standard service module.
         return;
       }
 
+      // GET /api/graph/topology (or /api/v1/graph/topology)
+      if (
+        (pathname === '/api/graph/topology' || pathname === '/api/v1/graph/topology') &&
+        req.method === 'GET'
+      ) {
+        const { engine } = await this.resolveGraphEngine(parsedUrl);
+        const nodes = await engine.getGraphNodes();
+        const edges = await engine.getGraphEdges();
+        const topology = await engine.getTopologyEngine();
+        const centralities = Array.from(topology.getNodeCentralities().values());
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ nodes, edges, centralities }));
+        return;
+      }
+
+      // GET /api/graph/blast (or /api/v1/graph/blast)
+      if (
+        (pathname === '/api/graph/blast' || pathname === '/api/v1/graph/blast') &&
+        req.method === 'GET'
+      ) {
+        const { engine } = await this.resolveGraphEngine(parsedUrl);
+        const target = parsedUrl.searchParams.get('target') || '';
+        const depth = parseInt(parsedUrl.searchParams.get('depth') || '3', 10);
+        const direction = (parsedUrl.searchParams.get('direction') as any) || 'downstream';
+        const topology = await engine.getTopologyEngine();
+        const result = topology.getBlastRadius(target, { depth, direction });
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(result));
+        return;
+      }
+
+      // GET /api/graph/path (or /api/v1/graph/path)
+      if (
+        (pathname === '/api/graph/path' || pathname === '/api/v1/graph/path') &&
+        req.method === 'GET'
+      ) {
+        const { engine } = await this.resolveGraphEngine(parsedUrl);
+        const source = parsedUrl.searchParams.get('source') || '';
+        const target = parsedUrl.searchParams.get('target') || '';
+        const topology = await engine.getTopologyEngine();
+        const result = topology.findShortestPath(source, target);
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(result || { found: false, source, target }));
+        return;
+      }
+
+      // GET /api/graph/hotspots (or /api/v1/graph/hotspots)
+      if (
+        (pathname === '/api/graph/hotspots' || pathname === '/api/v1/graph/hotspots') &&
+        req.method === 'GET'
+      ) {
+        const { engine } = await this.resolveGraphEngine(parsedUrl);
+        const topology = await engine.getTopologyEngine();
+        const smells = topology.detectSmells();
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(smells));
+        return;
+      }
+
       // GET Planning Hub state and aggregated task metrics
       if (
         (pathname === '/api/planning' || pathname === '/api/v1/planning') &&

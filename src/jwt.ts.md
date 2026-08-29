@@ -82,10 +82,12 @@ user_notes:
       "define e...]
     status: resolved
 stale_details: >-
-  /Users/lappier/code/projects/stubs/src/jwt.ts (18,28): Property 'createHmac'
+  Type-checking failed:
+
+  /Users/lappier/code/projects/stubs/src/jwt.ts (16,28): Property 'createHmac'
   does not exist on type 'Crypto'.
 
-  /Users/lappier/code/projects/stubs/src/jwt.ts (28,30): Property 'createHmac'
+  /Users/lappier/code/projects/stubs/src/jwt.ts (26,30): Property 'createHmac'
   does not exist on type 'Crypto'.
 sync_state:
   last_sync_timestamp: '2026-08-21T10:03:07.890Z'

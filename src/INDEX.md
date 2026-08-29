@@ -13,7 +13,7 @@ tags:
 status: spec
 version: 1
 target_code_file: ./index.ts
-status_flag: clean
+status_flag: needs-human-review-resolution
 exports:
   - GraphEngine
   - CliRouter
@@ -24,6 +24,9 @@ exports:
   - MaterializerEngine
   - parseOkfSpec
   - loadConfig
+stale_details: >-
+  Conflict detected: Both sidecar and code files have been modified with
+  structural AST differences.
 ---
 
 # stubs — Subsystem Index

@@ -8,7 +8,22 @@ export {
   PhaseStatusReport,
   TaskRow,
   PlannedFileRow,
+  GraphNode,
+  GraphEdge,
+  extractFileGraph,
+  TopologyEngine,
 } from './graph/engine';
+export {
+  BlastRadiusResult,
+  BlastRadiusNode,
+  ShortestPathResult,
+  ShortestPathStep,
+  ArchitecturalSmellsReport,
+  SmellGodNode,
+  SmellCycle,
+  SmellDomainLeak,
+  NodeCentrality,
+} from './graph/topology';
 export { CliRouter, CliContext } from './cli/router';
 export { PortalServer } from './server/portal';
 export { TemplateEngine, compileTemplate, translateHandlebarsToEjs } from './templates/engine';
@@ -48,4 +63,57 @@ export {
   AdvancePhaseResult,
   WorkspacePhaseMatrix,
 } from './phase/engine';
+export {
+  ContextEngine,
+  ContextPackage,
+  ContextOptions,
+  Tier0TargetContext,
+  Tier1DependencyContext,
+  Tier1DependentContext,
+  Tier2BoundaryContext,
+} from './context/engine';
+export {
+  ImpactEngine,
+  ImpactOptions,
+  ImpactAnalysisResult,
+  AffectedModuleInfo,
+} from './impact/engine';
+export {
+  ArchLintEngine,
+  ArchLintOptions,
+  ArchLintResult,
+  ArchLintSummary,
+  ArchViolation,
+  ArchRuleType,
+  LAYER_DEFINITIONS,
+  getModuleLayer,
+} from './lint/engine';
+export {
+  MockEngine,
+  MockOptions,
+  MockScaffoldResult,
+  MockedTestCase,
+  MockedSymbolSuite,
+  TestFramework,
+} from './mock/engine';
+export { DiagramEngine, DiagramOptions, DiagramResult, DiagramType } from './diagram/engine';
+export {
+  PruneEngine,
+  PruneOptions,
+  PruneAuditResult,
+  PruneAuditSummary,
+  PruneIssue,
+  PruneIssueType,
+  PruneFixResult,
+} from './prune/engine';
+export {
+  ChangelogEngine,
+  ChangelogOptions,
+  ArchitecturalChangelog,
+  ChangelogSummary,
+  SpecDiff,
+  AdrChange,
+  ExportChange,
+  PhaseTransition,
+} from './changelog/engine';
 export { loadConfig, StubsConfig, DEFAULT_CONFIG } from './config/schema';

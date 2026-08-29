@@ -116,3 +116,181 @@ export function extractImplementationCode(blocks: MarkdownBlock[]): {
     error: 'No typescript code block found within any "## Implementation" section.',
   };
 }
+
+import * as ts from 'typescript';
+
+/**
+ * Extracts exported TypeScript signatures (types, interfaces, enums, and functions/classes with bodies stripped)
+ * to produce a lightweight, token-efficient interface contract for LLM agent context windows.
+ */
+export function extractDistilledSignatures(sourceCode: string, fileName = 'module.ts'): string {
+  try {
+    const sourceFile = ts.createSourceFile(fileName, sourceCode, ts.ScriptTarget.Latest, true);
+    const distilledParts: string[] = [];
+
+    for (const statement of sourceFile.statements) {
+      // Check if exported
+      const modifiers = ts.canHaveModifiers(statement) ? ts.getModifiers(statement) : undefined;
+      const isExported =
+        modifiers?.some(
+          (m) => m.kind === ts.SyntaxKind.ExportKeyword || m.kind === ts.SyntaxKind.DefaultKeyword,
+        ) ||
+        ts.isExportDeclaration(statement) ||
+        ts.isExportAssignment(statement);
+
+      if (!isExported) {
+        continue;
+      }
+
+      // Handle Interfaces, Type Aliases, and Enums directly
+      if (
+        ts.isInterfaceDeclaration(statement) ||
+        ts.isTypeAliasDeclaration(statement) ||
+        ts.isEnumDeclaration(statement) ||
+        ts.isExportDeclaration(statement) ||
+        ts.isExportAssignment(statement)
+      ) {
+        distilledParts.push(statement.getFullText(sourceFile).trim());
+        continue;
+      }
+
+      // Handle Function Declarations: strip body
+      if (ts.isFunctionDeclaration(statement)) {
+        const name = statement.name ? statement.name.text : 'anonymous';
+        const typeParams = statement.typeParameters
+          ? `<${statement.typeParameters.map((tp) => tp.getText(sourceFile)).join(', ')}>`
+          : '';
+        const params = statement.parameters.map((p) => p.getText(sourceFile)).join(', ');
+        const returnType = statement.type ? `: ${statement.type.getText(sourceFile)}` : '';
+        const isAsync = modifiers?.some((m) => m.kind === ts.SyntaxKind.AsyncKeyword)
+          ? 'async '
+          : '';
+
+        distilledParts.push(
+          `export ${isAsync}function ${name}${typeParams}(${params})${returnType};`,
+        );
+        continue;
+      }
+
+      // Handle Class Declarations: strip method bodies
+      if (ts.isClassDeclaration(statement)) {
+        const name = statement.name ? statement.name.text : 'AnonymousClass';
+        const typeParams = statement.typeParameters
+          ? `<${statement.typeParameters.map((tp) => tp.getText(sourceFile)).join(', ')}>`
+          : '';
+        const heritage = statement.heritageClauses
+          ? ' ' + statement.heritageClauses.map((h) => h.getText(sourceFile)).join(' ')
+          : '';
+
+        const memberSignatures: string[] = [];
+        for (const member of statement.members) {
+          const memberModifiers = ts.canHaveModifiers(member) ? ts.getModifiers(member) : undefined;
+          const isPrivate = memberModifiers?.some((m) => m.kind === ts.SyntaxKind.PrivateKeyword);
+          if (isPrivate) {
+            continue; // Omit private members from distilled public interface
+          }
+
+          const modStr = memberModifiers
+            ? memberModifiers.map((m) => m.getText(sourceFile)).join(' ') + ' '
+            : '';
+
+          if (ts.isPropertyDeclaration(member)) {
+            const propName = member.name.getText(sourceFile);
+            const propType = member.type ? `: ${member.type.getText(sourceFile)}` : '';
+            memberSignatures.push(`  ${modStr}${propName}${propType};`);
+          } else if (ts.isMethodDeclaration(member)) {
+            const methodName = member.name.getText(sourceFile);
+            const mTypeParams = member.typeParameters
+              ? `<${member.typeParameters.map((tp) => tp.getText(sourceFile)).join(', ')}>`
+              : '';
+            const mParams = member.parameters.map((p) => p.getText(sourceFile)).join(', ');
+            const mReturnType = member.type ? `: ${member.type.getText(sourceFile)}` : '';
+            memberSignatures.push(
+              `  ${modStr}${methodName}${mTypeParams}(${mParams})${mReturnType};`,
+            );
+          } else if (ts.isConstructorDeclaration(member)) {
+            const cParams = member.parameters.map((p) => p.getText(sourceFile)).join(', ');
+            memberSignatures.push(`  ${modStr}constructor(${cParams});`);
+          }
+        }
+
+        distilledParts.push(
+          `export class ${name}${typeParams}${heritage} {\n${memberSignatures.join('\n')}\n}`,
+        );
+        continue;
+      }
+
+      // Handle Variable Statements (const/let exports)
+      if (ts.isVariableStatement(statement)) {
+        const declList = statement.declarationList;
+        const decls: string[] = [];
+        for (const decl of declList.declarations) {
+          const varName = decl.name.getText(sourceFile);
+          const varType = decl.type ? `: ${decl.type.getText(sourceFile)}` : '';
+          decls.push(`${varName}${varType}`);
+        }
+        const isConst = (declList.flags & ts.NodeFlags.Const) !== 0;
+        const kindStr = isConst ? 'const' : 'let';
+        distilledParts.push(`export ${kindStr} ${decls.join(', ')};`);
+        continue;
+      }
+
+      // Fallback for any other exported statement
+      distilledParts.push(statement.getFullText(sourceFile).trim());
+    }
+
+    return distilledParts.join('\n\n');
+  } catch {
+    // If AST parsing fails, return normalized raw code fallback
+    return sourceCode
+      .split('\n')
+      .filter((l) => l.trim().startsWith('export '))
+      .join('\n');
+  }
+}
+
+/**
+ * Extracts the names of all exported symbols (types, functions, classes, interfaces, constants) from source code.
+ */
+export function extractExportedSymbolNames(sourceCode: string, fileName = 'module.ts'): string[] {
+  try {
+    const sourceFile = ts.createSourceFile(fileName, sourceCode, ts.ScriptTarget.Latest, true);
+    const symbols: string[] = [];
+
+    for (const statement of sourceFile.statements) {
+      const modifiers = ts.canHaveModifiers(statement) ? ts.getModifiers(statement) : undefined;
+      const isExported = modifiers?.some(
+        (m) => m.kind === ts.SyntaxKind.ExportKeyword || m.kind === ts.SyntaxKind.DefaultKeyword,
+      );
+
+      if (isExported) {
+        if (
+          (ts.isFunctionDeclaration(statement) ||
+            ts.isClassDeclaration(statement) ||
+            ts.isInterfaceDeclaration(statement) ||
+            ts.isTypeAliasDeclaration(statement) ||
+            ts.isEnumDeclaration(statement)) &&
+          statement.name
+        ) {
+          symbols.push(statement.name.text);
+        } else if (ts.isVariableStatement(statement)) {
+          for (const decl of statement.declarationList.declarations) {
+            if (ts.isIdentifier(decl.name)) {
+              symbols.push(decl.name.text);
+            }
+          }
+        }
+      } else if (ts.isExportDeclaration(statement)) {
+        if (statement.exportClause && ts.isNamedExports(statement.exportClause)) {
+          for (const element of statement.exportClause.elements) {
+            symbols.push(element.name.text);
+          }
+        }
+      }
+    }
+
+    return Array.from(new Set(symbols));
+  } catch {
+    return [];
+  }
+}

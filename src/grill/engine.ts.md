@@ -3,10 +3,10 @@ title: Grill Engine — Interactive Spec Interrogation
 type: sidecar-spec
 description: >-
   State machine engine that stress-tests OKF sidecar specifications through
-  targeted question-and-answer interrogation sessions. Transitions through
-  INIT → PARSING → GENERATING_QUESTIONS → GRILLING → SAVING → DONE states.
-  Supports interactive (readline) and non-interactive (automated answer injection)
-  modes. Writes Q&A results as user_notes entries into the sidecar frontmatter.
+  targeted question-and-answer interrogation sessions. Transitions through INIT
+  → PARSING → GENERATING_QUESTIONS → GRILLING → SAVING → DONE states. Supports
+  interactive (readline) and non-interactive (automated answer injection) modes.
+  Writes Q&A results as user_notes entries into the sidecar frontmatter.
 tags:
   - grill
   - interrogation
@@ -18,7 +18,7 @@ context_object: GrillEngineOptions
 status: spec
 version: 1
 target_code_file: ./engine.ts
-status_flag: clean
+status_flag: needs-human-review-resolution
 exports:
   - GrillState
   - GrillEngineOptions
@@ -29,6 +29,9 @@ depends_on:
   - src/graph/engine.ts
 used_by:
   - src/cli/router.ts
+stale_details: >-
+  Conflict detected: Both sidecar and code files have been modified with
+  structural AST differences.
 ---
 
 # Grill Engine — Interactive Spec Interrogation

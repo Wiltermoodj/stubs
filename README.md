@@ -100,6 +100,7 @@ stubs update
 ```
 
 The smart updater will:
+
 1. Detect your package manager (`npm`, `pnpm`, `yarn`, `bun`) and update the dependency.
 2. Refresh agent skills in `.agents/skills/stubs/` and configured adapters (`.claude/`, `.cursor/`).
 3. Seed any new standard templates while **preserving your custom and modified templates**.

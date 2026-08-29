@@ -12,6 +12,13 @@ import { MaterializerEngine } from '../materializer/engine';
 import { ConceptEngine } from '../concept/engine';
 import { TreeEngine } from '../concept/tree';
 import { PhaseEngine } from '../phase/engine';
+import { ContextEngine } from '../context/engine';
+import { ImpactEngine } from '../impact/engine';
+import { ArchLintEngine } from '../lint/engine';
+import { MockEngine, TestFramework } from '../mock/engine';
+import { DiagramEngine, DiagramType } from '../diagram/engine';
+import { PruneEngine } from '../prune/engine';
+import { ChangelogEngine } from '../changelog/engine';
 import { applyGlobalConsoleMasking } from '../storage/credentials';
 
 export interface CliContext {
@@ -81,6 +88,31 @@ export class CliRouter {
           return await this.handleTree(context);
         case 'phase':
           return await this.handlePhase(context);
+        case 'context':
+        case 'slice':
+          return await this.handleContext(context);
+        case 'impact':
+          return await this.handleImpact(context);
+        case 'lint-arch':
+        case 'lint:arch':
+        case 'lint-architecture':
+          return await this.handleLintArch(context);
+        case 'mock':
+        case 'test-scaffold':
+          return await this.handleMock(context);
+        case 'diagram':
+        case 'mermaid':
+          return await this.handleDiagram(context);
+        case 'prune':
+        case 'orphan':
+          return await this.handlePrune(context);
+        case 'changelog':
+        case 'diff-spec':
+          return await this.handleChangelog(context);
+        case 'blast':
+          return await this.handleBlast(context);
+        case 'path':
+          return await this.handlePath(context);
         default:
           console.error(`Error: Unknown command "${context.command}". Use --help for usage.`);
           return 1;
@@ -127,11 +159,20 @@ Commands:
   update, upgrade     Update installed stubs skill bundle or display package update instructions.
   concept <action>    Manage concepts and blueprints. Actions: new <title>, scaffold <doc>, list
   tree [options]      Display visual ASCII/Unicode file tree with planned & status markers.
+  context <file>      Generate token-optimized, tiered agent context briefing (--depth, --json, --output).
+  impact <target>     Analyze upstream/downstream blast radius, risk scoring, and stale sidecars.
+  lint-arch [options] Lint architecture against layer hierarchy, cycle bans, and manifest parity.
+  mock <file>         Generate spec-driven test suite & typed mocks (--output, --framework, --dry-run, --force).
+  diagram [target]    Generate Mermaid architecture/sequence diagrams (--type, --sync, --output).
+  prune [options]     Audit and prune phantom specs, untracked code, zombie exports (--fix, --zombies, --json).
+  changelog [options] Generate semantic architectural changelog (--since, --from, --to, --output, --json).
+  blast <target>      Query downstream/upstream blast radius with domain boundaries.
+  path <src> <dest>   Find shortest call/import dependency chain between files or symbols.
   phase <action>      Manage 5-phase lifecycle. Actions: status [file], check <file>, advance <file> [targetPhase]
   grill <file>       Execute the Interactive Grill Engine on a sidecar specification.
   materialize <file>  Parse, extract, typecheck, and write executable code from sidecar.
-  audit <file>        Audit sidecar specifications and run retroactive reconciliation.
-  sand [file]         Synchronize sidecars and code files.
+  audit [options]     Audit sidecars or inspect hotspots (--hotspots, --cycles, --json).
+  sand [file]         Synchronize sidecars and code files (with auto-healing depends_on).
   reconcile <file>    Execute the 5-phase retroactive reconciliation engine on a sidecar.
   sync [file]         Synchronize sidecars and code files.
   map [options]       Audit or scaffold architectural context maps (knowledge/architecture/context-map.md).
@@ -146,9 +187,15 @@ Options:
   -c, --config <path>  Specify path to stubs configuration file (default: .stubs/config.json)
   --planned            Include planned blueprint files in visual tree
   --status             Display phase and health status in tree / report
+  --graph              Annotate visual file tree with node degree centralities (tree)
+  --hotspots           Detect God Nodes and high-coupling hubs (audit)
+  --cycles             Detect circular dependency loops (audit)
+  --upstream           Traverse upstream dependencies (blast)
+  --depth <N>          Specify search depth limit (blast / tree)
+  --json               Output structured JSON results
+  --no-graph-sync      Disable automatic depends_on frontmatter sync (sand)
   --all                Display all files and directories
   --dry-run            Preview filetree scaffolding without writing to disk
-  --depth <depth>      Specify grill depth (light_probe | standard_drill | deep_interrogation)
   --non-interactive    Run the grill engine in non-interactive (automated) mode
   --scaffold, --init   Scaffold root context-map.md and domains/ directory structure
   --token <pat>        [DEPRECATED] Provide a GitHub Personal Access Token directly (auth login). Prefer STDIN pipe or environment variables.
@@ -527,13 +574,82 @@ Options:
   }
 
   private async handleReconcile(ctx: CliContext): Promise<number> {
-    if (ctx.args.length === 0) {
+    const isHotspots = ctx.args.includes('--hotspots');
+    const isCycles = ctx.args.includes('--cycles');
+    const isSmells = ctx.args.includes('--smells') || isHotspots || isCycles;
+    const isJson = ctx.args.includes('--json');
+
+    if (isSmells || (ctx.args.length === 0 && ctx.command === 'audit')) {
+      const config = loadConfig(ctx.configPath);
+      const graphEngine = new GraphEngine(config.paths.db_path);
+      await graphEngine.initialize();
+
+      const existingNodes = await graphEngine.getGraphNodes();
+      if (existingNodes.length === 0) {
+        await graphEngine.indexCodeWorkspace(config.paths?.specs_dir || 'src');
+      }
+
+      const topology = await graphEngine.getTopologyEngine();
+      const smells = topology.detectSmells();
+
+      if (isJson) {
+        console.log(JSON.stringify(smells, null, 2));
+        return 0;
+      }
+
+      console.log(`\n🏥 Architectural Health & Graph Hotspot Report`);
+      console.log(`=============================================`);
+      console.log(`Total Smells Detected: ${smells.totalSmells}\n`);
+
+      if (smells.godNodes.length > 0) {
+        console.log(`🔥 Hotspot Nodes (High Coupling & Centrality):`);
+        for (const gn of smells.godNodes) {
+          console.log(
+            `  - ${gn.id} (In: ${gn.inDegree} | Out: ${gn.outDegree} | Total: ${gn.totalDegree})`,
+          );
+          console.log(`    Reason: ${gn.reason}`);
+        }
+        console.log('');
+      } else {
+        console.log(`✅ No God Nodes detected.`);
+      }
+
+      if (smells.cycles.length > 0) {
+        console.log(`🔄 Circular Dependency Cycles:`);
+        for (const c of smells.cycles) {
+          console.log(
+            `  - Cycle of length ${c.cycleLength}: ${c.nodes.join(' -> ')} -> ${c.nodes[0]}`,
+          );
+        }
+        console.log('');
+      } else {
+        console.log(`✅ No circular dependency cycles detected.`);
+      }
+
+      if (smells.domainLeaks.length > 0) {
+        console.log(`⚠️  Domain Boundary Leaks:`);
+        for (const leak of smells.domainLeaks) {
+          console.log(
+            `  - [Domain: ${leak.sourceDomain}] ${leak.sourceId} -> [Domain: ${leak.targetDomain}] ${leak.targetId}`,
+          );
+          console.log(`    Reason: ${leak.reason}`);
+        }
+        console.log('');
+      } else {
+        console.log(`✅ No domain boundary leaks detected.`);
+      }
+
+      return 0;
+    }
+
+    const nonFlagArgs = ctx.args.filter((a) => !a.startsWith('-'));
+    if (nonFlagArgs.length === 0) {
       console.error('Error: "reconcile" command requires a sidecar file path.');
-      console.error('Usage: stubs reconcile <sidecar_file.md>');
+      console.error('Usage: stubs reconcile <sidecar_file.md> or stubs audit --hotspots');
       return 1;
     }
 
-    const file = ctx.args[0];
+    const file = nonFlagArgs[0];
     const config = loadConfig(ctx.configPath);
     const protocol = new AutonomyProtocol(config);
 
@@ -581,20 +697,22 @@ Options:
     const config = loadConfig(ctx.configPath);
     const specsDir = config.paths?.specs_dir || 'src';
     const engine = new SandingEngine();
+    const noGraphSync = ctx.args.includes('--no-graph-sync') || ctx.args.includes('--no-graph');
+    const nonFlagArgs = ctx.args.filter((a) => !a.startsWith('-'));
 
-    if (ctx.args.length > 0) {
-      const targetFile = path.resolve(ctx.args[0]);
+    if (nonFlagArgs.length > 0) {
+      const targetFile = path.resolve(nonFlagArgs[0]);
       if (!existsSync(targetFile)) {
         console.error(`Error: File not found at "${targetFile}"`);
         return 1;
       }
-      console.log(`Synchronizing sidecar file: ${ctx.args[0]}...`);
-      const result = await engine.syncFile(targetFile);
+      console.log(`Synchronizing sidecar file: ${nonFlagArgs[0]}...`);
+      const result = await engine.syncFile(targetFile, { noGraphSync });
       this.printSyncResult(result);
       return result.status === 'error' ? 1 : 0;
     } else {
       console.log(`Scanning and synchronizing workspace specifications under "${specsDir}"...`);
-      const results = await engine.syncWorkspace(specsDir);
+      const results = await engine.syncWorkspace(specsDir, { noGraphSync });
       let hasError = false;
       for (const result of results) {
         this.printSyncResult(result);
@@ -1486,6 +1604,7 @@ Options:
     let includePlanned = true;
     let plannedOnly = false;
     let showStatus = true;
+    let showGraph = ctx.args.includes('--graph');
     let maxDepth = 8;
 
     for (let i = 0; i < ctx.args.length; i++) {
@@ -1500,6 +1619,8 @@ Options:
         showStatus = true;
       } else if (arg === '--no-status') {
         showStatus = false;
+      } else if (arg === '--graph') {
+        showGraph = true;
       } else if (arg === '--dir' && ctx.args[i + 1]) {
         rootDir = ctx.args[i + 1];
         i++;
@@ -1518,10 +1639,111 @@ Options:
       includePlanned,
       plannedOnly,
       showStatus,
+      showGraph,
       maxDepth,
     });
 
     console.log(treeOutput);
+    return 0;
+  }
+
+  private async handleBlast(ctx: CliContext): Promise<number> {
+    const nonFlagArgs = ctx.args.filter((a) => !a.startsWith('-'));
+    if (nonFlagArgs.length === 0) {
+      console.error('Error: "blast" command requires a target file or symbol name.');
+      console.error('Usage: stubs blast <target> [--upstream|--downstream] [--depth <N>] [--json]');
+      return 1;
+    }
+
+    const target = nonFlagArgs[0];
+    const isJson = ctx.args.includes('--json');
+    const isUpstream = ctx.args.includes('--upstream');
+    const isBoth = ctx.args.includes('--both');
+    const direction = isBoth ? 'both' : isUpstream ? 'upstream' : 'downstream';
+
+    let depth = 3;
+    for (let i = 0; i < ctx.args.length; i++) {
+      if (ctx.args[i] === '--depth' && ctx.args[i + 1]) {
+        depth = parseInt(ctx.args[i + 1], 10) || 3;
+        i++;
+      } else if (ctx.args[i].startsWith('--depth=')) {
+        depth = parseInt(ctx.args[i].split('=')[1], 10) || 3;
+      }
+    }
+
+    const config = loadConfig(ctx.configPath);
+    const graphEngine = new GraphEngine(config.paths.db_path);
+    await graphEngine.initialize();
+
+    const existingNodes = await graphEngine.getGraphNodes();
+    if (existingNodes.length === 0) {
+      await graphEngine.indexCodeWorkspace(config.paths?.specs_dir || 'src');
+    }
+
+    const topology = await graphEngine.getTopologyEngine();
+    const result = topology.getBlastRadius(target, { depth, direction });
+
+    if (isJson) {
+      console.log(JSON.stringify(result, null, 2));
+    } else {
+      console.log(topology.formatBlastRadiusTree(result));
+    }
+
+    return 0;
+  }
+
+  private async handlePath(ctx: CliContext): Promise<number> {
+    const nonFlagArgs = ctx.args.filter((a) => !a.startsWith('-'));
+    if (nonFlagArgs.length < 2) {
+      console.error('Error: "path" command requires a <source> and <target>.');
+      console.error('Usage: stubs path <source> <target> [--type <relation>] [--json]');
+      return 1;
+    }
+
+    const source = nonFlagArgs[0];
+    const target = nonFlagArgs[1];
+    const isJson = ctx.args.includes('--json');
+
+    let relationTypes: string[] | undefined;
+    for (let i = 0; i < ctx.args.length; i++) {
+      if (ctx.args[i] === '--type' && ctx.args[i + 1]) {
+        relationTypes = ctx.args[i + 1].split(',').map((r) => r.trim());
+        i++;
+      } else if (ctx.args[i].startsWith('--type=')) {
+        relationTypes = ctx.args[i]
+          .split('=')[1]
+          .split(',')
+          .map((r) => r.trim());
+      }
+    }
+
+    const config = loadConfig(ctx.configPath);
+    const graphEngine = new GraphEngine(config.paths.db_path);
+    await graphEngine.initialize();
+
+    const existingNodes = await graphEngine.getGraphNodes();
+    if (existingNodes.length === 0) {
+      await graphEngine.indexCodeWorkspace(config.paths?.specs_dir || 'src');
+    }
+
+    const topology = await graphEngine.getTopologyEngine();
+    const result = topology.findShortestPath(source, target, { relationTypes });
+
+    if (!result) {
+      if (isJson) {
+        console.log(JSON.stringify({ found: false, source, target }, null, 2));
+      } else {
+        console.log(`No path found between "${source}" and "${target}".`);
+      }
+      return 1;
+    }
+
+    if (isJson) {
+      console.log(JSON.stringify(result, null, 2));
+    } else {
+      console.log(topology.formatShortestPath(result));
+    }
+
     return 0;
   }
 
@@ -1620,6 +1842,375 @@ Options:
     console.log(
       '================================================================================\n',
     );
+    return 0;
+  }
+
+  private async handleContext(ctx: CliContext): Promise<number> {
+    const nonFlagArgs = ctx.args.filter((a) => !a.startsWith('-'));
+    if (nonFlagArgs.length === 0) {
+      console.error(
+        'Error: File path is required. Usage: stubs context <file> [--depth <n>] [--json] [--output <file>] [--no-code]',
+      );
+      return 1;
+    }
+
+    const targetFile = nonFlagArgs[0];
+    const isJson = ctx.args.includes('--json');
+    const noCode = ctx.args.includes('--no-code');
+
+    let depth = 2;
+    let outputPath: string | undefined;
+
+    for (let i = 0; i < ctx.args.length; i++) {
+      if (ctx.args[i] === '--depth' && ctx.args[i + 1]) {
+        depth = parseInt(ctx.args[i + 1], 10) || 2;
+        i++;
+      } else if (ctx.args[i].startsWith('--depth=')) {
+        depth = parseInt(ctx.args[i].split('=')[1], 10) || 2;
+      } else if (ctx.args[i] === '--output' && ctx.args[i + 1]) {
+        outputPath = ctx.args[i + 1];
+        i++;
+      } else if (ctx.args[i].startsWith('--output=')) {
+        outputPath = ctx.args[i].split('=')[1];
+      }
+    }
+
+    const config = loadConfig(ctx.configPath);
+    const graphEngine = new GraphEngine(config.paths.db_path);
+    await graphEngine.initialize();
+
+    const contextEngine = new ContextEngine({ graphEngine });
+    const pkg = await contextEngine.generateContextPackage(targetFile, {
+      depth,
+      includeCode: !noCode,
+      configPath: ctx.configPath,
+    });
+
+    const output = isJson ? JSON.stringify(pkg, null, 2) : contextEngine.renderMarkdown(pkg);
+
+    if (outputPath) {
+      const resolvedOutput = path.resolve(process.cwd(), outputPath);
+      await fs.mkdir(path.dirname(resolvedOutput), { recursive: true });
+      await fs.writeFile(resolvedOutput, output, 'utf8');
+      console.log(`✓ Context package saved to "${outputPath}"`);
+    } else {
+      console.log(output);
+    }
+
+    return 0;
+  }
+
+  private async handleImpact(ctx: CliContext): Promise<number> {
+    const nonFlagArgs = ctx.args.filter((a) => !a.startsWith('-'));
+    if (nonFlagArgs.length === 0) {
+      console.error(
+        'Error: Target file is required. Usage: stubs impact <target> [--depth <n>] [--json] [--transitive] [--upstream]',
+      );
+      return 1;
+    }
+
+    const target = nonFlagArgs[0];
+    const isJson = ctx.args.includes('--json');
+    const isTransitive = ctx.args.includes('--transitive');
+    const isUpstream = ctx.args.includes('--upstream');
+    const direction = isUpstream ? 'outbound' : 'inbound';
+
+    let depth: number | undefined;
+    for (let i = 0; i < ctx.args.length; i++) {
+      if (ctx.args[i] === '--depth' && ctx.args[i + 1]) {
+        depth = parseInt(ctx.args[i + 1], 10) || 3;
+        i++;
+      } else if (ctx.args[i].startsWith('--depth=')) {
+        depth = parseInt(ctx.args[i].split('=')[1], 10) || 3;
+      }
+    }
+
+    const config = loadConfig(ctx.configPath);
+    const graphEngine = new GraphEngine(config.paths.db_path);
+    await graphEngine.initialize();
+
+    const impactEngine = new ImpactEngine({ graphEngine });
+    const result = await impactEngine.analyzeImpact(target, {
+      depth,
+      direction,
+      transitive: isTransitive,
+      configPath: ctx.configPath,
+    });
+
+    if (isJson) {
+      console.log(JSON.stringify(result, null, 2));
+    } else {
+      console.log(impactEngine.renderMarkdown(result));
+    }
+
+    return 0;
+  }
+
+  private async handleLintArch(ctx: CliContext): Promise<number> {
+    const isJson = ctx.args.includes('--json');
+    const isStrict = ctx.args.includes('--strict');
+
+    let rules: any = undefined;
+    for (let i = 0; i < ctx.args.length; i++) {
+      if (ctx.args[i] === '--rule' && ctx.args[i + 1]) {
+        rules = ctx.args[i + 1].split(',').map((r) => r.trim());
+        i++;
+      } else if (ctx.args[i].startsWith('--rule=')) {
+        rules = ctx.args[i]
+          .split('=')[1]
+          .split(',')
+          .map((r) => r.trim());
+      }
+    }
+
+    const config = loadConfig(ctx.configPath);
+    const graphEngine = new GraphEngine(config.paths.db_path);
+    await graphEngine.initialize();
+
+    const lintEngine = new ArchLintEngine({ graphEngine });
+    const result = await lintEngine.lintWorkspace({
+      strict: isStrict,
+      rules,
+      configPath: ctx.configPath,
+    });
+
+    if (isJson) {
+      console.log(JSON.stringify(result, null, 2));
+    } else {
+      console.log(lintEngine.renderMarkdown(result));
+    }
+
+    return result.summary.passed ? 0 : 1;
+  }
+
+  private async handleMock(ctx: CliContext): Promise<number> {
+    const nonFlagArgs = ctx.args.filter((a) => !a.startsWith('-'));
+    if (nonFlagArgs.length === 0) {
+      console.error(
+        'Error: File path is required. Usage: stubs mock <file> [--output <path>] [--framework <jest|vitest>] [--dry-run] [--force]',
+      );
+      return 1;
+    }
+
+    const targetFile = nonFlagArgs[0];
+    const dryRun = ctx.args.includes('--dry-run');
+    const force = ctx.args.includes('--force') || ctx.args.includes('-f');
+
+    let outputPath: string | undefined;
+    let framework: TestFramework = 'jest';
+
+    for (let i = 0; i < ctx.args.length; i++) {
+      if (ctx.args[i] === '--output' && ctx.args[i + 1]) {
+        outputPath = ctx.args[i + 1];
+        i++;
+      } else if (ctx.args[i].startsWith('--output=')) {
+        outputPath = ctx.args[i].split('=')[1];
+      } else if (ctx.args[i] === '--framework' && ctx.args[i + 1]) {
+        framework = ctx.args[i + 1] as TestFramework;
+        i++;
+      } else if (ctx.args[i].startsWith('--framework=')) {
+        framework = ctx.args[i].split('=')[1] as TestFramework;
+      }
+    }
+
+    const mockEngine = new MockEngine();
+    const result = await mockEngine.generateTestScaffold(targetFile, {
+      outputPath,
+      framework,
+      dryRun,
+      force,
+      configPath: ctx.configPath,
+    });
+
+    if (dryRun) {
+      console.log(result.generatedCode);
+    } else if (result.written) {
+      console.log(
+        `✓ Scaffolded test suite for "${result.sourceFilePath}" at "${result.targetTestPath}"`,
+      );
+    } else {
+      console.log(
+        `ℹ Test file "${result.targetTestPath}" already exists. Use --force to overwrite.`,
+      );
+    }
+
+    return 0;
+  }
+
+  private async handleDiagram(ctx: CliContext): Promise<number> {
+    const isJson = ctx.args.includes('--json');
+    const nonFlagArgs = ctx.args.filter((a) => !a.startsWith('-'));
+    const target = nonFlagArgs.length > 0 ? nonFlagArgs[0] : undefined;
+
+    let type: DiagramType | undefined;
+    let groupBy: 'layer' | 'domain' | 'none' | undefined;
+    let syncPath: string | undefined;
+    let outputPath: string | undefined;
+    let depth: number | undefined;
+
+    for (let i = 0; i < ctx.args.length; i++) {
+      if (ctx.args[i] === '--type' && ctx.args[i + 1]) {
+        type = ctx.args[i + 1] as DiagramType;
+        i++;
+      } else if (ctx.args[i].startsWith('--type=')) {
+        type = ctx.args[i].split('=')[1] as DiagramType;
+      } else if (ctx.args[i] === '--group-by' && ctx.args[i + 1]) {
+        groupBy = ctx.args[i + 1] as any;
+        i++;
+      } else if (ctx.args[i].startsWith('--group-by=')) {
+        groupBy = ctx.args[i].split('=')[1] as any;
+      } else if (ctx.args[i] === '--sync') {
+        if (ctx.args[i + 1] && !ctx.args[i + 1].startsWith('-')) {
+          syncPath = ctx.args[i + 1];
+          i++;
+        } else {
+          syncPath = 'knowledge/architecture/context-map.md';
+        }
+      } else if (ctx.args[i].startsWith('--sync=')) {
+        syncPath = ctx.args[i].split('=')[1];
+      } else if (ctx.args[i] === '--output' && ctx.args[i + 1]) {
+        outputPath = ctx.args[i + 1];
+        i++;
+      } else if (ctx.args[i].startsWith('--output=')) {
+        outputPath = ctx.args[i].split('=')[1];
+      } else if (ctx.args[i] === '--depth' && ctx.args[i + 1]) {
+        depth = parseInt(ctx.args[i + 1], 10) || 3;
+        i++;
+      } else if (ctx.args[i].startsWith('--depth=')) {
+        depth = parseInt(ctx.args[i].split('=')[1], 10) || 3;
+      }
+    }
+
+    const config = loadConfig(ctx.configPath);
+    const graphEngine = new GraphEngine(config.paths.db_path);
+    await graphEngine.initialize();
+
+    const diagramEngine = new DiagramEngine({ graphEngine });
+    const result = await diagramEngine.generateDiagram(target, {
+      type,
+      groupBy,
+      syncPath,
+      outputPath,
+      depth,
+      configPath: ctx.configPath,
+    });
+
+    if (isJson) {
+      console.log(JSON.stringify(result, null, 2));
+    } else if (result.syncedPath) {
+      console.log(`✓ Synchronized Mermaid diagram into "${result.syncedPath}"`);
+    } else if (result.writtenPath) {
+      console.log(`✓ Written Mermaid diagram to "${result.writtenPath}"`);
+    } else {
+      console.log(result.mermaidCode);
+    }
+
+    return 0;
+  }
+
+  private async handlePrune(ctx: CliContext): Promise<number> {
+    const isJson = ctx.args.includes('--json');
+    const isFix = ctx.args.includes('--fix');
+    const includeZombies = ctx.args.includes('--zombies') || ctx.args.includes('--zombie');
+
+    let specsDir: string | undefined;
+    for (let i = 0; i < ctx.args.length; i++) {
+      if (ctx.args[i] === '--dir' && ctx.args[i + 1]) {
+        specsDir = ctx.args[i + 1];
+        i++;
+      } else if (ctx.args[i].startsWith('--dir=')) {
+        specsDir = ctx.args[i].split('=')[1];
+      }
+    }
+
+    const config = loadConfig(ctx.configPath);
+    const graphEngine = new GraphEngine(config.paths.db_path);
+    await graphEngine.initialize();
+
+    const pruneEngine = new PruneEngine({ graphEngine });
+    const auditResult = await pruneEngine.auditWorkspace({
+      includeZombies,
+      fix: isFix,
+      configPath: ctx.configPath,
+      specsDir,
+    });
+
+    if (isFix) {
+      const fixResult = await pruneEngine.fixOrphans(auditResult);
+      if (isJson) {
+        console.log(JSON.stringify({ auditResult, fixResult }, null, 2));
+      } else {
+        console.log(pruneEngine.renderMarkdown(auditResult));
+        console.log(`\n✓ ${fixResult.message}`);
+      }
+      return 0;
+    }
+
+    if (isJson) {
+      console.log(JSON.stringify(auditResult, null, 2));
+    } else {
+      console.log(pruneEngine.renderMarkdown(auditResult));
+    }
+
+    return auditResult.summary.isClean ? 0 : 1;
+  }
+
+  private async handleChangelog(ctx: CliContext): Promise<number> {
+    const isJson = ctx.args.includes('--json');
+
+    let since: string | undefined;
+    let from: string | undefined;
+    let to: string | undefined;
+    let outputPath: string | undefined;
+    let specsDir: string | undefined;
+
+    for (let i = 0; i < ctx.args.length; i++) {
+      if (ctx.args[i] === '--since' && ctx.args[i + 1]) {
+        since = ctx.args[i + 1];
+        i++;
+      } else if (ctx.args[i].startsWith('--since=')) {
+        since = ctx.args[i].split('=')[1];
+      } else if (ctx.args[i] === '--from' && ctx.args[i + 1]) {
+        from = ctx.args[i + 1];
+        i++;
+      } else if (ctx.args[i].startsWith('--from=')) {
+        from = ctx.args[i].split('=')[1];
+      } else if (ctx.args[i] === '--to' && ctx.args[i + 1]) {
+        to = ctx.args[i + 1];
+        i++;
+      } else if (ctx.args[i].startsWith('--to=')) {
+        to = ctx.args[i].split('=')[1];
+      } else if (ctx.args[i] === '--output' && ctx.args[i + 1]) {
+        outputPath = ctx.args[i + 1];
+        i++;
+      } else if (ctx.args[i].startsWith('--output=')) {
+        outputPath = ctx.args[i].split('=')[1];
+      } else if (ctx.args[i] === '--dir' && ctx.args[i + 1]) {
+        specsDir = ctx.args[i + 1];
+        i++;
+      } else if (ctx.args[i].startsWith('--dir=')) {
+        specsDir = ctx.args[i].split('=')[1];
+      }
+    }
+
+    const changelogEngine = new ChangelogEngine();
+    const changelog = await changelogEngine.generateChangelog({
+      since,
+      from,
+      to,
+      outputPath,
+      configPath: ctx.configPath,
+      specsDir,
+    });
+
+    if (isJson) {
+      console.log(JSON.stringify(changelog, null, 2));
+    } else if (outputPath) {
+      console.log(`✓ Written semantic architectural changelog to "${outputPath}"`);
+    } else {
+      console.log(changelogEngine.renderMarkdown(changelog));
+    }
+
     return 0;
   }
 }

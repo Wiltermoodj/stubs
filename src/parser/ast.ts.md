@@ -16,15 +16,21 @@ module_depth: shallow
 status: spec
 version: 1
 target_code_file: ./ast.ts
-status_flag: clean
+status_flag: needs-human-review-resolution
 exports:
   - MarkdownBlock
   - parseMarkdown
   - extractImplementationCode
+  - extractDistilledSignatures
+  - extractExportedSymbolNames
 depends_on:
   - src/parser/okf.ts
 used_by:
   - src/materializer/engine.ts
+  - src/context/engine.ts
+stale_details: >-
+  Conflict detected: Both sidecar and code files have been modified with
+  structural AST differences.
 ---
 
 # Markdown AST — Block Tokenizer
@@ -51,6 +57,14 @@ Single-pass line scanner that produces a flat array of `MarkdownBlock` items. Ha
 Searches parsed blocks for `Implementation` headings (with optional numbering prefix). When multiple Implementation sections exist, **prefers the last one** (iterating `implHeadingIndices` in reverse) to handle the common case of `## Current Implementation` preceding `## Implementation`.
 
 Returns the joined content of all `typescript` / `ts` code blocks within the selected section.
+
+### `extractDistilledSignatures(sourceCode: string, fileName?: string): string`
+
+Parses TypeScript source code and strips implementation bodies from exported functions, methods, and classes, while preserving exported interfaces, type aliases, enums, and signatures. Used to create token-efficient context packages for AI agents.
+
+### `extractExportedSymbolNames(sourceCode: string, fileName?: string): string[]`
+
+Inspects the source code's AST statements to extract all exported identifier names (functions, classes, interfaces, types, enums, constants).
 
 ## Key Design Decisions
 

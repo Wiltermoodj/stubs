@@ -1,3 +1,4 @@
+import * as path from 'path';
 import * as crypto from 'crypto';
 import {
   OkfFrontmatter,
@@ -16,6 +17,11 @@ import {
   VirtualFileSystem,
   WasmSqliteDriver,
 } from '../storage';
+import { GraphNode, GraphEdge, extractFileGraph } from './extractor';
+import { TopologyEngine } from './topology';
+
+export { GraphNode, GraphEdge, extractFileGraph } from './extractor';
+export { TopologyEngine } from './topology';
 
 export function normalizePosixPath(p: string): string {
   if (!p) return '';
@@ -235,6 +241,23 @@ export interface PhaseStatusReport {
     phase: string;
     status: string;
     status_flag: string;
+  }>;
+}
+
+export interface TieredNeighborhood {
+  targetPath: string;
+  targetSidecar: any | null;
+  tier1Dependencies: Array<{
+    filePath: string;
+    sidecar: any | null;
+  }>;
+  tier1Dependents: Array<{
+    filePath: string;
+    sidecar: any | null;
+  }>;
+  tier2Dependencies: Array<{
+    filePath: string;
+    sidecar: any | null;
   }>;
 }
 
@@ -471,6 +494,39 @@ export class GraphEngine {
         PRIMARY KEY (file_path, engine)
       );
     `);
+
+    // 13. Create graph_nodes table for symbol & file level topological traversal
+    await this.run(`
+      CREATE TABLE IF NOT EXISTS graph_nodes (
+        id TEXT PRIMARY KEY,
+        file_path TEXT NOT NULL,
+        symbol_name TEXT,
+        kind TEXT NOT NULL,
+        domain TEXT,
+        lifecycle_phase TEXT,
+        loc_start INTEGER,
+        loc_end INTEGER
+      );
+    `);
+    await this.run(`CREATE INDEX IF NOT EXISTS idx_graph_nodes_file ON graph_nodes(file_path);`);
+    await this.run(`CREATE INDEX IF NOT EXISTS idx_graph_nodes_domain ON graph_nodes(domain);`);
+
+    // 14. Create graph_edges table for AST imports, calls, depends_on relationships
+    await this.run(`
+      CREATE TABLE IF NOT EXISTS graph_edges (
+        source_id TEXT NOT NULL,
+        target_id TEXT NOT NULL,
+        relation TEXT NOT NULL,
+        weight REAL DEFAULT 1.0,
+        PRIMARY KEY (source_id, target_id, relation)
+      );
+    `);
+    await this.run(
+      `CREATE INDEX IF NOT EXISTS idx_graph_edges_source ON graph_edges(source_id, relation);`,
+    );
+    await this.run(
+      `CREATE INDEX IF NOT EXISTS idx_graph_edges_target ON graph_edges(target_id, relation);`,
+    );
   }
 
   private async ensureInitialized(): Promise<void> {
@@ -741,6 +797,75 @@ export class GraphEngine {
         ],
       );
 
+      // 11. Extract and update graph_nodes & graph_edges for this sidecar
+      const rawFull = input.body ? `---\n${input.body}` : '';
+      const graphData = extractFileGraph(filePath, rawFull, {
+        domain: (frontmatter as any).domain,
+        phase: phaseVal,
+      });
+      for (const dep of depends_on) {
+        if (!dep) continue;
+        const normDep = normalizePosixPath(dep);
+        graphData.edges.push({
+          source_id: filePath,
+          target_id: normDep,
+          relation: 'depends_on',
+          weight: 1.0,
+        });
+      }
+      for (const user of used_by) {
+        if (!user) continue;
+        const normUser = normalizePosixPath(user);
+        graphData.edges.push({
+          source_id: normUser,
+          target_id: filePath,
+          relation: 'depends_on',
+          weight: 1.0,
+        });
+      }
+      if (target_code_file) {
+        const normTarget = normalizePosixPath(target_code_file);
+        graphData.edges.push({
+          source_id: filePath,
+          target_id: normTarget,
+          relation: 'implements',
+          weight: 1.0,
+        });
+      }
+
+      await this.run(
+        'DELETE FROM graph_edges WHERE source_id = ? OR target_id = ? OR source_id LIKE ? OR target_id LIKE ?;',
+        [filePath, filePath, `${filePath}#%`, `${filePath}#%`],
+      );
+      await this.run('DELETE FROM graph_nodes WHERE file_path = ? OR id = ?;', [
+        filePath,
+        filePath,
+      ]);
+
+      for (const node of graphData.nodes) {
+        await this.run(
+          `INSERT OR REPLACE INTO graph_nodes (id, file_path, symbol_name, kind, domain, lifecycle_phase, loc_start, loc_end)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?);`,
+          [
+            node.id,
+            node.file_path,
+            node.symbol_name || null,
+            node.kind,
+            node.domain || null,
+            node.lifecycle_phase || null,
+            node.loc_start || null,
+            node.loc_end || null,
+          ],
+        );
+      }
+      for (const edge of graphData.edges) {
+        await this.run(
+          `INSERT OR REPLACE INTO graph_edges (source_id, target_id, relation, weight)
+           VALUES (?, ?, ?, ?);`,
+          [edge.source_id, edge.target_id, edge.relation, edge.weight || 1.0],
+        );
+      }
+
       await this.run('COMMIT;');
 
       const config = loadConfig();
@@ -819,12 +944,219 @@ Decisions: ${decisionsText}
       await this.run('DELETE FROM tasks WHERE sidecar_path = ?;', [filePath]);
       await this.run('DELETE FROM planned_files WHERE source_doc = ?;', [filePath]);
       await this.run('DELETE FROM sidecars WHERE file_path = ?;', [filePath]);
+      await this.run(
+        'DELETE FROM graph_edges WHERE source_id = ? OR target_id = ? OR source_id LIKE ? OR target_id LIKE ?;',
+        [filePath, filePath, `${filePath}#%`, `${filePath}#%`],
+      );
+      await this.run('DELETE FROM graph_nodes WHERE file_path = ? OR id = ?;', [
+        filePath,
+        filePath,
+      ]);
 
       await this.run('COMMIT;');
     } catch (err) {
       await this.run('ROLLBACK;');
       throw err;
     }
+  }
+
+  /**
+   * Upserts extracted graph nodes into the database.
+   */
+  public async upsertGraphNodes(nodes: GraphNode[]): Promise<void> {
+    await this.ensureInitialized();
+    for (const node of nodes) {
+      await this.run(
+        `INSERT OR REPLACE INTO graph_nodes (id, file_path, symbol_name, kind, domain, lifecycle_phase, loc_start, loc_end)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?);`,
+        [
+          node.id,
+          node.file_path,
+          node.symbol_name || null,
+          node.kind,
+          node.domain || null,
+          node.lifecycle_phase || null,
+          node.loc_start || null,
+          node.loc_end || null,
+        ],
+      );
+    }
+  }
+
+  /**
+   * Upserts extracted graph edges into the database.
+   */
+  public async upsertGraphEdges(edges: GraphEdge[]): Promise<void> {
+    await this.ensureInitialized();
+    for (const edge of edges) {
+      await this.run(
+        `INSERT OR REPLACE INTO graph_edges (source_id, target_id, relation, weight)
+         VALUES (?, ?, ?, ?);`,
+        [edge.source_id, edge.target_id, edge.relation, edge.weight || 1.0],
+      );
+    }
+  }
+
+  /**
+   * Deletes all graph nodes and edges associated with a specific file path.
+   */
+  public async deleteGraphNodesForFile(filePath: string): Promise<void> {
+    await this.ensureInitialized();
+    const norm = normalizePosixPath(filePath);
+    await this.run(
+      'DELETE FROM graph_edges WHERE source_id = ? OR target_id = ? OR source_id LIKE ? OR target_id LIKE ?;',
+      [norm, norm, `${norm}#%`, `${norm}#%`],
+    );
+    await this.run('DELETE FROM graph_nodes WHERE file_path = ? OR id = ?;', [norm, norm]);
+  }
+
+  /**
+   * Queries graph nodes matching optional filters.
+   */
+  public async getGraphNodes(filter: Partial<GraphNode> = {}): Promise<GraphNode[]> {
+    await this.ensureInitialized();
+    let sql = 'SELECT * FROM graph_nodes WHERE 1=1';
+    const params: any[] = [];
+
+    if (filter.file_path) {
+      sql += ' AND file_path = ?';
+      params.push(filter.file_path);
+    }
+    if (filter.kind) {
+      sql += ' AND kind = ?';
+      params.push(filter.kind);
+    }
+    if (filter.domain) {
+      sql += ' AND domain = ?';
+      params.push(filter.domain);
+    }
+    if (filter.lifecycle_phase) {
+      sql += ' AND lifecycle_phase = ?';
+      params.push(filter.lifecycle_phase);
+    }
+    if (filter.symbol_name) {
+      sql += ' AND symbol_name = ?';
+      params.push(filter.symbol_name);
+    }
+
+    return await this.all<GraphNode>(sql, params);
+  }
+
+  /**
+   * Queries graph edges matching optional filters.
+   */
+  public async getGraphEdges(
+    filter: { source_id?: string; target_id?: string; relation?: string } = {},
+  ): Promise<GraphEdge[]> {
+    await this.ensureInitialized();
+    let sql = 'SELECT * FROM graph_edges WHERE 1=1';
+    const params: any[] = [];
+
+    if (filter.source_id) {
+      sql += ' AND source_id = ?';
+      params.push(filter.source_id);
+    }
+    if (filter.target_id) {
+      sql += ' AND target_id = ?';
+      params.push(filter.target_id);
+    }
+    if (filter.relation) {
+      sql += ' AND relation = ?';
+      params.push(filter.relation);
+    }
+
+    return await this.all<GraphEdge>(sql, params);
+  }
+
+  /**
+   * Extracts AST/pattern graph from a source code or markdown file and indexes its nodes and edges.
+   */
+  public async indexCodeFile(
+    filePath: string,
+    content?: string,
+    options: { domain?: string; phase?: string } = {},
+  ): Promise<void> {
+    await this.ensureInitialized();
+    const norm = normalizePosixPath(filePath);
+    let codeContent = content;
+    if (codeContent === undefined) {
+      codeContent = await this.fsDriver.readFile(norm);
+    }
+
+    // Determine domain and phase from existing sidecars or options if available
+    const domain = options.domain;
+    let phase = options.phase;
+    if (!phase) {
+      const sidecar = await this.get<{ phase?: string }>(
+        'SELECT phase FROM sidecars WHERE target_code_file = ? OR file_path = ?;',
+        [norm, norm],
+      );
+      if (sidecar) {
+        phase = sidecar.phase;
+      }
+    }
+
+    const { nodes, edges } = extractFileGraph(norm, codeContent, { domain, phase });
+    await this.deleteGraphNodesForFile(norm);
+    await this.upsertGraphNodes(nodes);
+    await this.upsertGraphEdges(edges);
+  }
+
+  /**
+   * Indexes all source code and markdown files under a directory into the graph database.
+   */
+  public async indexCodeWorkspace(
+    rootDir: string = '.',
+    _options: { force?: boolean } = {},
+  ): Promise<{
+    scanned: number;
+    indexed: number;
+    errors: Array<{ filePath: string; error: string }>;
+  }> {
+    await this.ensureInitialized();
+    const summary = {
+      scanned: 0,
+      indexed: 0,
+      errors: [] as Array<{ filePath: string; error: string }>,
+    };
+
+    let files: string[];
+    try {
+      if (typeof (this.fsDriver as any).glob === 'function') {
+        files = await (this.fsDriver as any).glob(rootDir);
+      } else {
+        files = await fallbackGlob(this.fsDriver, rootDir);
+      }
+    } catch (err: any) {
+      summary.errors.push({ filePath: rootDir, error: err.message });
+      return summary;
+    }
+
+    const codeExts = ['.ts', '.tsx', '.js', '.jsx', '.py', '.rs', '.go', '.md'];
+    for (const f of files) {
+      const ext = path.extname(f).toLowerCase();
+      if (!codeExts.includes(ext)) continue;
+
+      summary.scanned++;
+      try {
+        await this.indexCodeFile(f);
+        summary.indexed++;
+      } catch (err: any) {
+        summary.errors.push({ filePath: f, error: err.message });
+      }
+    }
+
+    return summary;
+  }
+
+  /**
+   * Instantiates a TopologyEngine loaded with all current graph nodes and edges.
+   */
+  public async getTopologyEngine(): Promise<TopologyEngine> {
+    await this.ensureInitialized();
+    const nodes = await this.getGraphNodes();
+    const edges = await this.getGraphEdges();
+    return new TopologyEngine(nodes, edges);
   }
 
   /**
@@ -1004,6 +1336,87 @@ Decisions: ${decisionsText}
     }
 
     return Array.from(new Set(results));
+  }
+
+  /**
+   * Retrieves a tiered topological neighborhood for agent context slicing:
+   * - Tier 0: Target module sidecar
+   * - Tier 1: 1-hop direct dependencies and direct dependents
+   * - Tier 2: 2-hop transitive dependencies
+   */
+  public async getTieredNeighborhood(filePath: string, depth = 2): Promise<TieredNeighborhood> {
+    await this.ensureInitialized();
+    let normalized = normalizePosixPath(filePath);
+    if (normalized.startsWith('./')) {
+      normalized = normalized.substring(2);
+    }
+
+    let targetSidecar = await this.getSidecar(normalized);
+    let canonicalPath = normalized;
+    if (!targetSidecar && normalized.endsWith('.ts')) {
+      const sidecarPath = `${normalized}.md`;
+      const s = await this.getSidecar(sidecarPath);
+      if (s) {
+        canonicalPath = sidecarPath;
+        targetSidecar = s;
+      }
+    } else if (!targetSidecar && normalized.endsWith('.ts.md')) {
+      const codePath = normalized.replace(/\.md$/, '');
+      const s = await this.getSidecar(codePath);
+      if (s) {
+        canonicalPath = codePath;
+        targetSidecar = s;
+      }
+    }
+
+    // 1-Hop direct dependencies (outbound)
+    const tier1DepPaths = await this.getNeighbors(canonicalPath, 'dependencies');
+    const tier1Dependencies = await Promise.all(
+      tier1DepPaths.map(async (depPath) => ({
+        filePath: depPath,
+        sidecar: await this.getSidecar(depPath),
+      })),
+    );
+
+    // 1-Hop direct dependents (inbound)
+    const tier1CallerPaths = await this.getNeighbors(canonicalPath, 'dependents');
+    const tier1Dependents = await Promise.all(
+      tier1CallerPaths.map(async (callerPath) => ({
+        filePath: callerPath,
+        sidecar: await this.getSidecar(callerPath),
+      })),
+    );
+
+    // 2-Hop transitive dependencies
+    const tier2Dependencies: Array<{ filePath: string; sidecar: any | null }> = [];
+    if (depth >= 2) {
+      const tier1Set = new Set([canonicalPath, ...tier1DepPaths]);
+      const tier2Paths = new Set<string>();
+
+      for (const depPath of tier1DepPaths) {
+        const subDeps = await this.getNeighbors(depPath, 'dependencies');
+        for (const subDep of subDeps) {
+          if (!tier1Set.has(subDep)) {
+            tier2Paths.add(subDep);
+          }
+        }
+      }
+
+      for (const t2Path of tier2Paths) {
+        tier2Dependencies.push({
+          filePath: t2Path,
+          sidecar: await this.getSidecar(t2Path),
+        });
+      }
+    }
+
+    return {
+      targetPath: canonicalPath,
+      targetSidecar,
+      tier1Dependencies,
+      tier1Dependents,
+      tier2Dependencies,
+    };
   }
 
   /**

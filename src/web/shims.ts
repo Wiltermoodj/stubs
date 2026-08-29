@@ -180,6 +180,12 @@ export function basename(p: string): string {
   return p.replace(/\\/g, '/').split('/').pop() || '';
 }
 
+export function extname(p: string): string {
+  const base = basename(p);
+  const idx = base.lastIndexOf('.');
+  return idx > 0 ? base.slice(idx) : '';
+}
+
 export function isAbsolute(p: string): boolean {
   if (!p) return false;
   const norm = p.replace(/\\/g, '/');
@@ -334,6 +340,7 @@ export default {
   relative,
   dirname,
   basename,
+  extname,
   isAbsolute,
   normalize,
   promises,

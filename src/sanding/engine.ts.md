@@ -18,7 +18,7 @@ context_object: SyncResult
 status: spec
 version: 1
 target_code_file: ./engine.ts
-status_flag: clean
+status_flag: needs-human-review-resolution
 exports:
   - SyncResult
   - SandingEngine
@@ -33,6 +33,9 @@ depends_on:
 used_by:
   - src/cli/router.ts
   - src/autonomy/protocol.ts
+stale_details: >-
+  Conflict detected: Both sidecar and code files have been modified with
+  structural AST differences.
 ---
 
 # Sanding Engine — Bi-Directional Spec/Code Sync

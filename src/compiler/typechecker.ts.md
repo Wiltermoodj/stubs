@@ -15,13 +15,16 @@ module_depth: deep
 status: spec
 version: 1
 target_code_file: ./typechecker.ts
-status_flag: clean
+status_flag: needs-human-review-resolution
 exports:
   - TypeCheckResult
   - typeCheckVirtualFile
 used_by:
   - src/materializer/engine.ts
   - src/sanding/engine.ts
+stale_details: >-
+  Conflict detected: Both sidecar and code files have been modified with
+  structural AST differences.
 ---
 
 # Compiler — In-Memory TypeScript Typechecker

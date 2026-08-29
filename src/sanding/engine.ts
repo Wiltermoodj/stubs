@@ -6,6 +6,7 @@ import { parseOkfSpec, OkfFrontmatter, ParsedOkfSpec } from '../parser/okf';
 import { extractImplementationCode, replaceImplementationCode } from '../parser/markdown';
 import { getAstStructuralHash, typeCheckCode } from './ast';
 import { resolveContainedPath } from '../storage/containment';
+import { extractFileGraph } from '../graph/extractor';
 
 export interface SyncResult {
   filePath: string;
@@ -216,13 +217,59 @@ export function stripSidecarHeader(code: string): string {
   return cleanLines.join('\n').trim();
 }
 
+/**
+ * Synchronizes frontmatter depends_on links with real imports extracted from the code file.
+ */
+export function syncFrontmatterDependencies(
+  frontmatter: OkfFrontmatter,
+  codeFilePath: string,
+  codeContent: string,
+  sidecarPath: string,
+): boolean {
+  if (!codeContent) return false;
+  try {
+    const graph = extractFileGraph(codeFilePath, codeContent);
+    const codeImports = graph.edges.filter((e) => e.relation === 'imports').map((e) => e.target_id);
+
+    const existingDeps = Array.isArray(frontmatter.depends_on) ? [...frontmatter.depends_on] : [];
+    // Separate spec dependencies (e.g. *.md or non-code files) from code dependencies
+    const specDeps = existingDeps.filter(
+      (d) => d.endsWith('.md') || !d.match(/\.(ts|tsx|js|jsx|py|rs|go)$/),
+    );
+
+    // Format code imports relative to the sidecar file path
+    const sidecarDir = path.dirname(sidecarPath);
+    const formattedCodeDeps = codeImports.map((imp) => {
+      let rel = path.relative(sidecarDir, imp).replace(/\\/g, '/');
+      if (!rel.startsWith('.') && !rel.startsWith('/')) {
+        rel = `./${rel}`;
+      }
+      return rel;
+    });
+
+    const merged = Array.from(new Set([...specDeps, ...formattedCodeDeps]));
+    const isDifferent =
+      JSON.stringify(existingDeps.slice().sort()) !== JSON.stringify(merged.slice().sort());
+    if (isDifferent) {
+      frontmatter.depends_on = merged;
+      return true;
+    }
+    return false;
+  } catch {
+    return false;
+  }
+}
+
 export class SandingEngine {
   /**
    * Synchronizes a single sidecar file (.ts.md) with its target code file (.ts).
    * This absorbs all complexity of AST structural hashing, timestamp vector comparisons,
    * self-healing frontmatter, and bi-directional sanding.
    */
-  public async syncFile(sidecarPath: string): Promise<SyncResult> {
+  public async syncFile(
+    sidecarPath: string,
+    options: { noGraphSync?: boolean } = {},
+  ): Promise<SyncResult> {
     const resolvedSidecar = path.resolve(sidecarPath);
     if (!existsSync(resolvedSidecar)) {
       return {
@@ -403,6 +450,10 @@ export class SandingEngine {
         code_hash: finalCodeHash,
       };
 
+      if (!options.noGraphSync) {
+        syncFrontmatterDependencies(frontmatter, resolvedTarget, extractedCode, resolvedSidecar);
+      }
+
       // To get a fully precise sidecar hash, we write, strip state, compute hash, and re-write sync state
       const tempContent = `---\n${yaml.dump(frontmatter)}---\n${body}`;
       const stableSidecar = stripSyncStateFromContent(tempContent);
@@ -518,6 +569,10 @@ export class SandingEngine {
       }
 
       const updatedBody = replaceImplementationCode(body, cleanCode);
+
+      if (!options.noGraphSync) {
+        syncFrontmatterDependencies(frontmatter, resolvedTarget, cleanCode, resolvedSidecar);
+      }
 
       frontmatter.status = 'materialized';
       frontmatter.status_flag = 'clean';
@@ -693,7 +748,10 @@ export class SandingEngine {
   /**
    * Synchronizes the entire workspace by scanning and reconciling all specs in the specifications directory.
    */
-  public async syncWorkspace(specsDir: string): Promise<SyncResult[]> {
+  public async syncWorkspace(
+    specsDir: string,
+    options: { noGraphSync?: boolean } = {},
+  ): Promise<SyncResult[]> {
     const specsPath = path.resolve(specsDir);
     if (!existsSync(specsPath)) {
       return [];
@@ -716,7 +774,7 @@ export class SandingEngine {
           continue;
         }
 
-        const res = await this.syncFile(file);
+        const res = await this.syncFile(file, options);
         results.push(res);
       } catch (err: any) {
         results.push({

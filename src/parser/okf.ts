@@ -28,6 +28,7 @@ export interface OkfFrontmatter {
     | 'clean'
     | 'draft';
   version: number;
+  domain?: string;
   phase?: 'conceptualize' | 'grill' | 'spec' | 'materialize' | 'sand' | 'sand-audit' | string;
   initiative?: string;
   planned_files?: Array<

@@ -41,10 +41,16 @@ The `stubs` skill delegates to modular sub-skills located under `.agents/skills/
 
 1. **[Conceptualizing](./sub-skills/conceptualizing/SKILL.md):** Conceptualize domain models, problem framing, initiative task trackers, and planned filetree blueprints.
 2. **[Context Mapping](./sub-skills/context-mapping/SKILL.md):** Build, maintain, and audit hierarchical architectural context maps (`knowledge/architecture/context-map.md` and domain maps).
-3. **[Grilling](./sub-skills/grilling/SKILL.md):** Stress-test software designs using frontier-based dependency tree rounds.
-4. **[Sanding](./sub-skills/sanding/SKILL.md):** Reconcile code-to-spec or spec-to-code drift using AST structural hashes and bi-directional synchronization.
-5. **[Materialization](./sub-skills/materialization/SKILL.md):** Extract implementation blocks from sidecar specs into runnable code files (.ts, .py, .go, etc.).
-6. **[Auditing](./sub-skills/auditing/SKILL.md):** Perform static analysis, health checks, and graph validation across the workspace.
+3. **[Context & Intelligence](./sub-skills/context/SKILL.md):** Extract token-optimized, tiered context briefings and blast-radius impact analysis for AI agents.
+4. **[Grilling](./sub-skills/grilling/SKILL.md):** Stress-test software designs using frontier-based dependency tree rounds.
+5. **[Sanding](./sub-skills/sanding/SKILL.md):** Reconcile code-to-spec or spec-to-code drift using AST structural hashes and bi-directional synchronization.
+6. **[Materialization](./sub-skills/materialization/SKILL.md):** Extract implementation blocks from sidecar specs into runnable code files (.ts, .py, .go, etc.).
+7. **[Auditing](./sub-skills/auditing/SKILL.md):** Perform static analysis, health checks, and graph validation across the workspace.
+8. **[Architectural Linting](./sub-skills/lint/SKILL.md):** Validate downward layer hierarchy, cycle bans, and manifest parity in CI.
+9. **[Test & Mock Scaffolding](./sub-skills/mock/SKILL.md):** Synthesize unit test suites and typed mocks directly from sidecar specs and AST signatures.
+10. **[Mermaid Diagrams & Visualization](./sub-skills/diagram/SKILL.md):** Generate living Mermaid architecture and sequence diagrams directly from the dependency graph.
+11. **[Dead Code & Orphan Pruning](./sub-skills/pruning/SKILL.md):** Audit and clean up phantom specs, untracked code files, and stale database records.
+12. **[Semantic Architectural Changelog](./sub-skills/changelog/SKILL.md):** Synthesize semantic architectural changelogs, ADR evolution logs, and contract drift reports from git history.
 
 ---
 
@@ -119,10 +125,67 @@ npx stubs sand
 npx stubs sand src/service.ts.md
 ```
 
-### 11. `stubs serve`
+### 11. `stubs context <file.md>`
+Generates a token-optimized, topologically sliced context package for AI agent briefings (Target Full + Direct Dependencies Signatures/ADRs + Transitive Symbol Index).
+```bash
+npx stubs context src/service.ts.md
+npx stubs context src/service.ts.md --json
+npx stubs context src/service.ts.md --output .stubs/agent-briefing.md
+```
+
+### 12. `stubs impact <file.ts>`
+Calculates upstream/downstream blast radius, risk scoring (LOW/MEDIUM/HIGH/CRITICAL), domain boundaries, and stale sidecar risks before making code or interface changes.
+```bash
+npx stubs impact src/storage/index.ts
+npx stubs impact src/storage/index.ts --transitive --json
+```
+
+### 13. `stubs lint-arch`
+Runs zero-dependency architectural guardrails, checking downward layer hierarchy, circular dependency loops, and sidecar manifest parity.
+```bash
+npx stubs lint-arch
+npx stubs lint-arch --strict --json
+```
+
+### 14. `stubs mock <file.md>`
+Synthesizes Jest/Vitest unit test suites and typed mocks directly from sidecar interface contracts, ADR decisions, and AST signatures.
+```bash
+npx stubs mock src/service.ts.md
+npx stubs mock src/service.ts.md --framework vitest --output tests/unit/service.test.ts
+npx stubs mock src/service.ts.md --dry-run
+```
+
+### 15. `stubs diagram [target]`
+Generates Mermaid architecture flowcharts, sequence diagrams, or neighborhood slices from the dependency graph. Supports automated sync into `context-map.md`.
+```bash
+npx stubs diagram
+npx stubs diagram --group-by domain
+npx stubs diagram src/cli/router.ts --type sequence
+npx stubs diagram --sync knowledge/architecture/context-map.md
+```
+
+### 16. `stubs prune`
+Audits the workspace for phantom sidecars, untracked code files, zombie exports, and stale database records.
+```bash
+npx stubs prune
+npx stubs prune --zombies --json
+npx stubs prune --fix
+```
+
+### 17. `stubs changelog`
+Synthesizes semantic architectural changelogs from git history and sidecar specifications, tracking ADR decisions, public interface contract drift, and 5-phase lifecycle transitions.
+```bash
+npx stubs changelog
+npx stubs changelog --since v1.0.0
+npx stubs changelog --from main --to HEAD --json
+npx stubs changelog --output CHANGELOG.md
+```
+
+### 18. `stubs serve`
 Starts the local background Web Portal server and OS filesystem event bridge for live visualization and real-time SSE broadcasts.
 ```bash
 npx stubs serve --port 3000
 ```
+
 
 

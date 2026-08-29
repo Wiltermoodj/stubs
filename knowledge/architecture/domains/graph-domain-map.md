@@ -22,11 +22,11 @@ The **Graph Engine** manages repository-wide dependency relationships, node stat
 
 ## Key Files & Sidecars
 
-| File / Sidecar                                                                                                                                                              | Purpose & Exported Symbols                                                           | Depends On                    |
-| :-------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :----------------------------------------------------------------------------------- | :---------------------------- |
-| [`src/graph/engine.ts`](file:///Users/lappier/code/projects/stubs/src/graph/engine.ts) / [`engine.ts.md`](file:///Users/lappier/code/projects/stubs/src/graph/engine.ts.md) | Central `GraphEngine` class managing SQLite queries, transactions, and state updates | `schema.ts`, `better-sqlite3` |
-| [`src/graph/schema.ts`](file:///Users/lappier/code/projects/stubs/src/graph/schema.ts) / [`schema.ts.md`](file:///Users/lappier/code/projects/stubs/src/graph/schema.ts.md) | Table schemas (`nodes`, `edges`, `proposals`), indexes, and migrations               | `better-sqlite3`              |
-| [`src/graph/index.ts`](file:///Users/lappier/code/projects/stubs/src/graph/index.ts) / [`index.ts.md`](file:///Users/lappier/code/projects/stubs/src/graph/index.ts.md)     | Domain barrel exports for `GraphEngine` and types                                    | `engine.ts`, `schema.ts`      |
+| File / Sidecar                                                                                                                                                              | Purpose & Exported Symbols                                                                                                         | Depends On                 |
+| :-------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :--------------------------------------------------------------------------------------------------------------------------------- | :------------------------- |
+| [`src/graph/engine.ts`](file:///Users/lappier/code/projects/stubs/src/graph/engine.ts) / [`engine.ts.md`](file:///Users/lappier/code/projects/stubs/src/graph/engine.ts.md) | Central `GraphEngine` class managing SQLite queries, schema tables (`graph_nodes`, `graph_edges`), transactions, and state updates | `sql.js`, `better-sqlite3` |
+| [`src/graph/extractor.ts`](file:///Users/lappier/code/projects/stubs/src/graph/extractor.ts)                                                                                | AST & multi-language symbol, call, import, and OKF link extraction for TS, JS, Python, Rust, Go                                    | `typescript`, `parser/okf` |
+| [`src/graph/topology.ts`](file:///Users/lappier/code/projects/stubs/src/graph/topology.ts)                                                                                  | `TopologyEngine` managing blast radius traversal, BFS shortest path, Tarjan SCC cycle detection, and God Node centrality           | `extractor.ts`             |
 
 ---
 

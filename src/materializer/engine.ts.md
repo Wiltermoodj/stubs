@@ -2,10 +2,11 @@
 title: Materializer Engine — Code Extraction & Atomic Write
 type: sidecar-spec
 description: >-
-  Extracts TypeScript implementation code blocks from OKF sidecar specifications,
-  runs in-memory type-checking, writes the code atomically to the target .ts file,
-  computes SHA-256 hashes, updates sync_state frontmatter, and syncs the graph
-  database. The canonical path from sidecar spec to executable source code.
+  Extracts TypeScript implementation code blocks from OKF sidecar
+  specifications, runs in-memory type-checking, writes the code atomically to
+  the target .ts file, computes SHA-256 hashes, updates sync_state frontmatter,
+  and syncs the graph database. The canonical path from sidecar spec to
+  executable source code.
 tags:
   - materializer
   - code-generation
@@ -16,7 +17,7 @@ module_depth: deep
 status: spec
 version: 1
 target_code_file: ./engine.ts
-status_flag: clean
+status_flag: needs-human-review-resolution
 exports:
   - MaterializerEngine
   - MaterializeResult
@@ -29,7 +30,9 @@ depends_on:
   - src/storage/containment.ts
 used_by:
   - src/cli/router.ts
-  - src/autonomy/protocol.ts
+stale_details: >-
+  Conflict detected: Both sidecar and code files have been modified with
+  structural AST differences.
 ---
 
 # Materializer Engine — Code Extraction & Atomic Write

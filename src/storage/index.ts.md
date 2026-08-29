@@ -3,10 +3,10 @@ title: Storage Abstraction Layer
 type: sidecar-spec
 description: >-
   Defines the FileStorageDriver and DatabaseDriver abstract interfaces and
-  provides concrete implementations: NodeFileSystem (Node.js fs), BetterSqliteDriver
-  (native sqlite3), and WasmSqliteDriver (sql.js WASM for browser/mobile).
-  Enables the dual-runtime architecture that lets the same engine code run in
-  Node.js CLI and browser PWA contexts.
+  provides concrete implementations: NodeFileSystem (Node.js fs),
+  BetterSqliteDriver (native sqlite3), and WasmSqliteDriver (sql.js WASM for
+  browser/mobile). Enables the dual-runtime architecture that lets the same
+  engine code run in Node.js CLI and browser PWA contexts.
 tags:
   - storage
   - database
@@ -18,7 +18,7 @@ module_depth: deep
 status: spec
 version: 1
 target_code_file: ./index.ts
-status_flag: clean
+status_flag: needs-human-review-resolution
 exports:
   - FileStorageDriver
   - FileSystemDriver
@@ -30,6 +30,9 @@ exports:
   - VirtualFileSystem
 used_by:
   - src/graph/engine.ts
+stale_details: >-
+  Conflict detected: Both sidecar and code files have been modified with
+  structural AST differences.
 ---
 
 # Storage Abstraction Layer
