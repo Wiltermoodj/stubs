@@ -1368,6 +1368,55 @@ This project uses the \`stubs\` architecture-as-code sidecar framework.
       await fs.writeFile(path.join(cursorRulesDir, 'stubs.mdc'), cursorRuleContent, 'utf8');
       console.log(`Configured Cursor rules adapter at "${cursorRulesDir}/stubs.mdc".`);
     }
+
+    // Antigravity / IDE Customization Hooks (.agents/hooks.json)
+    const hooksPath = path.join(targetDir, '.agents/hooks.json');
+    if (!existsSync(hooksPath)) {
+      const hooksContent = {
+        version: '1.0.0',
+        description: 'Automatic stubs AST dependency graph sync hooks',
+        hooks: [
+          {
+            event: 'post_tool_execution',
+            matcher: 'replace_file_content|write_to_file|multi_replace_file_content',
+            command: 'npx stubs scan',
+            description: 'Automatically synchronizes .stubs/graph.sqlite when files are modified',
+          },
+        ],
+      };
+      await fs.writeFile(hooksPath, JSON.stringify(hooksContent, null, 2), 'utf8');
+      console.log(`Configured IDE background sync hooks at "${hooksPath}".`);
+    }
+
+    // Git pre-commit hook (.git/hooks/pre-commit)
+    await this.installGitHooks(targetDir);
+  }
+
+  private async installGitHooks(targetDir: string): Promise<void> {
+    const gitHooksDir = path.join(targetDir, '.git', 'hooks');
+    if (!existsSync(gitHooksDir)) {
+      return;
+    }
+
+    const preCommitPath = path.join(gitHooksDir, 'pre-commit');
+    const stubsHookMarker = '# stubs-auto-scan';
+    const hookScript = `\n${stubsHookMarker}\nif command -v npx >/dev/null 2>&1; then\n  npx stubs scan >/dev/null 2>&1 || true\nfi\n`;
+
+    try {
+      let content = '';
+      if (existsSync(preCommitPath)) {
+        content = await fs.readFile(preCommitPath, 'utf8');
+      } else {
+        content = '#!/bin/sh\n';
+      }
+
+      if (!content.includes(stubsHookMarker)) {
+        await fs.writeFile(preCommitPath, content + hookScript, { mode: 0o755 });
+        console.log(`Installed git pre-commit hook at "${preCommitPath}".`);
+      }
+    } catch {
+      // Ignore git hook permissions/installation failures silently
+    }
   }
 
   private async updateGitignore(targetDir: string): Promise<void> {

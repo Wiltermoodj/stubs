@@ -522,6 +522,15 @@ export class GraphEngine {
     await this.run(`CREATE INDEX IF NOT EXISTS idx_graph_nodes_file ON graph_nodes(file_path);`);
     await this.run(`CREATE INDEX IF NOT EXISTS idx_graph_nodes_domain ON graph_nodes(domain);`);
 
+    // 13b. Create file_meta table for incremental JIT delta sync
+    await this.run(`
+      CREATE TABLE IF NOT EXISTS file_meta (
+        file_path TEXT PRIMARY KEY,
+        file_hash TEXT NOT NULL,
+        indexed_at INTEGER NOT NULL
+      );
+    `);
+
     // 14. Create graph_edges table for AST imports, calls, depends_on relationships
     await this.run(`
       CREATE TABLE IF NOT EXISTS graph_edges (
@@ -1111,6 +1120,95 @@ Decisions: ${decisionsText}
     await this.deleteGraphNodesForFile(norm);
     await this.upsertGraphNodes(nodes);
     await this.upsertGraphEdges(edges);
+
+    const hash = this.calculateHash(codeContent);
+    await this.run(
+      `INSERT OR REPLACE INTO file_meta (file_path, file_hash, indexed_at) VALUES (?, ?, ?);`,
+      [norm, hash, Date.now()],
+    );
+  }
+
+  /**
+   * Performs high-speed lazy JIT incremental sync across workspace files.
+   * Compares disk hashes with SQLite file_meta and updates only modified/added files.
+   */
+  public async syncWorkspaceFiles(rootDir: string = '.'): Promise<{
+    added: number;
+    updated: number;
+    removed: number;
+  }> {
+    await this.ensureInitialized();
+    const result = { added: 0, updated: 0, removed: 0 };
+
+    let files: string[];
+    try {
+      if (typeof (this.fsDriver as any).glob === 'function') {
+        files = await (this.fsDriver as any).glob(rootDir);
+      } else {
+        files = await fallbackGlob(this.fsDriver, rootDir);
+      }
+    } catch {
+      return result;
+    }
+
+    const codeExts = ['.ts', '.tsx', '.js', '.jsx', '.py', '.rs', '.go', '.md'];
+    const matchedFiles = files.filter((f) => codeExts.includes(path.extname(f).toLowerCase()));
+
+    const cachedMetaRows = await this.all<{ file_path: string; file_hash: string }>(
+      'SELECT file_path, file_hash FROM file_meta;',
+    );
+    const cachedMetaMap = new Map<string, string>();
+    for (const r of cachedMetaRows) {
+      cachedMetaMap.set(r.file_path, r.file_hash);
+    }
+
+    const currentNormFiles = new Set<string>();
+
+    for (const f of matchedFiles) {
+      const norm = normalizePosixPath(f);
+      currentNormFiles.add(norm);
+
+      try {
+        const content = await this.fsDriver.readFile(norm);
+        const currentHash = this.calculateHash(content);
+        const cachedHash = cachedMetaMap.get(norm);
+
+        if (!cachedHash) {
+          await this.indexCodeFile(norm, content);
+          if (norm.endsWith('.md') && !norm.endsWith('.tpl') && content.trim().startsWith('---')) {
+            try {
+              await this.indexFile(norm);
+            } catch {}
+          }
+          result.added++;
+        } else if (cachedHash !== currentHash) {
+          await this.indexCodeFile(norm, content);
+          if (norm.endsWith('.md') && !norm.endsWith('.tpl') && content.trim().startsWith('---')) {
+            try {
+              await this.indexFile(norm);
+            } catch {}
+          }
+          result.updated++;
+        }
+      } catch {
+        // Skip unreadable files
+      }
+    }
+
+    // Purge deleted files only within rootDir
+    for (const cachedPath of cachedMetaMap.keys()) {
+      if (
+        (rootDir === '.' || cachedPath.startsWith(rootDir.replace(/^\.\//, ''))) &&
+        !currentNormFiles.has(cachedPath)
+      ) {
+        await this.deleteGraphNodesForFile(cachedPath);
+        await this.run('DELETE FROM file_meta WHERE file_path = ?;', [cachedPath]);
+        await this.run('DELETE FROM sidecars WHERE file_path = ?;', [cachedPath]);
+        result.removed++;
+      }
+    }
+
+    return result;
   }
 
   /**

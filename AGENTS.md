@@ -47,10 +47,18 @@ For individual module sidecar specs (interface contracts, design decisions, depe
 - **Formatter:** `prettier`.
 - **Design Principles:** All code changes must adhere strictly to the rules outlined in `DESIGN_PHILOSOPHY.md` (e.g., Deep Modules, Pulling Complexity Downward, Code Cohesion).
 
+## Architecture Graph & Automatic Re-Scanning
+
+The repository maintains an AST-extracted dependency graph in `.stubs/graph.sqlite`.
+
+- **Reading Architecture:** Before proposing structural changes, agents should query graph topology via `npx stubs blast <target>`, `npx stubs path <src> <dest>`, or `npx stubs diagram`.
+- **Automatic Graph Maintenance:** Whenever files (source code or markdown sidecars) are created, deleted, or structurally modified, agents **MUST automatically run `npx stubs scan`** to refresh `.stubs/graph.sqlite` and keep AST symbols, call chains, and module imports synchronized.
+
 ## CLI Commands
 
 Agents should use the following commands to execute repository tasks:
 
+- **Scan & Index Code Graph:** `npx stubs scan` (or `node .agents/skills/stubs/dist/cli.cjs scan`)
 - **Install Dependencies:** `npm install`
 - **Build Project:** `npm run build`
 - **Run Tests:** `npm test`

@@ -29,8 +29,9 @@ stubs <command> [options]
 node .agents/skills/stubs/dist/cli.cjs <command> [options]
 ```
 
-### Dynamic Workspace Root Rules
+### Dynamic Workspace Root & Graph State Rules
 - All runtime state (database `.stubs/graph.sqlite`, workspace configuration `.stubs/config.json`, and template molds `.stubs/templates`) resolves relative to the host project's **current working directory (`process.cwd()`)**.
+- **Automated Graph Synchronization:** Agents should run `npx stubs scan` (or `npx stubs scan <dir>`) after creating, refactoring, or deleting code files and sidecar specs to keep `.stubs/graph.sqlite` up to date.
 - Never resolve runtime state relative to the `.agents/skills/stubs/dist/` bundle directory.
 
 ---

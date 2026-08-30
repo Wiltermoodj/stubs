@@ -1,6 +1,6 @@
 import * as path from 'path';
 import { GraphEngine, normalizePosixPath } from '../graph/engine';
-import { getModuleLayer, LAYER_DEFINITIONS } from '../lint/engine';
+import { getModuleLayer } from '../lint/engine';
 import { FileStorageDriver, NodeFileSystem } from '../storage';
 import { loadConfig } from '../config/schema';
 
@@ -52,16 +52,14 @@ export class DiagramEngine {
   ): Promise<DiagramResult> {
     await this.graphEngine.initialize();
 
-    let existingNodes = await this.graphEngine.getGraphNodes();
+    const existingNodes = await this.graphEngine.getGraphNodes();
     if (existingNodes.length === 0) {
       const config = loadConfig(options.configPath);
-      await this.graphEngine.indexCodeWorkspace(config.paths?.specs_dir || 'src');
-      await this.graphEngine.indexWorkspace(config.paths?.specs_dir || 'src');
-      existingNodes = await this.graphEngine.getGraphNodes();
+      await this.graphEngine.syncWorkspaceFiles(config.paths?.specs_dir || 'src');
     }
 
     const type: DiagramType = options.type || (target ? 'slice' : 'architecture');
-    let mermaidCode = '';
+    let mermaidCode: string;
 
     if (type === 'sequence' && target) {
       mermaidCode = await this.generateSequenceDiagram(target, options);
@@ -270,7 +268,7 @@ export class DiagramEngine {
    */
   public async generateSliceDiagram(
     targetFile: string,
-    options: DiagramOptions = {},
+    _options: DiagramOptions = {},
   ): Promise<string> {
     const normalized = normalizePosixPath(targetFile);
     const edges = await this.graphEngine.getGraphEdges();
