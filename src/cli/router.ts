@@ -1187,15 +1187,25 @@ export class {{pascalName}} {
     } = {},
   ): Promise<void> {
     const destDir = path.join(targetDir, '.agents/skills/stubs');
+    const SUB_SKILL_NAMES = [
+      'auditing',
+      'changelog',
+      'conceptualizing',
+      'context',
+      'context-mapping',
+      'diagram',
+      'grilling',
+      'lint',
+      'materialization',
+      'mock',
+      'pruning',
+      'sanding',
+    ];
+
     const SKILL_FILES = [
       '.agents/skills/stubs/SKILL.md',
       '.agents/skills/stubs/.gitignore',
-      '.agents/skills/stubs/sub-skills/auditing/SKILL.md',
-      '.agents/skills/stubs/sub-skills/conceptualizing/SKILL.md',
-      '.agents/skills/stubs/sub-skills/context-mapping/SKILL.md',
-      '.agents/skills/stubs/sub-skills/grilling/SKILL.md',
-      '.agents/skills/stubs/sub-skills/materialization/SKILL.md',
-      '.agents/skills/stubs/sub-skills/sanding/SKILL.md',
+      ...SUB_SKILL_NAMES.map((name) => `.agents/skills/stubs/sub-skills/${name}/SKILL.md`),
     ];
 
     const isCustomRemote = Boolean(options.repo || options.branch || options.isInstall);
@@ -1203,29 +1213,31 @@ export class {{pascalName}} {
 
     if (!isCustomRemote) {
       const candidateRoots = [
+        path.resolve(__dirname, 'skills'), // staged dist/skills
+        path.resolve(__dirname, '../skills'),
         path.resolve(__dirname, '..'),
         path.resolve(__dirname, '../..'),
         path.resolve(__dirname, '../../..'),
       ];
 
       for (const root of candidateRoots) {
-        const rootMainSkill = path.join(root, '.agents/skills/stubs/SKILL.md');
-        if (existsSync(rootMainSkill) && path.resolve(root) !== path.resolve(targetDir)) {
+        // Look either for .agents/skills/stubs or root itself being the stubs skill dir
+        const candidateSkillDir = existsSync(path.join(root, 'SKILL.md'))
+          ? root
+          : path.join(root, '.agents/skills/stubs');
+
+        if (
+          existsSync(candidateSkillDir) &&
+          path.resolve(candidateSkillDir) !== path.resolve(destDir)
+        ) {
           try {
             await fs.mkdir(destDir, { recursive: true });
-            for (const file of SKILL_FILES) {
-              const srcPath = path.join(root, file);
-              if (existsSync(srcPath)) {
-                const localPath = path.join(targetDir, file);
-                await fs.mkdir(path.dirname(localPath), { recursive: true });
-                const content = await fs.readFile(srcPath);
-                await fs.writeFile(localPath, content);
-              }
-            }
+            // Recursively copy entire skill structure (including all sub-skills)
+            await fs.cp(candidateSkillDir, destDir, { recursive: true, force: true });
             copiedLocally = true;
             break;
           } catch {
-            // Fall back to remote fetch if local copy fails
+            // Fall back to individual file copy or remote fetch
           }
         }
       }
@@ -1244,13 +1256,17 @@ export class {{pascalName}} {
             if (!options.isInstall) {
               // If remote fetch returns error during non-install, try local root fallback
               const candidateRoots = [
+                path.resolve(__dirname, 'skills'),
+                path.resolve(__dirname, '../skills'),
                 path.resolve(__dirname, '..'),
                 path.resolve(__dirname, '../..'),
                 path.resolve(__dirname, '../../..'),
               ];
               let fallbackFound = false;
               for (const root of candidateRoots) {
-                const srcPath = path.join(root, file);
+                const srcPath = existsSync(path.join(root, 'SKILL.md'))
+                  ? path.join(root, file.replace(/^\.agents\/skills\/stubs\//, ''))
+                  : path.join(root, file);
                 if (existsSync(srcPath)) {
                   const localPath = path.join(targetDir, file);
                   await fs.mkdir(path.dirname(localPath), { recursive: true });
@@ -1280,13 +1296,17 @@ export class {{pascalName}} {
           if (!options.isInstall) {
             // If fetch fails (network/offline) during non-install, try local file fallback
             const candidateRoots = [
+              path.resolve(__dirname, 'skills'),
+              path.resolve(__dirname, '../skills'),
               path.resolve(__dirname, '..'),
               path.resolve(__dirname, '../..'),
               path.resolve(__dirname, '../../..'),
             ];
             let fallbackFound = false;
             for (const root of candidateRoots) {
-              const srcPath = path.join(root, file);
+              const srcPath = existsSync(path.join(root, 'SKILL.md'))
+                ? path.join(root, file.replace(/^\.agents\/skills\/stubs\//, ''))
+                : path.join(root, file);
               if (existsSync(srcPath)) {
                 const localPath = path.join(targetDir, file);
                 await fs.mkdir(path.dirname(localPath), { recursive: true });

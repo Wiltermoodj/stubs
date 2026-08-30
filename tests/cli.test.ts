@@ -152,9 +152,26 @@ title: "Temp Spec"
       // Verify directory structure and files
       expect(fs.existsSync(path.join(tempDir, '.agents/skills/stubs/SKILL.md'))).toBe(true);
       expect(fs.existsSync(path.join(tempDir, '.agents/skills/stubs/.gitignore'))).toBe(true);
-      expect(
-        fs.existsSync(path.join(tempDir, '.agents/skills/stubs/sub-skills/auditing/SKILL.md')),
-      ).toBe(true);
+
+      const expectedSubSkills = [
+        'auditing',
+        'changelog',
+        'conceptualizing',
+        'context',
+        'context-mapping',
+        'diagram',
+        'grilling',
+        'lint',
+        'materialization',
+        'mock',
+        'pruning',
+        'sanding',
+      ];
+      for (const subSkill of expectedSubSkills) {
+        expect(
+          fs.existsSync(path.join(tempDir, `.agents/skills/stubs/sub-skills/${subSkill}/SKILL.md`)),
+        ).toBe(true);
+      }
       expect(fs.existsSync(path.join(tempDir, '.gitignore'))).toBe(true);
 
       const gitignore = fs.readFileSync(path.join(tempDir, '.gitignore'), 'utf8');

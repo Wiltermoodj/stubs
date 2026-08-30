@@ -128,3 +128,19 @@ for (const dir of targetDirs) {
 }
 
 console.log(`Template molds staged: ${molds.length} across ${targetDirs.length} dist folders.`);
+
+// Stage agent skills into dist folders for standalone packaging
+const skillsSrc = path.join(repoRoot, '.agents/skills/stubs');
+if (fs.existsSync(skillsSrc)) {
+  const skillEntries = fs.readdirSync(skillsSrc).filter((entry) => entry !== 'dist');
+  for (const dir of targetDirs) {
+    const skillsDest = path.join(dir, 'skills');
+    fs.mkdirSync(skillsDest, { recursive: true });
+    for (const entry of skillEntries) {
+      const srcItem = path.join(skillsSrc, entry);
+      const destItem = path.join(skillsDest, entry);
+      fs.cpSync(srcItem, destItem, { recursive: true });
+    }
+  }
+  console.log(`Agent skills staged across ${targetDirs.length} dist folders.`);
+}
