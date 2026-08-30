@@ -4,6 +4,8 @@ import { parseOkfSpec } from '../parser/okf';
 import { extractImplementationCode } from '../parser/markdown';
 import { normalizePosixPath } from './engine';
 
+export type EdgeConfidence = 'EXTRACTED' | 'DECLARED' | 'INFERRED' | 'AMBIGUOUS';
+
 export interface GraphNode {
   id: string; // e.g. "src/services/bike-service.ts" or "src/services/bike-service.ts#BikeService"
   file_path: string;
@@ -29,6 +31,7 @@ export interface GraphEdge {
   source_id: string;
   target_id: string;
   relation: 'imports' | 'calls' | 'depends_on' | 'implements' | 'exports' | 'contains';
+  confidence?: EdgeConfidence;
   weight?: number;
 }
 
@@ -146,6 +149,7 @@ function extractMarkdownGraph(
         source_id: sidecarNodeId,
         target_id: codeTarget,
         relation: 'implements',
+        confidence: 'DECLARED',
         weight: 1.0,
       });
     }
@@ -159,6 +163,7 @@ function extractMarkdownGraph(
           source_id: sidecarNodeId,
           target_id: resolvedDep,
           relation: 'depends_on',
+          confidence: 'DECLARED',
           weight: 1.0,
         });
       }
@@ -173,6 +178,7 @@ function extractMarkdownGraph(
           source_id: resolvedUser,
           target_id: sidecarNodeId,
           relation: 'depends_on',
+          confidence: 'DECLARED',
           weight: 1.0,
         });
       }
@@ -195,6 +201,7 @@ function extractMarkdownGraph(
           source_id: sidecarNodeId,
           target_id: expNodeId,
           relation: 'exports',
+          confidence: 'DECLARED',
           weight: 1.0,
         });
       }
@@ -258,6 +265,7 @@ function extractTypeScriptGraph(
           source_id: fileNodeId,
           target_id: resolvedModule,
           relation: 'imports',
+          confidence: 'EXTRACTED',
           weight: 1.0,
         });
 
@@ -300,6 +308,7 @@ function extractTypeScriptGraph(
           source_id: fileNodeId,
           target_id: classNodeId,
           relation: 'contains',
+          confidence: 'EXTRACTED',
           weight: 1.0,
         });
 
@@ -314,6 +323,7 @@ function extractTypeScriptGraph(
                 source_id: classNodeId,
                 target_id: targetId,
                 relation: 'implements',
+                confidence: 'EXTRACTED',
                 weight: 1.0,
               });
             }
@@ -343,6 +353,7 @@ function extractTypeScriptGraph(
           source_id: fileNodeId,
           target_id: funcNodeId,
           relation: 'contains',
+          confidence: 'EXTRACTED',
           weight: 1.0,
         });
       }
@@ -369,6 +380,7 @@ function extractTypeScriptGraph(
           source_id: fileNodeId,
           target_id: interfaceNodeId,
           relation: 'contains',
+          confidence: 'EXTRACTED',
           weight: 1.0,
         });
       }
@@ -395,6 +407,7 @@ function extractTypeScriptGraph(
           source_id: fileNodeId,
           target_id: typeNodeId,
           relation: 'contains',
+          confidence: 'EXTRACTED',
           weight: 1.0,
         });
       }
@@ -410,6 +423,7 @@ function extractTypeScriptGraph(
             source_id: fileNodeId,
             target_id: `${importedFrom}#${callName}`,
             relation: 'calls',
+            confidence: 'EXTRACTED',
             weight: 1.0,
           });
         }
@@ -451,6 +465,7 @@ function extractPythonGraph(
         source_id: fileNodeId,
         target_id: modulePath,
         relation: 'imports',
+        confidence: 'EXTRACTED',
         weight: 1.0,
       });
 
@@ -462,6 +477,7 @@ function extractPythonGraph(
             source_id: fileNodeId,
             target_id: `${modulePath}#${cleanSym}`,
             relation: 'imports',
+            confidence: 'EXTRACTED',
             weight: 1.0,
           });
         }
@@ -477,6 +493,7 @@ function extractPythonGraph(
         source_id: fileNodeId,
         target_id: modulePath,
         relation: 'imports',
+        confidence: 'EXTRACTED',
         weight: 1.0,
       });
       continue;
@@ -500,6 +517,7 @@ function extractPythonGraph(
         source_id: fileNodeId,
         target_id: classId,
         relation: 'contains',
+        confidence: 'EXTRACTED',
         weight: 1.0,
       });
 
@@ -510,6 +528,7 @@ function extractPythonGraph(
             source_id: classId,
             target_id: base,
             relation: 'implements',
+            confidence: 'EXTRACTED',
             weight: 1.0,
           });
         }
@@ -535,6 +554,7 @@ function extractPythonGraph(
         source_id: fileNodeId,
         target_id: funcId,
         relation: 'contains',
+        confidence: 'EXTRACTED',
         weight: 1.0,
       });
     }
@@ -578,6 +598,7 @@ function extractRustGraph(
               source_id: fileNodeId,
               target_id: target,
               relation: 'imports',
+              confidence: 'EXTRACTED',
               weight: 1.0,
             });
           }
@@ -588,6 +609,7 @@ function extractRustGraph(
           source_id: fileNodeId,
           target_id: modulePath,
           relation: 'imports',
+          confidence: 'EXTRACTED',
           weight: 1.0,
         });
       }
@@ -612,6 +634,7 @@ function extractRustGraph(
         source_id: fileNodeId,
         target_id: fnId,
         relation: 'contains',
+        confidence: 'EXTRACTED',
         weight: 1.0,
       });
       continue;
@@ -636,6 +659,7 @@ function extractRustGraph(
         source_id: fileNodeId,
         target_id: id,
         relation: 'contains',
+        confidence: 'EXTRACTED',
         weight: 1.0,
       });
     }
@@ -677,6 +701,7 @@ function extractGoGraph(
           source_id: fileNodeId,
           target_id: singleMatch[1],
           relation: 'imports',
+          confidence: 'EXTRACTED',
           weight: 1.0,
         });
       }
@@ -690,6 +715,7 @@ function extractGoGraph(
         source_id: fileNodeId,
         target_id: importMatch[1],
         relation: 'imports',
+        confidence: 'EXTRACTED',
         weight: 1.0,
       });
       continue;
@@ -713,6 +739,7 @@ function extractGoGraph(
         source_id: fileNodeId,
         target_id: funcId,
         relation: 'contains',
+        confidence: 'EXTRACTED',
         weight: 1.0,
       });
       continue;
@@ -737,6 +764,7 @@ function extractGoGraph(
         source_id: fileNodeId,
         target_id: id,
         relation: 'contains',
+        confidence: 'EXTRACTED',
         weight: 1.0,
       });
     }
@@ -764,6 +792,7 @@ function extractGenericGraph(
         source_id: fileNodeId,
         target_id: resolved,
         relation: 'imports',
+        confidence: 'INFERRED',
         weight: 1.0,
       });
     }

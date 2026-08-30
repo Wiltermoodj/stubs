@@ -10,6 +10,7 @@ export {
   PlannedFileRow,
   GraphNode,
   GraphEdge,
+  EdgeConfidence,
   extractFileGraph,
   TopologyEngine,
 } from './graph/engine';
@@ -23,7 +24,22 @@ export {
   SmellCycle,
   SmellDomainLeak,
   NodeCentrality,
+  NodeExplanationResult,
+  NodeExplanationConnection,
+  CommunityInfo,
+  CommunityDetectionResult,
+  SurprisingConnection,
+  ArchitectureQuestion,
 } from './graph/topology';
+export {
+  QueryEngine,
+  QueryOptions,
+  QueryResult,
+  QuerySubGraphNode,
+  QuerySubGraphEdge,
+} from './query/engine';
+export { ExportEngine, ExportOptions, ExportResult } from './export/engine';
+export { McpServer, McpTool, STUBS_MCP_TOOLS } from './server/mcp';
 export { CliRouter, CliContext } from './cli/router';
 export { PortalServer } from './server/portal';
 export { TemplateEngine, compileTemplate, translateHandlebarsToEjs } from './templates/engine';

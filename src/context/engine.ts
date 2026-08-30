@@ -220,7 +220,7 @@ export class ContextEngine {
     // Build Tier 2 Transitive Boundary
     const tier2Boundary: Tier2BoundaryContext[] = [];
     for (const t2 of neighborhood.tier2Dependencies) {
-      let t2CodePath = t2.filePath.endsWith('.ts.md')
+      const t2CodePath = t2.filePath.endsWith('.ts.md')
         ? t2.filePath.replace(/\.md$/, '')
         : t2.filePath;
 

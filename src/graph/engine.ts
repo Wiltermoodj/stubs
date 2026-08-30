@@ -17,10 +17,10 @@ import {
   VirtualFileSystem,
   WasmSqliteDriver,
 } from '../storage';
-import { GraphNode, GraphEdge, extractFileGraph } from './extractor';
+import { GraphNode, GraphEdge, EdgeConfidence, extractFileGraph } from './extractor';
 import { TopologyEngine } from './topology';
 
-export { GraphNode, GraphEdge, extractFileGraph } from './extractor';
+export { GraphNode, GraphEdge, EdgeConfidence, extractFileGraph } from './extractor';
 export { TopologyEngine } from './topology';
 
 export function normalizePosixPath(p: string): string {
@@ -361,6 +361,8 @@ export class GraphEngine {
         tags TEXT,
         exports TEXT,
         file_hash TEXT,
+        community_id INTEGER,
+        community_label TEXT,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
       );
@@ -374,6 +376,16 @@ export class GraphEngine {
     }
     try {
       await this.run('ALTER TABLE sidecars ADD COLUMN initiative TEXT;');
+    } catch {
+      // Column may already exist
+    }
+    try {
+      await this.run('ALTER TABLE sidecars ADD COLUMN community_id INTEGER;');
+    } catch {
+      // Column may already exist
+    }
+    try {
+      await this.run('ALTER TABLE sidecars ADD COLUMN community_label TEXT;');
     } catch {
       // Column may already exist
     }
@@ -537,10 +549,16 @@ export class GraphEngine {
         source_id TEXT NOT NULL,
         target_id TEXT NOT NULL,
         relation TEXT NOT NULL,
+        confidence TEXT DEFAULT 'EXTRACTED',
         weight REAL DEFAULT 1.0,
         PRIMARY KEY (source_id, target_id, relation)
       );
     `);
+    try {
+      await this.run("ALTER TABLE graph_edges ADD COLUMN confidence TEXT DEFAULT 'EXTRACTED';");
+    } catch {
+      // Column may already exist
+    }
     await this.run(
       `CREATE INDEX IF NOT EXISTS idx_graph_edges_source ON graph_edges(source_id, relation);`,
     );
@@ -849,8 +867,31 @@ export class GraphEngine {
           source_id: filePath,
           target_id: normTarget,
           relation: 'implements',
+          confidence: 'DECLARED',
           weight: 1.0,
         });
+      }
+
+      for (const exp of exports) {
+        if (!exp) continue;
+        const expNodeId = `${filePath}#${exp}`;
+        if (!graphData.nodes.some((n) => n.id === expNodeId)) {
+          graphData.nodes.push({
+            id: expNodeId,
+            file_path: filePath,
+            symbol_name: exp,
+            kind: 'symbol',
+            domain: (frontmatter as any).domain || null,
+            lifecycle_phase: phaseVal || null,
+          });
+          graphData.edges.push({
+            source_id: filePath,
+            target_id: expNodeId,
+            relation: 'exports',
+            confidence: 'DECLARED',
+            weight: 1.0,
+          });
+        }
       }
 
       await this.run(
@@ -880,9 +921,15 @@ export class GraphEngine {
       }
       for (const edge of graphData.edges) {
         await this.run(
-          `INSERT OR REPLACE INTO graph_edges (source_id, target_id, relation, weight)
-           VALUES (?, ?, ?, ?);`,
-          [edge.source_id, edge.target_id, edge.relation, edge.weight || 1.0],
+          `INSERT OR REPLACE INTO graph_edges (source_id, target_id, relation, confidence, weight)
+           VALUES (?, ?, ?, ?, ?);`,
+          [
+            edge.source_id,
+            edge.target_id,
+            edge.relation,
+            edge.confidence || 'DECLARED',
+            edge.weight || 1.0,
+          ],
         );
       }
 
@@ -1010,10 +1057,37 @@ Decisions: ${decisionsText}
     await this.ensureInitialized();
     for (const edge of edges) {
       await this.run(
-        `INSERT OR REPLACE INTO graph_edges (source_id, target_id, relation, weight)
-         VALUES (?, ?, ?, ?);`,
-        [edge.source_id, edge.target_id, edge.relation, edge.weight || 1.0],
+        `INSERT OR REPLACE INTO graph_edges (source_id, target_id, relation, confidence, weight)
+         VALUES (?, ?, ?, ?, ?);`,
+        [
+          edge.source_id,
+          edge.target_id,
+          edge.relation,
+          edge.confidence || 'EXTRACTED',
+          edge.weight || 1.0,
+        ],
       );
+    }
+  }
+
+  /**
+   * Persists detected communities and labels onto sidecar rows.
+   */
+  public async assignCommunities(
+    communities: Record<number, string[]>,
+    labels: Record<number, string> = {},
+  ): Promise<void> {
+    await this.ensureInitialized();
+    for (const [commIdStr, nodeIds] of Object.entries(communities)) {
+      const commId = parseInt(commIdStr, 10);
+      const label = labels[commId] || `Community ${commId}`;
+      for (const nodeId of nodeIds) {
+        const filePath = nodeId.includes('#') ? nodeId.split('#')[0] : nodeId;
+        await this.run(
+          'UPDATE sidecars SET community_id = ?, community_label = ? WHERE file_path = ? OR file_path LIKE ?;',
+          [commId, label, filePath, `%${filePath}`],
+        );
+      }
     }
   }
 
@@ -1178,7 +1252,9 @@ Decisions: ${decisionsText}
           if (norm.endsWith('.md') && !norm.endsWith('.tpl') && content.trim().startsWith('---')) {
             try {
               await this.indexFile(norm);
-            } catch {}
+            } catch {
+              // Ignore markdown indexing error for malformed sidecars
+            }
           }
           result.added++;
         } else if (cachedHash !== currentHash) {
@@ -1186,7 +1262,9 @@ Decisions: ${decisionsText}
           if (norm.endsWith('.md') && !norm.endsWith('.tpl') && content.trim().startsWith('---')) {
             try {
               await this.indexFile(norm);
-            } catch {}
+            } catch {
+              // Ignore markdown indexing error for malformed sidecars
+            }
           }
           result.updated++;
         }

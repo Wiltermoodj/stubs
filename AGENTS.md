@@ -47,18 +47,26 @@ For individual module sidecar specs (interface contracts, design decisions, depe
 - **Formatter:** `prettier`.
 - **Design Principles:** All code changes must adhere strictly to the rules outlined in `DESIGN_PHILOSOPHY.md` (e.g., Deep Modules, Pulling Complexity Downward, Code Cohesion).
 
-## Architecture Graph & Automatic Re-Scanning
+## Architecture Graph & GraphRAG Intelligence
 
-The repository maintains an AST-extracted dependency graph in `.stubs/graph.sqlite`.
+The repository maintains an AST-extracted dependency graph in `.stubs/graph.sqlite` with Louvain community detection and edge confidence tagging (`EXTRACTED`, `DECLARED`, `INFERRED`, `AMBIGUOUS`).
 
-- **Reading Architecture:** Before proposing structural changes, agents should query graph topology via `npx stubs blast <target>`, `npx stubs path <src> <dest>`, or `npx stubs diagram`.
-- **Automatic Graph Maintenance:** Whenever files (source code or markdown sidecars) are created, deleted, or structurally modified, agents **MUST automatically run `npx stubs scan`** to refresh `.stubs/graph.sqlite` and keep AST symbols, call chains, and module imports synchronized.
+- **Querying GraphRAG Context:** Run `npx stubs query "<question or concept>"` (or `npx stubs query "<text>" --budget 1500 --dfs`) to retrieve token-budgeted subgraph context before modifying files.
+- **Explaining Symbols & Nodes:** Run `npx stubs explain <target>` to inspect callers, callees, confidence tags, degree centralities, and subsystem community clusters.
+- **Reading Architecture:** Query graph topology via `npx stubs blast <target>`, `npx stubs path <src> <dest>`, `npx stubs diagram`, or `npx stubs export <obsidian|wiki>`.
+- **Model Context Protocol (MCP):** Connect your IDE/agent to `npx stubs mcp` for live stdio JSON-RPC tool access.
+- **Automatic Graph Maintenance:** Whenever files (source code or markdown sidecars) are created, deleted, or structurally modified, agents **MUST automatically run `npx stubs scan`** to refresh `.stubs/graph.sqlite`.
 
 ## CLI Commands
 
 Agents should use the following commands to execute repository tasks:
 
 - **Scan & Index Code Graph:** `npx stubs scan` (or `node .agents/skills/stubs/dist/cli.cjs scan`)
+- **Query GraphRAG Subgraph:** `npx stubs query "<question>"`
+- **Explain Symbol / Node:** `npx stubs explain <target>`
+- **Export Knowledge Graph:** `npx stubs export <obsidian|wiki> [--out <dir>]`
+- **Start MCP Stdio Server:** `npx stubs mcp`
+- **Install Assistant Rules:** `npx stubs hook install`
 - **Install Dependencies:** `npm install`
 - **Build Project:** `npm run build`
 - **Run Tests:** `npm test`

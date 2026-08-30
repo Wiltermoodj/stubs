@@ -2,7 +2,7 @@ import { promises as fs, existsSync } from 'fs';
 import * as path from 'path';
 import { execSync } from 'child_process';
 import { parseOkfSpec } from '../parser/okf';
-import { GraphEngine, normalizePosixPath } from '../graph/engine';
+import { GraphEngine, TopologyEngine, normalizePosixPath } from '../graph/engine';
 import { TemplateEngine } from '../templates/engine';
 import { AutonomyProtocol } from '../autonomy/protocol';
 import { PortalServer } from '../server/portal';
@@ -19,6 +19,9 @@ import { MockEngine, TestFramework } from '../mock/engine';
 import { DiagramEngine, DiagramType } from '../diagram/engine';
 import { PruneEngine } from '../prune/engine';
 import { ChangelogEngine } from '../changelog/engine';
+import { QueryEngine } from '../query/engine';
+import { ExportEngine } from '../export/engine';
+import { McpServer } from '../server/mcp';
 import { applyGlobalConsoleMasking } from '../storage/credentials';
 
 export interface CliContext {
@@ -113,6 +116,17 @@ export class CliRouter {
           return await this.handleBlast(context);
         case 'path':
           return await this.handlePath(context);
+        case 'explain':
+          return await this.handleExplain(context);
+        case 'query':
+        case 'ask':
+          return await this.handleQuery(context);
+        case 'export':
+          return await this.handleExport(context);
+        case 'mcp':
+          return await this.handleMcp(context);
+        case 'hook':
+          return await this.handleHook(context);
         case 'scan':
         case 'index':
           return await this.handleScan(context);
@@ -172,6 +186,11 @@ Commands:
   changelog [options] Generate semantic architectural changelog (--since, --from, --to, --output, --json).
   blast <target>      Query downstream/upstream blast radius with domain boundaries.
   path <src> <dest>   Find shortest call/import dependency chain between files or symbols.
+  explain <target>    Inspect entity/symbol profile, degree centrality, callers, and community cluster.
+  query <text>        Token-budgeted GraphRAG query extracting relevant subgraphs (--budget, --dfs).
+  export <format>     Export knowledge graph to Obsidian Vault or Wiki articles (obsidian, wiki).
+  mcp                 Start Model Context Protocol (MCP) JSON-RPC 2.0 stdio server.
+  hook [install]      Install graph-first rules and hooks for AI coding assistants (--platform).
   phase <action>      Manage 5-phase lifecycle. Actions: status [file], check <file>, advance <file> [targetPhase]
   grill <file>       Execute the Interactive Grill Engine on a sidecar specification.
   materialize <file>  Parse, extract, typecheck, and write executable code from sidecar.
@@ -2291,5 +2310,189 @@ Options:
     }
 
     return 0;
+  }
+
+  private async handleExplain(ctx: CliContext): Promise<number> {
+    const isJson = ctx.args.includes('--json');
+    const target = ctx.args.find((a) => !a.startsWith('-'));
+
+    if (!target) {
+      console.error('Error: Target symbol or file is required. Usage: stubs explain <target>');
+      return 1;
+    }
+
+    const config = loadConfig(ctx.configPath);
+    const graphEngine = new GraphEngine(config.paths.db_path);
+    await graphEngine.initialize();
+
+    const allNodes = await graphEngine.getGraphNodes();
+    const allEdges = await graphEngine.getGraphEdges();
+    const topology = new TopologyEngine(allNodes, allEdges);
+
+    const res = topology.explainNode(target);
+    if (!res) {
+      console.error(`Error: Could not resolve node or symbol "${target}" in knowledge graph.`);
+      return 1;
+    }
+
+    if (isJson) {
+      console.log(JSON.stringify(res, null, 2));
+    } else {
+      console.log(topology.formatNodeExplanation(res));
+    }
+
+    return 0;
+  }
+
+  private async handleQuery(ctx: CliContext): Promise<number> {
+    const isJson = ctx.args.includes('--json');
+    const isDfs = ctx.args.includes('--dfs');
+
+    let budget = 1500;
+    const queryParts: string[] = [];
+
+    for (let i = 0; i < ctx.args.length; i++) {
+      const arg = ctx.args[i];
+      if (arg === '--budget' && ctx.args[i + 1]) {
+        budget = parseInt(ctx.args[i + 1], 10) || 1500;
+        i++;
+      } else if (arg.startsWith('--budget=')) {
+        budget = parseInt(arg.split('=')[1], 10) || 1500;
+      } else if (arg === '--dfs' || arg === '--bfs' || arg === '--json') {
+        // flag
+      } else if (!arg.startsWith('-')) {
+        queryParts.push(arg);
+      }
+    }
+
+    const queryText = queryParts.join(' ').trim();
+    if (!queryText) {
+      console.error('Error: Query text is required. Usage: stubs query "<question or concept>"');
+      return 1;
+    }
+
+    const config = loadConfig(ctx.configPath);
+    const graphEngine = new GraphEngine(config.paths.db_path);
+    const queryEngine = new QueryEngine({ graphEngine });
+
+    const result = await queryEngine.query(queryText, {
+      budget,
+      mode: isDfs ? 'dfs' : 'bfs',
+    });
+
+    if (isJson) {
+      console.log(JSON.stringify(result, null, 2));
+    } else {
+      console.log(result.summaryText);
+    }
+
+    return 0;
+  }
+
+  private async handleExport(ctx: CliContext): Promise<number> {
+    const isJson = ctx.args.includes('--json');
+    let format = 'obsidian';
+    let outputDir: string | undefined;
+
+    for (let i = 0; i < ctx.args.length; i++) {
+      const arg = ctx.args[i];
+      if (arg === '--out' || arg === '--output') {
+        outputDir = ctx.args[i + 1];
+        i++;
+      } else if (arg.startsWith('--out=') || arg.startsWith('--output=')) {
+        outputDir = arg.split('=')[1];
+      } else if (!arg.startsWith('-')) {
+        if (['obsidian', 'wiki'].includes(arg.toLowerCase())) {
+          format = arg.toLowerCase();
+        }
+      }
+    }
+
+    const config = loadConfig(ctx.configPath);
+    const graphEngine = new GraphEngine(config.paths.db_path);
+    const exportEngine = new ExportEngine({ graphEngine });
+
+    let result;
+    if (format === 'wiki') {
+      const targetDir = outputDir || './wiki';
+      result = await exportEngine.toWiki(targetDir);
+    } else {
+      const targetDir = outputDir || './obsidian-vault';
+      result = await exportEngine.toObsidian(targetDir);
+    }
+
+    if (isJson) {
+      console.log(JSON.stringify(result, null, 2));
+    } else {
+      console.log(
+        `✓ Successfully exported ${result.totalNodesExported} entities to ${result.format.toUpperCase()} at "${result.outputDir}" (${result.filesGenerated.length} files generated).`,
+      );
+    }
+
+    return 0;
+  }
+
+  private async handleMcp(ctx: CliContext): Promise<number> {
+    const config = loadConfig(ctx.configPath);
+    const graphEngine = new GraphEngine(config.paths.db_path);
+    const mcpServer = new McpServer(graphEngine);
+    await mcpServer.start();
+    return 0;
+  }
+
+  private async handleHook(ctx: CliContext): Promise<number> {
+    let platform = 'agents';
+    for (let i = 0; i < ctx.args.length; i++) {
+      const arg = ctx.args[i];
+      if (arg === '--platform' && ctx.args[i + 1]) {
+        platform = ctx.args[i + 1].toLowerCase();
+        i++;
+      } else if (arg.startsWith('--platform=')) {
+        platform = arg.split('=')[1].toLowerCase();
+      }
+    }
+
+    const ruleText = `\n<!-- stubs-hook-guard -->\n## Architecture Knowledge Graph Guidance\nBefore reading multiple raw source files or performing recursive greps, run \`npx stubs query "<question>"\` or \`npx stubs explain "<Symbol>"\` to consult the pre-computed AST knowledge graph and save tokens.\n`;
+
+    try {
+      if (platform === 'cursor' || platform === 'all') {
+        await fs.mkdir('.cursor/rules', { recursive: true });
+        await fs.writeFile(
+          '.cursor/rules/stubs.mdc',
+          `---\ndescription: Consult stubs architecture graph before file reads\nalwaysApply: true\n---\n${ruleText}`,
+        );
+        console.log('✓ Installed Cursor rule: .cursor/rules/stubs.mdc');
+      }
+
+      if (platform === 'claude' || platform === 'all') {
+        const claudePath = 'CLAUDE.md';
+        let content = '';
+        if (existsSync(claudePath)) {
+          content = await fs.readFile(claudePath, 'utf8');
+        }
+        if (!content.includes('stubs-hook-guard')) {
+          await fs.writeFile(claudePath, content + ruleText);
+          console.log('✓ Added graph guidance to CLAUDE.md');
+        }
+      }
+
+      if (platform === 'agents' || platform === 'all') {
+        const agentsPath = 'AGENTS.md';
+        let content = '';
+        if (existsSync(agentsPath)) {
+          content = await fs.readFile(agentsPath, 'utf8');
+        }
+        if (!content.includes('stubs-hook-guard')) {
+          await fs.writeFile(agentsPath, content + ruleText);
+          console.log('✓ Added graph guidance to AGENTS.md');
+        }
+      }
+
+      console.log(`✓ Stubs agent hook / rules configuration installed successfully.`);
+      return 0;
+    } catch (err: any) {
+      console.error(`Error installing hook rules: ${err.message || err}`);
+      return 1;
+    }
   }
 }

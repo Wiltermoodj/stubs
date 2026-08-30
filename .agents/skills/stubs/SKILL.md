@@ -195,5 +195,35 @@ Starts the local background Web Portal server and OS filesystem event bridge for
 npx stubs serve --port 3000
 ```
 
+### 19. `stubs explain <target>`
+Inspects an entity or symbol's architectural profile, incoming/outgoing callers with confidence levels, degree centrality, downstream impact radius, and detected subsystem community.
+```bash
+npx stubs explain QueryEngine
+npx stubs explain src/parser/okf.ts --json
+```
 
+### 20. `stubs query "<question or concept>"`
+GraphRAG context retrieval: executes multi-hop BFS/DFS subgraph traversal from matched seed nodes and packs relevant architectural signatures, relations, and ADRs within a strict token budget.
+```bash
+npx stubs query "How does the MCP server work?" --budget 1500
+npx stubs query "Parser AST extraction" --dfs --json
+```
 
+### 21. `stubs export <obsidian|wiki>`
+Exports the entire codebase architecture graph into an interconnected Obsidian Vault (`[[wikilinks]]`) or Wikipedia-style modular markdown documentation with community hub maps.
+```bash
+npx stubs export obsidian --out ./vault
+npx stubs export wiki --out ./wiki
+```
+
+### 22. `stubs mcp`
+Starts a native Model Context Protocol (MCP) JSON-RPC 2.0 stdio server, exposing `stubs_query`, `stubs_explain`, `stubs_blast`, `stubs_path`, and `stubs_communities` to AI agents and IDEs.
+```bash
+npx stubs mcp
+```
+
+### 23. `stubs hook install`
+Installs graph-first rules and hook directives for AI coding agents (`AGENTS.md`, `CLAUDE.md`, `.cursor/rules`), preventing blind full-repo grep scans.
+```bash
+npx stubs hook install --platform agents
+```

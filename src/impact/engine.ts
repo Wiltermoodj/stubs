@@ -120,7 +120,7 @@ export class ImpactEngine {
     await flattenNodes(blast.nodes);
 
     // Calculate Risk Level
-    let riskLevel: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL' = 'LOW';
+    let riskLevel: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
     const total = blast.totalAffected;
     const domainCount = blast.domainsAffected.length;
 

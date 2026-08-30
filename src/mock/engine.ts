@@ -112,10 +112,9 @@ export class MockEngine {
     const targetTestPath = normalizePosixPath(options.outputPath || defaultOutputPath);
 
     // Read sidecar and code content if available
-    let sidecarContent = '';
     let parsedSpec: ParsedOkfSpec | null = null;
     if (await this.fsDriver.exists(sidecarPath)) {
-      sidecarContent = await this.fsDriver.readFile(sidecarPath);
+      const sidecarContent = await this.fsDriver.readFile(sidecarPath);
       parsedSpec = parseOkfSpec(sidecarContent);
     }
 
