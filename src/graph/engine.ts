@@ -80,6 +80,26 @@ export function resolvePosixPath(p: string): string {
 async function fallbackGlob(fsDriver: FileStorageDriver, pattern: string): Promise<string[]> {
   const results: string[] = [];
   const normalizedPattern = pattern.replace(/\\/g, '/');
+  const isWildcard = normalizedPattern.includes('*') || normalizedPattern.includes('?');
+
+  let regex: RegExp | null = null;
+  let baseDir = normalizedPattern;
+  if (isWildcard) {
+    const firstWildcard = normalizedPattern.search(/[*?]/);
+    const partBefore = normalizedPattern.substring(0, firstWildcard);
+    const lastSlash = partBefore.lastIndexOf('/');
+    if (lastSlash !== -1) {
+      baseDir = partBefore.substring(0, lastSlash);
+    } else {
+      baseDir = '.';
+    }
+
+    const regexStr = normalizedPattern
+      .replace(/[.+^${}()|[\]\\]/g, '\\$&')
+      .replace(/\*\*\//g, '([^/]*/)*')
+      .replace(/\*/g, '[^/]*');
+    regex = new RegExp(`^${regexStr}$`);
+  }
 
   const recurse = async (currDir: string) => {
     try {
@@ -111,7 +131,11 @@ async function fallbackGlob(fsDriver: FileStorageDriver, pattern: string): Promi
         if (isDir) {
           await recurse(normalizedPath);
         } else {
-          if (entry.endsWith('.ts.md') || entry.endsWith('.md')) {
+          if (regex) {
+            if (regex.test(normalizedPath)) {
+              results.push(normalizedPath);
+            }
+          } else {
             results.push(normalizedPath);
           }
         }
@@ -120,19 +144,6 @@ async function fallbackGlob(fsDriver: FileStorageDriver, pattern: string): Promi
       // Ignore directory read errors
     }
   };
-
-  const isWildcard = normalizedPattern.includes('*');
-  let baseDir = normalizedPattern;
-  if (isWildcard) {
-    const firstWildcard = normalizedPattern.indexOf('*');
-    const partBefore = normalizedPattern.substring(0, firstWildcard);
-    const lastSlash = partBefore.lastIndexOf('/');
-    if (lastSlash !== -1) {
-      baseDir = partBefore.substring(0, lastSlash);
-    } else {
-      baseDir = '.';
-    }
-  }
 
   await recurse(baseDir);
   return results;
@@ -1695,6 +1706,10 @@ Decisions: ${decisionsText}
 
     for (const relativePath of scannedFiles) {
       try {
+        if (!relativePath.endsWith('.md') || relativePath.endsWith('.tpl')) {
+          continue;
+        }
+
         const content = await this.fsDriver.readFile(relativePath);
 
         // Ignore files that don't start with YAML frontmatter marker

@@ -75,17 +75,24 @@ export class NodeFileSystem implements FileSystemDriver {
     const results: string[] = [];
     const isWildcard = pattern.includes('*') || pattern.includes('?');
     let baseDir = pattern;
-    const extensionPattern = /.*\.ts\.md|.*\.md$/;
 
+    let regex: RegExp | null = null;
     if (isWildcard) {
-      const firstWildcard = pattern.search(/[*?]/);
-      const partBefore = pattern.substring(0, firstWildcard);
+      const normalizedPattern = pattern.replace(/\\/g, '/');
+      const firstWildcard = normalizedPattern.search(/[*?]/);
+      const partBefore = normalizedPattern.substring(0, firstWildcard);
       const lastSlash = partBefore.lastIndexOf('/');
       if (lastSlash !== -1) {
         baseDir = partBefore.substring(0, lastSlash);
       } else {
         baseDir = '.';
       }
+
+      const regexStr = normalizedPattern
+        .replace(/[.+^${}()|[\]\\]/g, '\\$&')
+        .replace(/\*\*\//g, '([^/]*/)*')
+        .replace(/\*/g, '[^/]*');
+      regex = new RegExp(`^${regexStr}$`);
     }
 
     const absBaseDir = path.resolve(baseDir);
@@ -108,7 +115,11 @@ export class NodeFileSystem implements FileSystemDriver {
             }
             await recurse(fullPath);
           } else if (entry.isFile()) {
-            if (extensionPattern.test(entry.name)) {
+            if (regex) {
+              if (regex.test(relativePath)) {
+                results.push(relativePath);
+              }
+            } else {
               results.push(relativePath);
             }
           }
@@ -321,12 +332,12 @@ export class VirtualFileSystem implements FileSystemDriver {
   public async glob(pattern: string): Promise<string[]> {
     const results: string[] = [];
     const normPattern = this.normalizePath(pattern);
-    const isWildcard = normPattern.includes('*');
+    const isWildcard = normPattern.includes('*') || normPattern.includes('?');
 
     if (!isWildcard) {
       const prefix = normPattern.endsWith('/') ? normPattern : `${normPattern}/`;
       for (const key of this.files.keys()) {
-        if (key.startsWith(prefix) && (key.endsWith('.md') || key.endsWith('.ts.md'))) {
+        if (key.startsWith(prefix) || key === normPattern) {
           results.push(key);
         }
       }
