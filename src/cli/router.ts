@@ -1227,6 +1227,7 @@ export class {{pascalName}} {
         if (options.isInstall) {
           throw new Error(
             `Failed to download ${file} from GitHub (https://raw.githubusercontent.com/${repo}/${branch}/${file}): ${fetchErr.message || fetchErr}`,
+            { cause: fetchErr },
           );
         }
         // If remote fetch fails during non-install (e.g. update in offline environment), fallback to local bundled assets
@@ -1253,6 +1254,7 @@ export class {{pascalName}} {
         if (!fallbackFound) {
           throw new Error(
             `Failed to download ${file} from GitHub (https://raw.githubusercontent.com/${repo}/${branch}/${file}) and no local fallback was found: ${fetchErr.message || fetchErr}`,
+            { cause: fetchErr },
           );
         }
       }
