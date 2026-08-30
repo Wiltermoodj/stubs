@@ -567,7 +567,10 @@ function extractRustGraph(
         const groupMatch = rawUse.match(/^(.+?)::\{([^}]+)\}/);
         if (groupMatch) {
           const prefix = groupMatch[1].replace(/::/g, '/').trim();
-          const items = groupMatch[2].split(',').map((s) => s.trim()).filter(Boolean);
+          const items = groupMatch[2]
+            .split(',')
+            .map((s) => s.trim())
+            .filter(Boolean);
           for (const item of items) {
             const cleanItem = item.split(/\s+as\s+/)[0].trim();
             const target = `${prefix}/${cleanItem}`;
