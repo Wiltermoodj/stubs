@@ -1208,120 +1208,52 @@ export class {{pascalName}} {
       ...SUB_SKILL_NAMES.map((name) => `.agents/skills/stubs/sub-skills/${name}/SKILL.md`),
     ];
 
-    const isCustomRemote = Boolean(options.repo || options.branch || options.isInstall);
-    let copiedLocally = false;
+    const repo = options.repo || 'Wiltermoodj/stubs';
+    const branch = options.branch || 'main';
+    await fs.mkdir(destDir, { recursive: true });
 
-    if (!isCustomRemote) {
-      const candidateRoots = [
-        path.resolve(__dirname, 'skills'), // staged dist/skills
-        path.resolve(__dirname, '../skills'),
-        path.resolve(__dirname, '..'),
-        path.resolve(__dirname, '../..'),
-        path.resolve(__dirname, '../../..'),
-      ];
-
-      for (const root of candidateRoots) {
-        // Look either for .agents/skills/stubs or root itself being the stubs skill dir
-        const candidateSkillDir = existsSync(path.join(root, 'SKILL.md'))
-          ? root
-          : path.join(root, '.agents/skills/stubs');
-
-        if (
-          existsSync(candidateSkillDir) &&
-          path.resolve(candidateSkillDir) !== path.resolve(destDir)
-        ) {
-          try {
-            await fs.mkdir(destDir, { recursive: true });
-            // Recursively copy entire skill structure (including all sub-skills)
-            await fs.cp(candidateSkillDir, destDir, { recursive: true, force: true });
-            copiedLocally = true;
-            break;
-          } catch {
-            // Fall back to individual file copy or remote fetch
-          }
+    for (const file of SKILL_FILES) {
+      const url = `https://raw.githubusercontent.com/${repo}/${branch}/${file}`;
+      try {
+        const res = await fetch(url);
+        if (!res.ok) {
+          throw new Error(`HTTP ${res.status} ${res.statusText}`);
         }
-      }
-    }
-
-    if (!copiedLocally) {
-      const repo = options.repo || 'Wiltermoodj/stubs';
-      const branch = options.branch || 'main';
-      await fs.mkdir(destDir, { recursive: true });
-
-      for (const file of SKILL_FILES) {
-        const url = `https://raw.githubusercontent.com/${repo}/${branch}/${file}`;
-        try {
-          const res = await fetch(url);
-          if (!res.ok) {
-            if (!options.isInstall) {
-              // If remote fetch returns error during non-install, try local root fallback
-              const candidateRoots = [
-                path.resolve(__dirname, 'skills'),
-                path.resolve(__dirname, '../skills'),
-                path.resolve(__dirname, '..'),
-                path.resolve(__dirname, '../..'),
-                path.resolve(__dirname, '../../..'),
-              ];
-              let fallbackFound = false;
-              for (const root of candidateRoots) {
-                const srcPath = existsSync(path.join(root, 'SKILL.md'))
-                  ? path.join(root, file.replace(/^\.agents\/skills\/stubs\//, ''))
-                  : path.join(root, file);
-                if (existsSync(srcPath)) {
-                  const localPath = path.join(targetDir, file);
-                  await fs.mkdir(path.dirname(localPath), { recursive: true });
-                  const content = await fs.readFile(srcPath);
-                  await fs.writeFile(localPath, content);
-                  fallbackFound = true;
-                  break;
-                }
-              }
-              if (!fallbackFound) {
-                throw new Error(
-                  `Failed to download ${file}: HTTP status ${res.status} ${res.statusText}`,
-                );
-              }
-            } else {
-              throw new Error(
-                `Failed to download ${file}: HTTP status ${res.status} ${res.statusText}`,
-              );
-            }
-          } else {
-            const buffer = Buffer.from(await res.arrayBuffer());
+        const buffer = Buffer.from(await res.arrayBuffer());
+        const localPath = path.join(targetDir, file);
+        await fs.mkdir(path.dirname(localPath), { recursive: true });
+        await fs.writeFile(localPath, buffer);
+      } catch (fetchErr: any) {
+        if (options.isInstall) {
+          throw new Error(
+            `Failed to download ${file} from GitHub (https://raw.githubusercontent.com/${repo}/${branch}/${file}): ${fetchErr.message || fetchErr}`,
+          );
+        }
+        // If remote fetch fails during non-install (e.g. update in offline environment), fallback to local bundled assets
+        const candidateRoots = [
+          path.resolve(__dirname, 'skills'),
+          path.resolve(__dirname, '../skills'),
+          path.resolve(__dirname, '..'),
+          path.resolve(__dirname, '../..'),
+        ];
+        let fallbackFound = false;
+        for (const root of candidateRoots) {
+          const srcPath = existsSync(path.join(root, 'SKILL.md'))
+            ? path.join(root, file.replace(/^\.agents\/skills\/stubs\//, ''))
+            : path.join(root, file);
+          if (existsSync(srcPath)) {
             const localPath = path.join(targetDir, file);
             await fs.mkdir(path.dirname(localPath), { recursive: true });
-            await fs.writeFile(localPath, buffer);
+            const content = await fs.readFile(srcPath);
+            await fs.writeFile(localPath, content);
+            fallbackFound = true;
+            break;
           }
-        } catch (fetchErr: any) {
-          if (!options.isInstall) {
-            // If fetch fails (network/offline) during non-install, try local file fallback
-            const candidateRoots = [
-              path.resolve(__dirname, 'skills'),
-              path.resolve(__dirname, '../skills'),
-              path.resolve(__dirname, '..'),
-              path.resolve(__dirname, '../..'),
-              path.resolve(__dirname, '../../..'),
-            ];
-            let fallbackFound = false;
-            for (const root of candidateRoots) {
-              const srcPath = existsSync(path.join(root, 'SKILL.md'))
-                ? path.join(root, file.replace(/^\.agents\/skills\/stubs\//, ''))
-                : path.join(root, file);
-              if (existsSync(srcPath)) {
-                const localPath = path.join(targetDir, file);
-                await fs.mkdir(path.dirname(localPath), { recursive: true });
-                const content = await fs.readFile(srcPath);
-                await fs.writeFile(localPath, content);
-                fallbackFound = true;
-                break;
-              }
-            }
-            if (!fallbackFound) {
-              throw fetchErr;
-            }
-          } else {
-            throw fetchErr;
-          }
+        }
+        if (!fallbackFound) {
+          throw new Error(
+            `Failed to download ${file} from GitHub (https://raw.githubusercontent.com/${repo}/${branch}/${file}) and no local fallback was found: ${fetchErr.message || fetchErr}`,
+          );
         }
       }
     }

@@ -22,10 +22,10 @@ The **Sanding Engine** is responsible for bi-directional synchronization between
 
 ## Key Files & Sidecars
 
-| File / Sidecar                                                                                                                                                                    | Purpose & Exported Symbols                                            | Depends On                                       |
-| :-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :-------------------------------------------------------------------- | :----------------------------------------------- |
-| [`src/sanding/engine.ts`](file:///Users/lappier/code/projects/stubs/src/sanding/engine.ts) / [`engine.ts.md`](file:///Users/lappier/code/projects/stubs/src/sanding/engine.ts.md) | `SandingEngine` executing 5-phase retroactive reconciliation and sync | `ast.ts`, `parser/okf.ts`                        |
-| [`src/sanding/ast.ts`](file:///Users/lappier/code/projects/stubs/src/sanding/ast.ts) / [`ast.ts.md`](file:///Users/lappier/code/projects/stubs/src/sanding/ast.ts.md)             | AST parsing, structural normalization, and SHA-256 hashing functions  | `@typescript-eslint/typescript-estree`, `crypto` |
+| File / Sidecar                                                                                            | Purpose & Exported Symbols                                            | Depends On                                       |
+| :-------------------------------------------------------------------------------------------------------- | :-------------------------------------------------------------------- | :----------------------------------------------- |
+| [`src/sanding/engine.ts`](../../src/sanding/engine.ts) / [`engine.ts.md`](../../src/sanding/engine.ts.md) | `SandingEngine` executing 5-phase retroactive reconciliation and sync | `ast.ts`, `parser/okf.ts`                        |
+| [`src/sanding/ast.ts`](../../src/sanding/ast.ts) / [`ast.ts.md`](../../src/sanding/ast.ts.md)             | AST parsing, structural normalization, and SHA-256 hashing functions  | `@typescript-eslint/typescript-estree`, `crypto` |
 
 ---
 

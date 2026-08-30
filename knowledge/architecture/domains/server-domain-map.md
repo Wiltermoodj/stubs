@@ -22,10 +22,10 @@ The **Server & Live Portal** domain provides an interactive dashboard and real-t
 
 ## Key Files & Sidecars
 
-| File / Sidecar                                                                                                                                                                     | Purpose & Exported Symbols                                          | Depends On                                 |
-| :--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :------------------------------------------------------------------ | :----------------------------------------- |
-| [`src/server/portal.ts`](file:///Users/lappier/code/projects/stubs/src/server/portal.ts) / [`portal.ts.md`](file:///Users/lappier/code/projects/stubs/src/server/portal.ts.md)     | `PortalServer` serving static portal assets and handling API routes | `watcher.ts`, `graph/engine.ts`, `express` |
-| [`src/server/watcher.ts`](file:///Users/lappier/code/projects/stubs/src/server/watcher.ts) / [`watcher.ts.md`](file:///Users/lappier/code/projects/stubs/src/server/watcher.ts.md) | File watcher broadcasting changes across the SSE event bridge       | `chokidar`                                 |
+| File / Sidecar                                                                                             | Purpose & Exported Symbols                                          | Depends On                                 |
+| :--------------------------------------------------------------------------------------------------------- | :------------------------------------------------------------------ | :----------------------------------------- |
+| [`src/server/portal.ts`](../../src/server/portal.ts) / [`portal.ts.md`](../../src/server/portal.ts.md)     | `PortalServer` serving static portal assets and handling API routes | `watcher.ts`, `graph/engine.ts`, `express` |
+| [`src/server/watcher.ts`](../../src/server/watcher.ts) / [`watcher.ts.md`](../../src/server/watcher.ts.md) | File watcher broadcasting changes across the SSE event bridge       | `chokidar`                                 |
 
 ---
 

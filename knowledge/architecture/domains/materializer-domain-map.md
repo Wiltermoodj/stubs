@@ -21,9 +21,9 @@ The **Materializer Engine** parses sidecar markdown specs, extracts tagged execu
 
 ## Key Files & Sidecars
 
-| File / Sidecar                                                                                                                                                                                   | Purpose & Exported Symbols                                            | Depends On                        |
-| :----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :-------------------------------------------------------------------- | :-------------------------------- |
-| [`src/materializer/engine.ts`](file:///Users/lappier/code/projects/stubs/src/materializer/engine.ts) / [`engine.ts.md`](file:///Users/lappier/code/projects/stubs/src/materializer/engine.ts.md) | `MaterializerEngine` extracting code blocks and materializing to disk | `parser/okf.ts`, `sanding/ast.ts` |
+| File / Sidecar                                                                                                           | Purpose & Exported Symbols                                            | Depends On                        |
+| :----------------------------------------------------------------------------------------------------------------------- | :-------------------------------------------------------------------- | :-------------------------------- |
+| [`src/materializer/engine.ts`](../../src/materializer/engine.ts) / [`engine.ts.md`](../../src/materializer/engine.ts.md) | `MaterializerEngine` extracting code blocks and materializing to disk | `parser/okf.ts`, `sanding/ast.ts` |
 
 ---
 

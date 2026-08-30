@@ -21,9 +21,9 @@ The **Autonomy Protocol** enforces safety and permission boundaries on actions p
 
 ## Key Files & Sidecars
 
-| File / Sidecar                                                                                                                                                                               | Purpose & Exported Symbols                                            | Depends On                            |
-| :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :-------------------------------------------------------------------- | :------------------------------------ |
-| [`src/autonomy/protocol.ts`](file:///Users/lappier/code/projects/stubs/src/autonomy/protocol.ts) / [`protocol.ts.md`](file:///Users/lappier/code/projects/stubs/src/autonomy/protocol.ts.md) | `AutonomyProtocol` managing permission levels and proposal evaluation | `graph/engine.ts`, `config/schema.ts` |
+| File / Sidecar                                                                                                       | Purpose & Exported Symbols                                            | Depends On                            |
+| :------------------------------------------------------------------------------------------------------------------- | :-------------------------------------------------------------------- | :------------------------------------ |
+| [`src/autonomy/protocol.ts`](../../src/autonomy/protocol.ts) / [`protocol.ts.md`](../../src/autonomy/protocol.ts.md) | `AutonomyProtocol` managing permission levels and proposal evaluation | `graph/engine.ts`, `config/schema.ts` |
 
 ---
 

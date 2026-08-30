@@ -21,10 +21,10 @@ The **Interactive Grill Engine** stress-tests software designs and sidecar specs
 
 ## Key Files & Sidecars
 
-| File / Sidecar                                                                                                                                                              | Purpose & Exported Symbols                                    | Depends On                  |
-| :-------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :------------------------------------------------------------ | :-------------------------- |
-| [`src/grill/engine.ts`](file:///Users/lappier/code/projects/stubs/src/grill/engine.ts) / [`engine.ts.md`](file:///Users/lappier/code/projects/stubs/src/grill/engine.ts.md) | `GrillEngine` orchestrating Q&A rounds and decision recording | `types.ts`, `parser/okf.ts` |
-| [`src/grill/types.ts`](file:///Users/lappier/code/projects/stubs/src/grill/types.ts) / [`types.ts.md`](file:///Users/lappier/code/projects/stubs/src/grill/types.ts.md)     | Question tree types, grill depths, and decision contracts     | -                           |
+| File / Sidecar                                                                                      | Purpose & Exported Symbols                                    | Depends On                  |
+| :-------------------------------------------------------------------------------------------------- | :------------------------------------------------------------ | :-------------------------- |
+| [`src/grill/engine.ts`](../../src/grill/engine.ts) / [`engine.ts.md`](../../src/grill/engine.ts.md) | `GrillEngine` orchestrating Q&A rounds and decision recording | `types.ts`, `parser/okf.ts` |
+| [`src/grill/types.ts`](../../src/grill/types.ts) / [`types.ts.md`](../../src/grill/types.ts.md)     | Question tree types, grill depths, and decision contracts     | -                           |
 
 ---
 
