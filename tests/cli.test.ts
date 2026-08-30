@@ -387,5 +387,20 @@ title: "Temp Spec"
         expect(fs.readFileSync(existingServicePath, 'utf8')).toBe('user modified service template');
       }
     });
+
+    it('should run stubs scan and index codebase into graph', async () => {
+      fs.mkdirSync(path.join(tempDir, 'src'), { recursive: true });
+      fs.writeFileSync(
+        path.join(tempDir, 'src', 'auth.ts'),
+        'export class AuthService { public login() { return true; } }',
+        'utf8',
+      );
+
+      const code = await router.route(['scan', 'src']);
+      expect(code).toBe(0);
+      expect(logSpy).toHaveBeenCalledWith(
+        expect.stringContaining('Codebase AST Indexing Complete'),
+      );
+    });
   });
 });

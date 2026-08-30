@@ -2,7 +2,7 @@ import { promises as fs, existsSync } from 'fs';
 import * as path from 'path';
 import { execSync } from 'child_process';
 import { parseOkfSpec } from '../parser/okf';
-import { GraphEngine } from '../graph/engine';
+import { GraphEngine, normalizePosixPath } from '../graph/engine';
 import { TemplateEngine } from '../templates/engine';
 import { AutonomyProtocol } from '../autonomy/protocol';
 import { PortalServer } from '../server/portal';
@@ -113,6 +113,9 @@ export class CliRouter {
           return await this.handleBlast(context);
         case 'path':
           return await this.handlePath(context);
+        case 'scan':
+        case 'index':
+          return await this.handleScan(context);
         default:
           console.error(`Error: Unknown command "${context.command}". Use --help for usage.`);
           return 1;
@@ -154,6 +157,7 @@ Usage:
 
 Commands:
   init                Initialize workspace configuration (.stubs/config.json).
+  scan, index [dir]   Scan physical codebase, run AST extraction, and populate the SQLite graph.
   auth login          Authenticate via Personal Access Tokens (PATs) and store globally.
   install             Fetch and install stubs skill and assets into the workspace.
   update, upgrade     Update installed stubs skill bundle or display package update instructions.
@@ -713,6 +717,15 @@ Options:
     } else {
       console.log(`Scanning and synchronizing workspace specifications under "${specsDir}"...`);
       const results = await engine.syncWorkspace(specsDir, { noGraphSync });
+      if (results.length === 0) {
+        console.log(
+          `ℹ No sidecars with target_code_file found under "${specsDir}". Code-only workspace is up to date.`,
+        );
+        console.log(
+          `  (Run 'stubs scan' to refresh code AST symbols and dependency relationships)`,
+        );
+        return 0;
+      }
       let hasError = false;
       for (const result of results) {
         this.printSyncResult(result);
@@ -720,6 +733,62 @@ Options:
       }
       return hasError ? 1 : 0;
     }
+  }
+
+  private async handleScan(ctx: CliContext): Promise<number> {
+    const isJson = ctx.args.includes('--json');
+    const nonFlagArgs = ctx.args.filter((a) => !a.startsWith('-'));
+    const targetDir = nonFlagArgs.length > 0 ? nonFlagArgs[0] : undefined;
+
+    const config = loadConfig(ctx.configPath);
+    const scanDir = targetDir || config.paths?.specs_dir || 'src';
+
+    const graphEngine = new GraphEngine(config.paths.db_path);
+    await graphEngine.initialize();
+
+    if (!isJson) {
+      console.log(`Scanning codebase and indexing AST graph under "${scanDir}"...`);
+    }
+
+    const codeSummary = await graphEngine.indexCodeWorkspace(scanDir);
+    const sidecarSummary = await graphEngine.indexWorkspace(scanDir);
+
+    const nodes = await graphEngine.getGraphNodes();
+    const edges = await graphEngine.getGraphEdges();
+
+    if (isJson) {
+      console.log(
+        JSON.stringify(
+          {
+            scanDir,
+            codeFilesScanned: codeSummary.scanned,
+            codeFilesIndexed: codeSummary.indexed,
+            sidecarsIndexed: sidecarSummary.indexed,
+            totalGraphNodes: nodes.length,
+            totalGraphEdges: edges.length,
+            errors: [...codeSummary.errors, ...sidecarSummary.errors],
+          },
+          null,
+          2,
+        ),
+      );
+      return codeSummary.errors.length > 0 ? 1 : 0;
+    }
+
+    console.log(`\n✓ Codebase AST Indexing Complete:`);
+    console.log(`  - Source files indexed : ${codeSummary.indexed} / ${codeSummary.scanned}`);
+    console.log(`  - Sidecars indexed     : ${sidecarSummary.indexed}`);
+    console.log(`  - Graph Nodes cached   : ${nodes.length}`);
+    console.log(`  - Graph Edges cached   : ${edges.length}`);
+
+    if (codeSummary.errors.length > 0) {
+      console.log(`\nWarnings / Errors:`);
+      for (const err of codeSummary.errors) {
+        console.log(`  - [${err.filePath}]: ${err.error}`);
+      }
+    }
+
+    return 0;
   }
 
   private async handleAuth(ctx: CliContext): Promise<number> {
@@ -1609,7 +1678,7 @@ Options:
       return 1;
     }
 
-    const target = nonFlagArgs[0];
+    const target = normalizePosixPath(nonFlagArgs[0]);
     const isJson = ctx.args.includes('--json');
     const isUpstream = ctx.args.includes('--upstream');
     const isBoth = ctx.args.includes('--both');
@@ -1654,8 +1723,8 @@ Options:
       return 1;
     }
 
-    const source = nonFlagArgs[0];
-    const target = nonFlagArgs[1];
+    const source = normalizePosixPath(nonFlagArgs[0]);
+    const target = normalizePosixPath(nonFlagArgs[1]);
     const isJson = ctx.args.includes('--json');
 
     let relationTypes: string[] | undefined;

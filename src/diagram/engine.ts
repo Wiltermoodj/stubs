@@ -109,8 +109,11 @@ export class DiagramEngine {
     lines.push('flowchart TD');
 
     // Filter file-level nodes (exclude fine-grained symbol-only nodes for readability)
+    // If physical code files exist, prioritize them; otherwise include sidecars
     const fileNodes = nodes.filter(
-      (n) => n.kind === 'file' || n.kind === 'sidecar' || !n.symbol_name,
+      (n) =>
+        n.kind === 'file' ||
+        (!nodes.some((other) => other.kind === 'file') && n.kind === 'sidecar'),
     );
 
     if (groupBy === 'layer') {
@@ -146,11 +149,14 @@ export class DiagramEngine {
       // Group by domain
       const domains = new Set<string>();
       for (const n of fileNodes) {
-        if (n.domain) domains.add(n.domain);
+        const domain = n.domain || getModuleLayer(n.file_path).domain;
+        if (domain && domain !== 'unknown') domains.add(domain);
       }
 
       for (const dom of domains) {
-        const domainMembers = fileNodes.filter((n) => n.domain === dom);
+        const domainMembers = fileNodes.filter(
+          (n) => (n.domain || getModuleLayer(n.file_path).domain) === dom,
+        );
         lines.push(`  subgraph D_${dom} ["${dom.toUpperCase()} Domain"]`);
         for (const n of domainMembers) {
           const nodeId = this.sanitizeNodeId(n.file_path);
@@ -162,15 +168,24 @@ export class DiagramEngine {
     }
 
     // Connect edges
-    const nodeIds = new Set(fileNodes.map((n) => n.id));
+    const fileNodeLookup = new Map<string, string>();
+    for (const n of fileNodes) {
+      fileNodeLookup.set(n.file_path, n.file_path);
+      fileNodeLookup.set(n.id, n.file_path);
+      const withoutExt = n.file_path.replace(/\.[^/.]+$/, '');
+      fileNodeLookup.set(withoutExt, n.file_path);
+    }
+
     const addedEdges = new Set<string>();
 
     for (const edge of edges) {
-      if (edge.source_id === edge.target_id) continue;
-      if (!nodeIds.has(edge.source_id) || !nodeIds.has(edge.target_id)) continue;
+      const srcPath = fileNodeLookup.get(edge.source_id.split('#')[0]);
+      const tgtPath = fileNodeLookup.get(edge.target_id.split('#')[0]);
 
-      const srcId = this.sanitizeNodeId(edge.source_id);
-      const tgtId = this.sanitizeNodeId(edge.target_id);
+      if (!srcPath || !tgtPath || srcPath === tgtPath) continue;
+
+      const srcId = this.sanitizeNodeId(srcPath);
+      const tgtId = this.sanitizeNodeId(tgtPath);
       const edgeKey = `${srcId}->${tgtId}`;
 
       if (addedEdges.has(edgeKey)) continue;

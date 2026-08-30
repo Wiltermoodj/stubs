@@ -62,13 +62,20 @@ Initializes standard workspace configuration `.stubs/config.json` in the current
 npx stubs init
 ```
 
-### 2. `stubs update` / `stubs upgrade`
+### 2. `stubs scan` / `stubs index`
+Scans physical source code files across the codebase, extracts AST declarations and relationships, and populates the SQLite graph database (`.stubs/graph.sqlite`).
+```bash
+npx stubs scan
+npx stubs scan src --json
+```
+
+### 3. `stubs update` / `stubs upgrade`
 Refreshes and updates the installed stubs agent skill and assets to the latest version.
 ```bash
 npx stubs update
 ```
 
-### 3. `stubs map`
+### 4. `stubs map`
 Scaffolds or audits the architectural context map hierarchy (`knowledge/architecture/context-map.md` and domain maps).
 ```bash
 npx stubs map --scaffold

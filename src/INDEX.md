@@ -31,7 +31,7 @@ stale_details: >-
 
 # stubs — Subsystem Index
 
-`stubs` is a specification-first AI software development framework. It enforces an **Open Knowledge Format (OKF)** intermediate layer between natural language intent and executable TypeScript code. Every source file has a paired `*.ts.md` sidecar specification that lives alongside it, forming the canonical source of truth for the module's design, decisions, and implementation contract.
+`stubs` is an architecture-as-code planning and AST dependency framework. It provides physical source code dependency extraction and graph intelligence out of the box, with opt-in **Open Knowledge Format (OKF)** concept markdown documents (`*.md`) and code sidecars (`*.<ext>.md`) for modules during iterative conceptualization, architectural grilling, and materialization.
 
 ---
 

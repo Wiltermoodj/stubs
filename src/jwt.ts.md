@@ -84,9 +84,11 @@ user_notes:
 stale_details: >-
   Type-checking failed:
 
-  src/jwt.ts (16,28): Property 'createHmac' does not exist on type 'Crypto'.
+  /Users/lappier/code/projects/stubs/src/jwt.ts (16,28): Property 'createHmac'
+  does not exist on type 'Crypto'.
 
-  src/jwt.ts (26,30): Property 'createHmac' does not exist on type 'Crypto'.
+  /Users/lappier/code/projects/stubs/src/jwt.ts (26,30): Property 'createHmac'
+  does not exist on type 'Crypto'.
 sync_state:
   last_sync_timestamp: '2026-08-21T10:03:07.890Z'
   sidecar_hash: 23d2779f922c5ac573564d4b84c6b05cc07aa4c2a7fd942d97d604e207a0a58b
