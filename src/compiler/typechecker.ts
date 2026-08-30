@@ -86,6 +86,8 @@ function getParsedConfig(resolvedTsconfigPath: string): {
   }
 }
 
+let lastProgram: ts.Program | null = null;
+
 /**
  * Executes an in-memory TypeScript compilation and type-check on a virtual overlay file.
  * Automatically loads tsconfig.json options and physical workspace files, avoiding false-negatives.
@@ -164,7 +166,8 @@ export function typeCheckVirtualFile(
   const rootNames = Array.from(new Set([...fileNames, absoluteTargetFilePath]));
 
   try {
-    const program = ts.createProgram(rootNames, compilerOptions, host);
+    const program = ts.createProgram(rootNames, compilerOptions, host, lastProgram || undefined);
+    lastProgram = program;
     const diagnostics = ts.getPreEmitDiagnostics(program);
 
     if (diagnostics.length > 0) {

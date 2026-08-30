@@ -1,6 +1,4 @@
-import * as path from 'path';
 import { GraphEngine, normalizePosixPath } from '../graph/engine';
-import { TopologyEngine, BlastRadiusResult } from '../graph/topology';
 import { loadConfig } from '../config/schema';
 import { FileStorageDriver, NodeFileSystem } from '../storage';
 
@@ -63,14 +61,13 @@ export class ImpactEngine {
       normalized = normalized.substring(2);
     }
 
-    // Ensure graph nodes exist
-    const existingNodes = await this.graphEngine.getGraphNodes();
-    if (existingNodes.length === 0) {
+    // Ensure graph nodes exist via TopologyEngine
+    let topology = await this.graphEngine.getTopologyEngine();
+    if (topology.getAllNodes().length === 0) {
       const config = loadConfig();
       await this.graphEngine.indexCodeWorkspace(config.paths?.specs_dir || 'src');
+      topology = await this.graphEngine.getTopologyEngine();
     }
-
-    const topology = await this.graphEngine.getTopologyEngine();
     const depth = options.depth !== undefined ? options.depth : options.transitive ? 5 : 3;
     const direction = options.direction || 'inbound'; // Default to inbound (dependents affected by target change)
     const topoDirection =

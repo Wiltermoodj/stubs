@@ -52,21 +52,23 @@ export class DiagramEngine {
   ): Promise<DiagramResult> {
     await this.graphEngine.initialize();
 
-    const existingNodes = await this.graphEngine.getGraphNodes();
+    let existingNodes = await this.graphEngine.getGraphNodes();
     if (existingNodes.length === 0) {
       const config = loadConfig(options.configPath);
       await this.graphEngine.syncWorkspaceFiles(config.paths?.specs_dir || 'src');
+      existingNodes = await this.graphEngine.getGraphNodes();
     }
+    const allEdges = await this.graphEngine.getGraphEdges();
 
     const type: DiagramType = options.type || (target ? 'slice' : 'architecture');
     let mermaidCode: string;
 
     if (type === 'sequence' && target) {
-      mermaidCode = await this.generateSequenceDiagram(target, options);
+      mermaidCode = await this.generateSequenceDiagram(target, options, allEdges);
     } else if (type === 'slice' && target) {
-      mermaidCode = await this.generateSliceDiagram(target, options);
+      mermaidCode = await this.generateSliceDiagram(target, options, allEdges);
     } else {
-      mermaidCode = await this.generateArchitectureDiagram(options);
+      mermaidCode = await this.generateArchitectureDiagram(options, existingNodes, allEdges);
     }
 
     let syncedPath: string | undefined;
@@ -97,9 +99,13 @@ export class DiagramEngine {
   /**
    * Generates top-down architecture diagram grouped by layer or domain.
    */
-  public async generateArchitectureDiagram(options: DiagramOptions = {}): Promise<string> {
-    const nodes = await this.graphEngine.getGraphNodes();
-    const edges = await this.graphEngine.getGraphEdges();
+  public async generateArchitectureDiagram(
+    options: DiagramOptions = {},
+    passedNodes?: any[],
+    passedEdges?: any[],
+  ): Promise<string> {
+    const nodes = passedNodes || (await this.graphEngine.getGraphNodes());
+    const edges = passedEdges || (await this.graphEngine.getGraphEdges());
     const groupBy = options.groupBy || 'layer';
 
     const lines: string[] = [];
@@ -206,9 +212,10 @@ export class DiagramEngine {
   public async generateSequenceDiagram(
     targetFile: string,
     options: DiagramOptions = {},
+    passedEdges?: any[],
   ): Promise<string> {
     const normalized = normalizePosixPath(targetFile);
-    const edges = await this.graphEngine.getGraphEdges();
+    const edges = passedEdges || (await this.graphEngine.getGraphEdges());
 
     const maxDepth = options.depth || 3;
     const participants = new Set<string>();
@@ -269,9 +276,10 @@ export class DiagramEngine {
   public async generateSliceDiagram(
     targetFile: string,
     _options: DiagramOptions = {},
+    passedEdges?: any[],
   ): Promise<string> {
     const normalized = normalizePosixPath(targetFile);
-    const edges = await this.graphEngine.getGraphEdges();
+    const edges = passedEdges || (await this.graphEngine.getGraphEdges());
 
     const upstream = edges.filter((e) => e.target_id === normalized);
     const downstream = edges.filter((e) => e.source_id === normalized);

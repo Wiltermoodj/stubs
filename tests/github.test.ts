@@ -450,6 +450,12 @@ describe('GitHub Client API and Auth Credentials Manager', () => {
       expect(decryptToken(loaded.github_token)).toBe('piped_pat_token');
 
       mockStdinOn.mockRestore();
+      process.stdin.removeAllListeners('data');
+      process.stdin.removeAllListeners('end');
+      process.stdin.pause();
+      if (typeof process.stdin.unref === 'function') {
+        process.stdin.unref();
+      }
       process.stdin.isTTY = originalIsTTY;
       global.fetch = originalFetch;
     });

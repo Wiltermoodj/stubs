@@ -1,5 +1,4 @@
 import { GraphEngine, normalizePosixPath } from '../graph/engine';
-import { TopologyEngine } from '../graph/topology';
 import { FileStorageDriver, NodeFileSystem } from '../storage';
 import { loadConfig } from '../config/schema';
 
@@ -34,9 +33,9 @@ export class ExportEngine {
    */
   public async toObsidian(outputDir: string = './obsidian-vault'): Promise<ExportResult> {
     await this.graphEngine.initialize();
-    const allNodes = await this.graphEngine.getGraphNodes();
-    const allEdges = await this.graphEngine.getGraphEdges();
-    const topology = new TopologyEngine(allNodes, allEdges);
+    const topology = await this.graphEngine.getTopologyEngine();
+    const allNodes = topology.getAllNodes();
+    const allEdges = topology.getAllEdges();
     const communities = topology.getCommunities();
 
     const normOut = normalizePosixPath(outputDir);
@@ -51,13 +50,15 @@ export class ExportEngine {
       nodeFileMap.set(node.id, cleanName);
     }
 
+    const writeTasks: { path: string; content: string }[] = [];
+
     // 1. Generate node markdown notes
     for (const node of allNodes) {
       const cleanName = nodeFileMap.get(node.id) || 'node';
       const filePath = `${normOut}/${cleanName}.md`;
 
-      const outgoing = allEdges.filter((e) => e.source_id === node.id);
-      const incoming = allEdges.filter((e) => e.target_id === node.id);
+      const outgoing = topology.getOutgoingEdges(node.id);
+      const incoming = topology.getIncomingEdges(node.id);
 
       const lines: string[] = [];
       lines.push('---');
@@ -98,8 +99,15 @@ export class ExportEngine {
         lines.push('');
       }
 
-      await this.fsDriver.writeFile(filePath, lines.join('\n'));
+      writeTasks.push({ path: filePath, content: lines.join('\n') });
       filesGenerated.push(filePath);
+    }
+
+    // Write notes in concurrent chunks
+    const CHUNK_SIZE = 50;
+    for (let i = 0; i < writeTasks.length; i += CHUNK_SIZE) {
+      const chunk = writeTasks.slice(i, i + CHUNK_SIZE);
+      await Promise.all(chunk.map((t) => this.fsDriver.writeFile(t.path, t.content)));
     }
 
     // 2. Generate Master Index.md
@@ -148,9 +156,9 @@ export class ExportEngine {
    */
   public async toWiki(outputDir: string = './wiki'): Promise<ExportResult> {
     await this.graphEngine.initialize();
-    const allNodes = await this.graphEngine.getGraphNodes();
-    const allEdges = await this.graphEngine.getGraphEdges();
-    const topology = new TopologyEngine(allNodes, allEdges);
+    const topology = await this.graphEngine.getTopologyEngine();
+    const allNodes = topology.getAllNodes();
+    const allEdges = topology.getAllEdges();
     const communities = topology.getCommunities();
     const smells = topology.detectArchitecturalSmells();
     const questions = topology.suggestArchitectureQuestions();
@@ -160,6 +168,7 @@ export class ExportEngine {
     await this.fsDriver.mkdir(commDir, { recursive: true });
 
     const filesGenerated: string[] = [];
+    const writeTasks: { path: string; content: string }[] = [];
 
     // 1. Generate subsystem community articles
     for (const comm of communities.communityInfo) {
@@ -185,17 +194,18 @@ export class ExportEngine {
 
       lines.push('## 📦 Subsystem Members');
       for (const node of comm.nodes) {
-        const gNode = allNodes.find((n) => n.id === node);
+        const gNode = topology.getNode(node);
         const kindTag = gNode ? `*(${gNode.kind})*` : '';
         lines.push(`- **\`${node}\`** ${kindTag}`);
       }
       lines.push('');
 
-      // Cross-boundary connections
+      // Cross-boundary connections with Set lookup
+      const commNodeSet = new Set(comm.nodes);
       const crossEdges = allEdges.filter(
         (e) =>
-          (comm.nodes.includes(e.source_id) && !comm.nodes.includes(e.target_id)) ||
-          (!comm.nodes.includes(e.source_id) && comm.nodes.includes(e.target_id)),
+          (commNodeSet.has(e.source_id) && !commNodeSet.has(e.target_id)) ||
+          (!commNodeSet.has(e.source_id) && commNodeSet.has(e.target_id)),
       );
 
       if (crossEdges.length > 0) {
@@ -208,8 +218,15 @@ export class ExportEngine {
         lines.push('');
       }
 
-      await this.fsDriver.writeFile(filePath, lines.join('\n'));
+      writeTasks.push({ path: filePath, content: lines.join('\n') });
       filesGenerated.push(filePath);
+    }
+
+    // Write subsystem files concurrently
+    const CHUNK_SIZE = 50;
+    for (let i = 0; i < writeTasks.length; i += CHUNK_SIZE) {
+      const chunk = writeTasks.slice(i, i + CHUNK_SIZE);
+      await Promise.all(chunk.map((t) => this.fsDriver.writeFile(t.path, t.content)));
     }
 
     // 2. Generate Main index.md Wiki Portal

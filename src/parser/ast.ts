@@ -125,7 +125,7 @@ import * as ts from 'typescript';
  */
 export function extractDistilledSignatures(sourceCode: string, fileName = 'module.ts'): string {
   try {
-    const sourceFile = ts.createSourceFile(fileName, sourceCode, ts.ScriptTarget.Latest, true);
+    const sourceFile = ts.createSourceFile(fileName, sourceCode, ts.ScriptTarget.Latest, false);
     const distilledParts: string[] = [];
 
     for (const statement of sourceFile.statements) {
@@ -254,7 +254,7 @@ export function extractDistilledSignatures(sourceCode: string, fileName = 'modul
  */
 export function extractExportedSymbolNames(sourceCode: string, fileName = 'module.ts'): string[] {
   try {
-    const sourceFile = ts.createSourceFile(fileName, sourceCode, ts.ScriptTarget.Latest, true);
+    const sourceFile = ts.createSourceFile(fileName, sourceCode, ts.ScriptTarget.Latest, false);
     const symbols: string[] = [];
 
     for (const statement of sourceFile.statements) {

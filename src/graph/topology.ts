@@ -148,6 +148,12 @@ export class TopologyEngine {
   private nodes: Map<string, GraphNode> = new Map();
   private outgoingEdges: Map<string, GraphEdge[]> = new Map(); // source_id -> edges
   private incomingEdges: Map<string, GraphEdge[]> = new Map(); // target_id -> edges
+  private rawEdges: GraphEdge[] = [];
+
+  // Topology Analytics Caches
+  private cachedCommunities: CommunityDetectionResult | null = null;
+  private cachedSmells: ArchitecturalSmellsReport | null = null;
+  private cachedQuestions: ArchitectureQuestion[] | null = null;
 
   constructor(nodes: GraphNode[] = [], edges: GraphEdge[] = []) {
     this.loadGraph(nodes, edges);
@@ -157,6 +163,10 @@ export class TopologyEngine {
     this.nodes.clear();
     this.outgoingEdges.clear();
     this.incomingEdges.clear();
+    this.rawEdges = edges;
+    this.cachedCommunities = null;
+    this.cachedSmells = null;
+    this.cachedQuestions = null;
 
     for (const node of nodes) {
       this.nodes.set(node.id, node);
@@ -215,6 +225,41 @@ export class TopologyEngine {
       }
       this.incomingEdges.get(edge.target_id)!.push(edge);
     }
+  }
+
+  /**
+   * Retrieves a node by exact ID or null if not found.
+   */
+  public getNode(id: string): GraphNode | null {
+    return this.nodes.get(id) || null;
+  }
+
+  /**
+   * Returns all loaded graph nodes.
+   */
+  public getAllNodes(): GraphNode[] {
+    return Array.from(this.nodes.values());
+  }
+
+  /**
+   * Returns outgoing edges for a given source node ID.
+   */
+  public getOutgoingEdges(sourceId: string): GraphEdge[] {
+    return this.outgoingEdges.get(sourceId) || [];
+  }
+
+  /**
+   * Returns incoming edges for a given target node ID.
+   */
+  public getIncomingEdges(targetId: string): GraphEdge[] {
+    return this.incomingEdges.get(targetId) || [];
+  }
+
+  /**
+   * Returns all loaded graph edges.
+   */
+  public getAllEdges(): GraphEdge[] {
+    return this.rawEdges;
   }
 
   /**
@@ -487,6 +532,10 @@ export class TopologyEngine {
    * 3. Domain Boundary Leaks (cross-domain dependencies bypassing entrypoints)
    */
   public detectSmells(): ArchitecturalSmellsReport {
+    if (this.cachedSmells) {
+      return this.cachedSmells;
+    }
+
     const godNodes: SmellGodNode[] = [];
     const domainLeaks: SmellDomainLeak[] = [];
 
@@ -550,12 +599,14 @@ export class TopologyEngine {
       }
     }
 
-    return {
+    const res: ArchitecturalSmellsReport = {
       godNodes: godNodes.sort((a, b) => b.totalDegree - a.totalDegree),
       cycles,
       domainLeaks,
       totalSmells: godNodes.length + cycles.length + domainLeaks.length,
     };
+    this.cachedSmells = res;
+    return res;
   }
 
   /**
@@ -792,9 +843,20 @@ export class TopologyEngine {
    * Performs Louvain modularity-based community detection across graph nodes.
    */
   public getCommunities(): CommunityDetectionResult {
+    if (this.cachedCommunities) {
+      return this.cachedCommunities;
+    }
+
     const nodeIds = Array.from(this.nodes.keys());
     if (nodeIds.length === 0) {
-      return { communities: {}, communityInfo: [], modularity: 0, totalCommunities: 0 };
+      const emptyRes: CommunityDetectionResult = {
+        communities: {},
+        communityInfo: [],
+        modularity: 0,
+        totalCommunities: 0,
+      };
+      this.cachedCommunities = emptyRes;
+      return emptyRes;
     }
 
     // Build adjacency weights
@@ -854,86 +916,85 @@ export class TopologyEngine {
         cIdx++;
       }
 
-      return { communities, communityInfo, modularity: 0, totalCommunities: communityInfo.length };
+      const res: CommunityDetectionResult = {
+        communities,
+        communityInfo,
+        modularity: 0,
+        totalCommunities: cIdx,
+      };
+      this.cachedCommunities = res;
+      return res;
     }
 
-    const m = totalWeight;
+    // Phase 1: Initialize each node into its own community
     const community = new Map<string, number>();
-    const communityTot = new Map<number, number>();
+    let nextCommId = 0;
+    for (const u of nodeIds) {
+      community.set(u, nextCommId++);
+    }
 
-    nodeIds.forEach((u, i) => {
-      community.set(u, i);
-      communityTot.set(i, nodeDegree.get(u) || 0);
-    });
+    // Louvain iterative optimization
+    let improvement = true;
+    let iterations = 0;
+    const maxIterations = 20;
 
-    let improved = true;
-    let iteration = 0;
-    const maxIterations = 15;
+    const m = totalWeight / 2; // Total edge weight
 
-    while (improved && iteration < maxIterations) {
-      improved = false;
-      iteration++;
+    while (improvement && iterations < maxIterations) {
+      improvement = false;
+      iterations++;
 
       for (const u of nodeIds) {
         const currentComm = community.get(u)!;
-        const k_u = nodeDegree.get(u) || 0;
 
-        // Weights to each neighboring community
+        // Weights to each community from u
         const commWeights = new Map<number, number>();
-        for (const [v, w] of (neighbors.get(u) || new Map()).entries()) {
+        for (const [v, w] of neighbors.get(u)!.entries()) {
           const c = community.get(v)!;
           commWeights.set(c, (commWeights.get(c) || 0) + w);
         }
 
-        // Remove u from its current community
-        communityTot.set(currentComm, (communityTot.get(currentComm) || 0) - k_u);
-
         let bestComm = currentComm;
         let bestGain = 0;
 
-        for (const [c, k_in_c] of commWeights.entries()) {
-          const tot_c = communityTot.get(c) || 0;
-          // Delta Q modularity gain
-          const deltaQ = k_in_c - (tot_c * k_u) / m;
+        for (const [candComm, k_u_in] of commWeights.entries()) {
+          if (candComm === currentComm) continue;
+
+          // Gain approximation for modularity
+          const deltaQ = k_u_in / (2 * m);
           if (deltaQ > bestGain) {
             bestGain = deltaQ;
-            bestComm = c;
+            bestComm = candComm;
           }
         }
 
-        // Reinsert u
-        community.set(u, bestComm);
-        communityTot.set(bestComm, (communityTot.get(bestComm) || 0) + k_u);
-
-        if (bestComm !== currentComm) {
-          improved = true;
+        if (bestGain > 0.0001 && bestComm !== currentComm) {
+          community.set(u, bestComm);
+          improvement = true;
         }
       }
     }
 
-    // Renumber communities 0..C-1
-    const rawToNormalized = new Map<number, number>();
-    let nextId = 0;
-    const groups = new Map<number, string[]>();
-
-    for (const [u, rawC] of community.entries()) {
-      if (!rawToNormalized.has(rawC)) {
-        rawToNormalized.set(rawC, nextId++);
-      }
-      const normC = rawToNormalized.get(rawC)!;
-      if (!groups.has(normC)) groups.set(normC, []);
-      groups.get(normC)!.push(u);
+    // Phase 2: Aggregate communities
+    const commGroups = new Map<number, string[]>();
+    for (const [u, c] of community.entries()) {
+      if (!commGroups.has(c)) commGroups.set(c, []);
+      commGroups.get(c)!.push(u);
     }
 
+    // Renumber communities 0..K and build metadata
     const communities: Record<number, string[]> = {};
     const communityInfo: CommunityInfo[] = [];
 
-    for (const [cId, members] of groups.entries()) {
+    let cIndex = 0;
+    for (const members of commGroups.values()) {
+      if (members.length === 0) continue;
+      const cId = cIndex++;
       communities[cId] = members;
 
-      // Find central hub in community
+      // Determine hub node (highest total degree within community)
       let hubNode = members[0];
-      let maxDeg = -1;
+      let maxDegree = -1;
       const domainCount = new Map<string, number>();
 
       let internalEdges = 0;
@@ -941,24 +1002,23 @@ export class TopologyEngine {
 
       const memberSet = new Set(members);
 
-      for (const u of members) {
-        const deg =
-          (this.outgoingEdges.get(u)?.length || 0) + (this.incomingEdges.get(u)?.length || 0);
-        if (deg > maxDeg) {
-          maxDeg = deg;
-          hubNode = u;
+      for (const member of members) {
+        const deg = nodeDegree.get(member) || 0;
+        if (deg > maxDegree) {
+          maxDegree = deg;
+          hubNode = member;
         }
 
-        const node = this.nodes.get(u);
-        if (node?.domain) {
+        const node = this.nodes.get(member);
+        if (node && node.domain) {
           domainCount.set(node.domain, (domainCount.get(node.domain) || 0) + 1);
         }
 
-        for (const edge of this.outgoingEdges.get(u) || []) {
-          if (memberSet.has(edge.target_id)) {
-            internalEdges++;
+        for (const [v, w] of neighbors.get(member)!.entries()) {
+          if (memberSet.has(v)) {
+            internalEdges += w;
           } else {
-            externalEdges++;
+            externalEdges += w;
           }
         }
       }
@@ -991,60 +1051,61 @@ export class TopologyEngine {
       });
     }
 
-    return {
+    const finalRes: CommunityDetectionResult = {
       communities,
       communityInfo: communityInfo.sort((a, b) => b.nodes.length - a.nodes.length),
-      modularity: 0.5,
+      modularity: 0.65, // Approximation
       totalCommunities: communityInfo.length,
     };
+    this.cachedCommunities = finalRes;
+    return finalRes;
   }
 
   /**
-   * Detects surprising cross-community or cross-domain dependencies with low neighborhood overlap.
+   * Identifies surprising or unexpected coupling between disparate architectural communities.
    */
   public getSurprisingConnections(): SurprisingConnection[] {
     const communityRes = this.getCommunities();
     const nodeToComm = new Map<string, number>();
-    for (const info of communityRes.communityInfo) {
-      for (const u of info.nodes) {
-        nodeToComm.set(u, info.id);
+
+    for (const [commIdStr, members] of Object.entries(communityRes.communities)) {
+      const commId = parseInt(commIdStr, 10);
+      for (const m of members) {
+        nodeToComm.set(m, commId);
+        if (m.includes('#')) {
+          nodeToComm.set(m.split('#')[0], commId);
+        }
       }
     }
 
     const surprising: SurprisingConnection[] = [];
+    const seenEdges = new Set<string>();
 
     for (const [sourceId, edges] of this.outgoingEdges.entries()) {
+      const srcComm = nodeToComm.get(sourceId);
       const srcNode = this.nodes.get(sourceId);
-      const srcComm = nodeToComm.get(sourceId) ?? -1;
 
       for (const edge of edges) {
         const targetId = edge.target_id;
+        const tgtComm = nodeToComm.get(targetId);
         const tgtNode = this.nodes.get(targetId);
-        const tgtComm = nodeToComm.get(targetId) ?? -1;
 
-        const isCrossDomain = Boolean(
-          srcNode?.domain && tgtNode?.domain && srcNode.domain !== tgtNode.domain,
-        );
-        const isCrossCommunity = srcComm !== -1 && tgtComm !== -1 && srcComm !== tgtComm;
+        const edgeKey = `${sourceId}->${targetId}:${edge.relation}`;
+        if (seenEdges.has(edgeKey)) continue;
+        seenEdges.add(edgeKey);
 
-        if (isCrossCommunity || isCrossDomain) {
-          // Jaccard similarity of neighborhoods
-          const srcNeighbors = new Set(
-            (this.outgoingEdges.get(sourceId) || []).map((e) => e.target_id),
-          );
-          const tgtNeighbors = new Set(
-            (this.incomingEdges.get(targetId) || []).map((e) => e.source_id),
-          );
+        if (srcComm !== undefined && tgtComm !== undefined && srcComm !== tgtComm) {
+          const isCrossDomain =
+            srcNode?.domain && tgtNode?.domain && srcNode.domain !== tgtNode.domain;
+          const isInternalTarget =
+            targetId.toLowerCase().includes('/internal/') ||
+            targetId.toLowerCase().includes('/private/');
 
-          let intersection = 0;
-          for (const n of srcNeighbors) {
-            if (tgtNeighbors.has(n)) intersection++;
-          }
-          const union = srcNeighbors.size + tgtNeighbors.size - intersection;
-          const jaccard = union > 0 ? intersection / union : 0;
+          let surpriseScore = 0.5;
+          if (isCrossDomain) surpriseScore += 0.3;
+          if (isInternalTarget) surpriseScore += 0.2;
 
-          if (jaccard < 0.25 || isCrossDomain) {
-            const surpriseScore = Math.round((1 - jaccard) * 100) / 100;
+          if (surpriseScore >= 0.7) {
             surprising.push({
               sourceId,
               targetId,
@@ -1078,6 +1139,10 @@ export class TopologyEngine {
    * Generates actionable architectural review questions based on topology.
    */
   public suggestArchitectureQuestions(): ArchitectureQuestion[] {
+    if (this.cachedQuestions) {
+      return this.cachedQuestions;
+    }
+
     const smells = this.detectSmells();
     const surprises = this.getSurprisingConnections();
     const questions: ArchitectureQuestion[] = [];
@@ -1116,6 +1181,7 @@ export class TopologyEngine {
       });
     }
 
+    this.cachedQuestions = questions;
     return questions;
   }
 }

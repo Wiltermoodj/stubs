@@ -91,6 +91,13 @@ lint_output.txt
 repro_save.js
 temp_inspect.js
 temp_repro.js
+debug-ast.cjs
+tmp_db_query.py
+:memory:
+*.sqlite
+*.sqlite-journal
+*.sqlite*
+tests/temp_*
 knowledge/analysis/
 
 # local eslint config

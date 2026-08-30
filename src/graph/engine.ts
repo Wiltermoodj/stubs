@@ -392,6 +392,8 @@ export class GraphEngine {
 
     // 2. Create index on file_path for fast lookups
     await this.run(`CREATE INDEX IF NOT EXISTS idx_sidecars_file_path ON sidecars(file_path);`);
+    await this.run(`CREATE INDEX IF NOT EXISTS idx_sidecars_target ON sidecars(target_code_file);`);
+    await this.run(`CREATE INDEX IF NOT EXISTS idx_sidecars_type_phase ON sidecars(type, phase);`);
 
     // 3. Create dependencies table
     await this.run(`
@@ -1032,21 +1034,31 @@ Decisions: ${decisionsText}
    */
   public async upsertGraphNodes(nodes: GraphNode[]): Promise<void> {
     await this.ensureInitialized();
-    for (const node of nodes) {
-      await this.run(
-        `INSERT OR REPLACE INTO graph_nodes (id, file_path, symbol_name, kind, domain, lifecycle_phase, loc_start, loc_end)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?);`,
-        [
-          node.id,
-          node.file_path,
-          node.symbol_name || null,
-          node.kind,
-          node.domain || null,
-          node.lifecycle_phase || null,
-          node.loc_start || null,
-          node.loc_end || null,
-        ],
-      );
+    if (nodes.length === 0) return;
+
+    const runBatch = async () => {
+      for (const node of nodes) {
+        await this.run(
+          `INSERT OR REPLACE INTO graph_nodes (id, file_path, symbol_name, kind, domain, lifecycle_phase, loc_start, loc_end)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?);`,
+          [
+            node.id,
+            node.file_path,
+            node.symbol_name || null,
+            node.kind,
+            node.domain || null,
+            node.lifecycle_phase || null,
+            node.loc_start || null,
+            node.loc_end || null,
+          ],
+        );
+      }
+    };
+
+    if (typeof this.dbDriver.transaction === 'function') {
+      await this.dbDriver.transaction(runBatch);
+    } else {
+      await runBatch();
     }
   }
 
@@ -1055,18 +1067,28 @@ Decisions: ${decisionsText}
    */
   public async upsertGraphEdges(edges: GraphEdge[]): Promise<void> {
     await this.ensureInitialized();
-    for (const edge of edges) {
-      await this.run(
-        `INSERT OR REPLACE INTO graph_edges (source_id, target_id, relation, confidence, weight)
-         VALUES (?, ?, ?, ?, ?);`,
-        [
-          edge.source_id,
-          edge.target_id,
-          edge.relation,
-          edge.confidence || 'EXTRACTED',
-          edge.weight || 1.0,
-        ],
-      );
+    if (edges.length === 0) return;
+
+    const runBatch = async () => {
+      for (const edge of edges) {
+        await this.run(
+          `INSERT OR REPLACE INTO graph_edges (source_id, target_id, relation, confidence, weight)
+           VALUES (?, ?, ?, ?, ?);`,
+          [
+            edge.source_id,
+            edge.target_id,
+            edge.relation,
+            edge.confidence || 'EXTRACTED',
+            edge.weight || 1.0,
+          ],
+        );
+      }
+    };
+
+    if (typeof this.dbDriver.transaction === 'function') {
+      await this.dbDriver.transaction(runBatch);
+    } else {
+      await runBatch();
     }
   }
 
@@ -1320,11 +1342,10 @@ Decisions: ${decisionsText}
     }
 
     const codeExts = ['.ts', '.tsx', '.js', '.jsx', '.py', '.rs', '.go', '.md'];
-    for (const f of files) {
-      const ext = path.extname(f).toLowerCase();
-      if (!codeExts.includes(ext)) continue;
+    const matchedFiles = files.filter((f) => codeExts.includes(path.extname(f).toLowerCase()));
+    summary.scanned = matchedFiles.length;
 
-      summary.scanned++;
+    for (const f of matchedFiles) {
       try {
         await this.indexCodeFile(f);
         summary.indexed++;
@@ -1490,6 +1511,188 @@ Decisions: ${decisionsText}
       })),
       plannedFiles,
     };
+  }
+
+  /**
+   * Batch retrieves all indexed sidecars with all child entities aggregated in memory.
+   * Performs 7 batch queries instead of 7*N sequential round-trips.
+   */
+  public async getAllSidecars(): Promise<any[]> {
+    await this.ensureInitialized();
+
+    const sidecarRows = await this.all<any>('SELECT * FROM sidecars ORDER BY file_path ASC;');
+    if (sidecarRows.length === 0) return [];
+
+    const allDeps = await this.all<{
+      source_file_path: string;
+      target_file_path: string;
+      type: string;
+    }>('SELECT source_file_path, target_file_path, type FROM dependencies;');
+    const allTags = await this.all<{ file_path: string; tag: string }>(
+      'SELECT file_path, tag FROM tags;',
+    );
+    const allExports = await this.all<{ file_path: string; export_name: string }>(
+      'SELECT file_path, export_name FROM exports;',
+    );
+    const allDecisions = await this.all<{
+      file_path: string;
+      adr_id: string;
+      summary: string;
+      date: string;
+    }>('SELECT file_path, adr_id, summary, date FROM decisions;');
+    const allUserNotes = await this.all<{
+      file_path: string;
+      note_id: string;
+      timestamp: string;
+      text: string;
+      status: string;
+    }>('SELECT file_path, note_id, timestamp, text, status FROM user_notes;');
+    const allTasks = await this.all<TaskRow>(
+      'SELECT id, sidecar_path, text, completed, line_number, initiative FROM tasks ORDER BY line_number ASC;',
+    );
+    const allPlannedFiles = await this.all<PlannedFileRow>(
+      'SELECT id, source_doc, path, type, description, status FROM planned_files ORDER BY path ASC;',
+    );
+
+    // Group relations by file_path
+    const depsMap = new Map<string, { target_file_path: string; type: string }[]>();
+    for (const d of allDeps) {
+      if (!depsMap.has(d.source_file_path)) depsMap.set(d.source_file_path, []);
+      depsMap.get(d.source_file_path)!.push(d);
+    }
+
+    const tagsMap = new Map<string, string[]>();
+    for (const t of allTags) {
+      if (!tagsMap.has(t.file_path)) tagsMap.set(t.file_path, []);
+      tagsMap.get(t.file_path)!.push(t.tag);
+    }
+
+    const exportsMap = new Map<string, string[]>();
+    for (const e of allExports) {
+      if (!exportsMap.has(e.file_path)) exportsMap.set(e.file_path, []);
+      exportsMap.get(e.file_path)!.push(e.export_name);
+    }
+
+    const decisionsMap = new Map<string, { id: string; summary: string; date: string }[]>();
+    for (const d of allDecisions) {
+      if (!decisionsMap.has(d.file_path)) decisionsMap.set(d.file_path, []);
+      decisionsMap.get(d.file_path)!.push({ id: d.adr_id, summary: d.summary, date: d.date });
+    }
+
+    const userNotesMap = new Map<string, any[]>();
+    for (const n of allUserNotes) {
+      if (!userNotesMap.has(n.file_path)) userNotesMap.set(n.file_path, []);
+      userNotesMap.get(n.file_path)!.push({
+        id: n.note_id,
+        timestamp: n.timestamp,
+        text: n.text,
+        status: n.status,
+      });
+    }
+
+    const tasksMap = new Map<string, TaskRow[]>();
+    for (const t of allTasks) {
+      if (!tasksMap.has(t.sidecar_path)) tasksMap.set(t.sidecar_path, []);
+      tasksMap.get(t.sidecar_path)!.push(t);
+    }
+
+    const plannedFilesMap = new Map<string, PlannedFileRow[]>();
+    for (const p of allPlannedFiles) {
+      if (!plannedFilesMap.has(p.source_doc)) plannedFilesMap.set(p.source_doc, []);
+      plannedFilesMap.get(p.source_doc)!.push(p);
+    }
+
+    return sidecarRows.map((row) => {
+      const filePath = row.file_path;
+      const deps = depsMap.get(filePath) || [];
+      const tags = tagsMap.get(filePath) || [];
+      const exportsList = exportsMap.get(filePath) || [];
+      const decisions = decisionsMap.get(filePath) || [];
+      const userNotes = userNotesMap.get(filePath) || [];
+      const tasks = tasksMap.get(filePath) || [];
+      const plannedFiles = plannedFilesMap.get(filePath) || [];
+
+      const frontmatter: OkfFrontmatter = {
+        title: row.title,
+        type: row.type,
+        description: row.description,
+        module_depth: row.module_depth,
+        context_object: row.context_object,
+        template_source: row.template_source,
+        template_version: row.template_version,
+        status: row.status,
+        version: row.version,
+        phase: row.phase,
+        initiative: row.initiative,
+        target_code_file: row.target_code_file,
+        status_flag: row.status_flag,
+        stale_details: row.stale_details,
+        sync_state:
+          row.last_sync_timestamp || row.sidecar_hash || row.code_hash
+            ? {
+                last_sync_timestamp: row.last_sync_timestamp,
+                sidecar_hash: row.sidecar_hash,
+                code_hash: row.code_hash,
+              }
+            : undefined,
+        depends_on: deps.filter((d) => d.type === 'depends_on').map((d) => d.target_file_path),
+        used_by: deps.filter((d) => d.type === 'used_by').map((d) => d.target_file_path),
+        tags,
+        exports: exportsList,
+        decisions,
+        user_notes: userNotes,
+        tasks: tasks.map((t) => ({
+          text: t.text,
+          completed: t.completed === 1,
+          line: t.line_number || undefined,
+        })),
+        planned_files: plannedFiles.map((p) => ({
+          path: p.path,
+          type: p.type as any,
+          description: p.description || undefined,
+        })),
+      };
+
+      return {
+        filePath: row.file_path,
+        frontmatter,
+        body: row.raw_content,
+        title: row.title,
+        type: row.type,
+        description: row.description,
+        moduleDepth: row.module_depth,
+        contextObject: row.context_object,
+        templateSource: row.template_source,
+        templateVersion: row.template_version,
+        status: row.status,
+        version: row.version,
+        phase: row.phase,
+        initiative: row.initiative,
+        targetCodeFile: row.target_code_file,
+        statusFlag: row.status_flag,
+        staleDetails: row.stale_details,
+        lastSyncTimestamp: row.last_sync_timestamp,
+        sidecarHash: row.sidecar_hash,
+        codeHash: row.code_hash,
+        rawContent: row.raw_content,
+        updatedAt: row.updated_at,
+        dependsOn: frontmatter.depends_on,
+        usedBy: frontmatter.used_by,
+        tags: frontmatter.tags,
+        exports: frontmatter.exports,
+        decisions: frontmatter.decisions,
+        userNotes: frontmatter.user_notes,
+        tasks: tasks.map((t) => ({
+          id: t.id,
+          sidecarPath: t.sidecar_path,
+          text: t.text,
+          completed: t.completed === 1,
+          lineNumber: t.line_number,
+          initiative: t.initiative,
+        })),
+        plannedFiles,
+      };
+    });
   }
 
   /**

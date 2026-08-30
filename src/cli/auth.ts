@@ -15,12 +15,17 @@ async function askTokenMasked(promptMessage: string): Promise<string> {
     // Non-TTY / Piped input: read from stdin directly
     return new Promise((resolve) => {
       let data = '';
-      process.stdin.on('data', (chunk) => {
+      const onData = (chunk: any) => {
         data += chunk;
-      });
-      process.stdin.on('end', () => {
+      };
+      const onEnd = () => {
+        process.stdin.removeListener('data', onData);
+        process.stdin.removeListener('end', onEnd);
+        process.stdin.pause();
         resolve(data.trim());
-      });
+      };
+      process.stdin.on('data', onData);
+      process.stdin.on('end', onEnd);
     });
   }
 

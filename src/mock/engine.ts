@@ -48,7 +48,7 @@ function classifyExportedSymbols(
 ): Map<string, 'class' | 'function' | 'interface' | 'type' | 'variable'> {
   const map = new Map<string, 'class' | 'function' | 'interface' | 'type' | 'variable'>();
   try {
-    const sf = ts.createSourceFile(fileName, sourceCode, ts.ScriptTarget.Latest, true);
+    const sf = ts.createSourceFile(fileName, sourceCode, ts.ScriptTarget.Latest, false);
     for (const stmt of sf.statements) {
       if (ts.isClassDeclaration(stmt) && stmt.name) {
         map.set(stmt.name.text, 'class');

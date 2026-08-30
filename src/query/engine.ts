@@ -1,5 +1,4 @@
 import { GraphEngine } from '../graph/engine';
-import { TopologyEngine } from '../graph/topology';
 import { FileStorageDriver, NodeFileSystem } from '../storage';
 import { loadConfig } from '../config/schema';
 
@@ -63,9 +62,7 @@ export class QueryEngine {
     const charBudget = tokenBudget * 4; // ~4 chars per token
 
     // Load topology engine from DB
-    const allNodes = await this.graphEngine.getGraphNodes();
-    const allEdges = await this.graphEngine.getGraphEdges();
-    const topology = new TopologyEngine(allNodes, allEdges);
+    const topology = await this.graphEngine.getTopologyEngine();
 
     // 1. Identify seed nodes
     const seedSet = new Set<string>();
@@ -93,14 +90,14 @@ export class QueryEngine {
     try {
       const ftsResults = await this.graphEngine.search(queryText, { limit: 5 });
       for (const res of ftsResults) {
-        const matchingNode = allNodes.find(
-          (n) => n.file_path === res.filePath || n.id === res.filePath,
-        );
-        if (matchingNode) {
-          seedSet.add(matchingNode.id);
-        } else {
-          seedSet.add(res.filePath);
-        }
+        const matchingNode =
+          topology.getNode(res.filePath) || topology.resolveNodeIds(res.filePath)[0];
+        const resolvedId = matchingNode
+          ? typeof matchingNode === 'string'
+            ? matchingNode
+            : matchingNode.id
+          : res.filePath;
+        seedSet.add(resolvedId);
       }
     } catch {
       // FTS fallback
@@ -126,8 +123,8 @@ export class QueryEngine {
         const { id, depth } = queue.shift()!;
         if (depth >= maxDepth) continue;
 
-        const outgoing = allEdges.filter((e) => e.source_id === id);
-        const incoming = allEdges.filter((e) => e.target_id === id);
+        const outgoing = topology.getOutgoingEdges(id);
+        const incoming = topology.getIncomingEdges(id);
 
         for (const edge of [...outgoing, ...incoming]) {
           const neighborId = edge.source_id === id ? edge.target_id : edge.source_id;
@@ -151,7 +148,7 @@ export class QueryEngine {
         const { id, depth } = stack.pop()!;
         if (depth >= maxDepth) continue;
 
-        const outgoing = allEdges.filter((e) => e.source_id === id);
+        const outgoing = topology.getOutgoingEdges(id);
         for (const edge of outgoing) {
           collectedEdges.push({
             sourceId: edge.source_id,
@@ -182,7 +179,7 @@ export class QueryEngine {
     // Retrieve node metadata & sidecar descriptions
     const resultNodes: QuerySubGraphNode[] = [];
     for (const nId of visitedNodes) {
-      const gNode = allNodes.find((n) => n.id === nId);
+      const gNode = topology.getNode(nId);
       const filePath = gNode?.file_path || (nId.includes('#') ? nId.split('#')[0] : nId);
       const symName = gNode?.symbol_name || (nId.includes('#') ? nId.split('#')[1] : null);
 

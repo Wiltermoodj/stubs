@@ -1,5 +1,4 @@
 import * as path from 'path';
-import { existsSync } from 'fs';
 import { GraphEngine, normalizePosixPath, PlannedFileRow } from '../graph/engine';
 import { FileStorageDriver, NodeFileSystem } from '../storage';
 import { extractFileTreeBlocks, parseFileTreeEntries } from '../parser/okf';
@@ -88,7 +87,27 @@ export class TreeEngine {
           // Ignore graph centrality load errors
         }
       }
-      await this.annotateMetadata(rootNode, centralities);
+
+      let indexedFiles: string[] = [];
+      const sidecarLookup = new Map<string, any>();
+      try {
+        const allSidecars = await this.graphEngine.getAllSidecars();
+        indexedFiles = allSidecars.map((s) => s.filePath);
+        for (const sidecar of allSidecars) {
+          sidecarLookup.set(sidecar.filePath, sidecar);
+          if (sidecar.targetCodeFile || sidecar.target_code_file) {
+            sidecarLookup.set(
+              normalizePosixPath(sidecar.targetCodeFile || sidecar.target_code_file),
+              sidecar,
+            );
+          }
+          sidecarLookup.set(sidecar.filePath.replace(/\.md$/, ''), sidecar);
+        }
+      } catch {
+        // Ignore pre-fetch error
+      }
+
+      await this.annotateMetadata(rootNode, centralities, sidecarLookup, indexedFiles);
     }
 
     // 4. Render to string
@@ -108,75 +127,71 @@ export class TreeEngine {
   ): Promise<void> {
     if (currentDepth >= maxDepth) return;
 
-    let entries: string[];
     try {
-      entries = await this.fsDriver.readDir(currentDir);
+      const entries = await this.fsDriver.readDir(currentDir);
+      entries.sort((a, b) => a.localeCompare(b));
+
+      for (const entry of entries) {
+        if (ignorePatterns.includes(entry)) continue;
+
+        const fullPath = currentDir === '.' ? entry : `${currentDir}/${entry}`;
+        const normalized = normalizePosixPath(fullPath);
+
+        let isDir = false;
+        try {
+          const sub = await this.fsDriver.readDir(normalized);
+          if (sub) isDir = true;
+        } catch {
+          isDir = false;
+        }
+
+        const node: TreeNode = {
+          name: entry,
+          fullPath: normalized,
+          isDir,
+          existsOnDisk: true,
+          children: new Map(),
+        };
+
+        parentNode.children.set(entry, node);
+
+        if (isDir) {
+          await this.scanDisk(normalized, node, currentDepth + 1, maxDepth, ignorePatterns);
+        }
+      }
     } catch {
-      return;
-    }
-
-    entries.sort((a, b) => a.localeCompare(b));
-
-    for (const entry of entries) {
-      if (ignorePatterns.includes(entry)) continue;
-
-      const fullPath = currentDir === '.' ? entry : `${currentDir}/${entry}`;
-      const normalized = normalizePosixPath(fullPath);
-
-      let isDir = false;
-      try {
-        const sub = await this.fsDriver.readDir(normalized);
-        if (sub) isDir = true;
-      } catch {
-        isDir = false;
-      }
-
-      const node: TreeNode = {
-        name: entry,
-        fullPath: normalized,
-        isDir,
-        existsOnDisk: true,
-        children: new Map(),
-      };
-
-      parentNode.children.set(entry, node);
-
-      if (isDir) {
-        await this.scanDisk(normalized, node, currentDepth + 1, maxDepth, ignorePatterns);
-      }
+      // Ignore directory scan error
     }
   }
 
   private async integratePlannedFiles(rootDir: string, rootNode: TreeNode): Promise<void> {
     let planned: PlannedFileRow[] = [];
-
     if (this.graphEngine) {
       try {
         planned = await this.graphEngine.getPlannedFiles();
       } catch {
-        // Fallback to empty if db query fails
+        // Fallback to scanning concept docs directly
       }
     }
 
+    // If no planned files found in database, scan concept docs directly
     if (planned.length === 0) {
-      const specsDir = path.resolve('specs');
-      const srcDir = path.resolve('src');
-      const searchDirs = [specsDir, srcDir].filter((d) => existsSync(d));
-
-      for (const d of searchDirs) {
+      const conceptDir = 'knowledge/planning';
+      const exists = await this.fsDriver.exists(conceptDir);
+      if (exists) {
         try {
-          const files = await this.fsDriver.readDir(d);
-          for (const f of files) {
-            if (f.endsWith('.md')) {
-              const fullP = path.join(d, f);
+          const files = await this.fsDriver.readDir(conceptDir);
+          for (const file of files) {
+            if (file.endsWith('.md')) {
+              const f = `${conceptDir}/${file}`;
               try {
-                const content = await this.fsDriver.readFile(fullP);
-                const treeBlocks = extractFileTreeBlocks(content);
-                for (const b of treeBlocks) {
-                  const entries = parseFileTreeEntries(b);
+                const content = await this.fsDriver.readFile(f);
+                const trees = extractFileTreeBlocks(content);
+                for (const t of trees) {
+                  const entries = parseFileTreeEntries(t);
                   for (const entry of entries) {
                     planned.push({
-                      id: `${f}#${entry.path}`,
+                      id: `manual-${entry.path}`,
                       source_doc: f,
                       path: entry.path,
                       type: entry.type,
@@ -186,12 +201,12 @@ export class TreeEngine {
                   }
                 }
               } catch {
-                // Ignore read errors
+                // Ignore file read error
               }
             }
           }
         } catch {
-          // Ignore dir read error
+          // Ignore directory read error
         }
       }
     }
@@ -236,15 +251,19 @@ export class TreeEngine {
     }
   }
 
-  private async annotateMetadata(node: TreeNode, centralities?: Map<string, any>): Promise<void> {
+  private async annotateMetadata(
+    node: TreeNode,
+    centralities?: Map<string, any>,
+    sidecarLookup?: Map<string, any>,
+    indexedFiles?: string[],
+  ): Promise<void> {
     if (!this.graphEngine) return;
 
     if (!node.isDir) {
       try {
-        let sidecar = await this.graphEngine.getSidecar(node.fullPath);
-        if (!sidecar) {
-          const files = await this.graphEngine.getFilesIndexed();
-          const match = files.find(
+        let sidecar = sidecarLookup?.get(node.fullPath);
+        if (!sidecar && indexedFiles) {
+          const match = indexedFiles.find(
             (f) =>
               f === node.fullPath ||
               f.endsWith('/' + node.fullPath) ||
@@ -252,7 +271,7 @@ export class TreeEngine {
               path.basename(f) === path.basename(node.fullPath),
           );
           if (match) {
-            sidecar = await this.graphEngine.getSidecar(match);
+            sidecar = sidecarLookup?.get(match);
           }
         }
         if (sidecar) {
@@ -279,7 +298,7 @@ export class TreeEngine {
     }
 
     for (const child of node.children.values()) {
-      await this.annotateMetadata(child, centralities);
+      await this.annotateMetadata(child, centralities, sidecarLookup, indexedFiles);
     }
   }
 

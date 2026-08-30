@@ -1,7 +1,5 @@
-import * as path from 'path';
 import { GraphEngine, normalizePosixPath } from '../graph/engine';
-import { TopologyEngine, SmellCycle, SmellDomainLeak } from '../graph/topology';
-import { parseOkfSpec, ParsedOkfSpec } from '../parser/okf';
+import { TopologyEngine } from '../graph/topology';
 import { FileStorageDriver, NodeFileSystem } from '../storage';
 import { loadConfig } from '../config/schema';
 
@@ -134,6 +132,33 @@ export class ArchLintEngine {
 
     const allEdges = await this.graphEngine.getGraphEdges();
 
+    // Pre-index nodes & edges for O(1) linter lookups
+    const nodeMap = new Map<string, (typeof existingNodes)[0]>();
+    for (const node of existingNodes) {
+      nodeMap.set(node.id, node);
+      if (!nodeMap.has(node.file_path)) {
+        nodeMap.set(node.file_path, node);
+      }
+    }
+
+    const codeEdgesBySource = new Map<string, typeof allEdges>();
+    for (const edge of allEdges) {
+      if (edge.relation === 'imports' || edge.relation === 'calls') {
+        const srcPrefix = edge.source_id.split('#')[0];
+        if (!codeEdgesBySource.has(srcPrefix)) codeEdgesBySource.set(srcPrefix, []);
+        codeEdgesBySource.get(srcPrefix)!.push(edge);
+      }
+    }
+
+    // Lazily load topology engine once if needed by rules
+    let topologyEngine: TopologyEngine | null = null;
+    const getTopology = async (): Promise<TopologyEngine> => {
+      if (!topologyEngine) {
+        topologyEngine = new TopologyEngine(existingNodes, allEdges);
+      }
+      return topologyEngine;
+    };
+
     // 1. Check Layer Invariants
     if (enabledRules.includes('LAYER_VIOLATION')) {
       for (const edge of allEdges) {
@@ -141,8 +166,8 @@ export class ArchLintEngine {
           continue;
         }
 
-        const srcNode = existingNodes.find((n) => n.id === edge.source_id);
-        const tgtNode = existingNodes.find((n) => n.id === edge.target_id);
+        const srcNode = nodeMap.get(edge.source_id);
+        const tgtNode = nodeMap.get(edge.target_id);
 
         if (!srcNode || !tgtNode) continue;
 
@@ -168,7 +193,7 @@ export class ArchLintEngine {
 
     // 2. Check Circular Dependencies
     if (enabledRules.includes('CIRCULAR_DEPENDENCY')) {
-      const topology = await this.graphEngine.getTopologyEngine();
+      const topology = await getTopology();
       const smells = topology.detectSmells();
 
       for (const cycle of smells.cycles) {
@@ -194,16 +219,11 @@ export class ArchLintEngine {
 
         const codePath = filePath.replace(/\.md$/, '');
         if (await this.fsDriver.exists(codePath)) {
-          const codeEdges = allEdges.filter(
-            (e) =>
-              e.source_id.includes(codePath) &&
-              (e.relation === 'imports' || e.relation === 'calls'),
-          );
-
+          const codeEdges = codeEdgesBySource.get(codePath) || [];
           const declaredDeps = (sidecar.depends_on || []).map((d: string) => normalizePosixPath(d));
 
           for (const edge of codeEdges) {
-            const tgtNode = existingNodes.find((n) => n.id === edge.target_id);
+            const tgtNode = nodeMap.get(edge.target_id);
             if (!tgtNode) continue;
 
             const targetFilePath = normalizePosixPath(tgtNode.file_path);
@@ -241,7 +261,7 @@ export class ArchLintEngine {
 
     // 4. Check Domain Leaks
     if (enabledRules.includes('DOMAIN_LEAK')) {
-      const topology = await this.graphEngine.getTopologyEngine();
+      const topology = await getTopology();
       const smells = topology.detectSmells();
 
       for (const leak of smells.domainLeaks) {

@@ -88,17 +88,19 @@ if (libFiles.length === 0) {
 }
 
 for (const dir of targetDirs) {
+  // Clean up legacy duplicate directory if present
   const tsLibDest = path.join(dir, 'typescript-lib');
-  fs.mkdirSync(tsLibDest, { recursive: true });
+  if (fs.existsSync(tsLibDest)) {
+    fs.rmSync(tsLibDest, { recursive: true, force: true });
+  }
 
   for (const name of libFiles) {
     const srcPath = path.join(tsLibSrc, name);
     fs.copyFileSync(srcPath, path.join(dir, name));
-    fs.copyFileSync(srcPath, path.join(tsLibDest, name));
   }
 
   // lib.d.ts is the existence discriminator used by resolveDefaultLibLocation().
-  if (!fs.existsSync(path.join(tsLibDest, 'lib.d.ts'))) {
+  if (!fs.existsSync(path.join(dir, 'lib.d.ts'))) {
     console.error(`lib.d.ts missing after copy in ${dir}`);
     process.exit(1);
   }

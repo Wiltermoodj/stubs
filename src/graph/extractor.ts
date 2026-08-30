@@ -248,7 +248,7 @@ function extractTypeScriptGraph(
       filePath,
       code,
       ts.ScriptTarget.Latest,
-      true, // setParentNodes
+      false, // setParentNodes = false reduces memory allocations
     );
 
     const importedSymbolsMap: Map<string, string> = new Map(); // localSymbol -> modulePath
@@ -290,7 +290,7 @@ function extractTypeScriptGraph(
       if (ts.isClassDeclaration(node) && node.name) {
         const className = node.name.text;
         const classNodeId = `${filePath}#${className}`;
-        const start = sourceFile.getLineAndCharacterOfPosition(node.getStart());
+        const start = sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile));
         const end = sourceFile.getLineAndCharacterOfPosition(node.getEnd());
 
         nodes.push({
@@ -335,7 +335,7 @@ function extractTypeScriptGraph(
       if (ts.isFunctionDeclaration(node) && node.name) {
         const funcName = node.name.text;
         const funcNodeId = `${filePath}#${funcName}`;
-        const start = sourceFile.getLineAndCharacterOfPosition(node.getStart());
+        const start = sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile));
         const end = sourceFile.getLineAndCharacterOfPosition(node.getEnd());
 
         nodes.push({
@@ -362,7 +362,7 @@ function extractTypeScriptGraph(
       if (ts.isInterfaceDeclaration(node) && node.name) {
         const interfaceName = node.name.text;
         const interfaceNodeId = `${filePath}#${interfaceName}`;
-        const start = sourceFile.getLineAndCharacterOfPosition(node.getStart());
+        const start = sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile));
         const end = sourceFile.getLineAndCharacterOfPosition(node.getEnd());
 
         nodes.push({
@@ -389,7 +389,7 @@ function extractTypeScriptGraph(
       if (ts.isTypeAliasDeclaration(node) && node.name) {
         const typeName = node.name.text;
         const typeNodeId = `${filePath}#${typeName}`;
-        const start = sourceFile.getLineAndCharacterOfPosition(node.getStart());
+        const start = sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile));
         const end = sourceFile.getLineAndCharacterOfPosition(node.getEnd());
 
         nodes.push({

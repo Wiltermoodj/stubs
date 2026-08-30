@@ -15,6 +15,8 @@ try {
 export interface FileStorageDriver {
   readFile(path: string): Promise<string>;
   writeFile(path: string, content: string): Promise<void>;
+  readFileBuffer?(path: string): Promise<Uint8Array | Buffer>;
+  writeFileBuffer?(path: string, content: Uint8Array | Buffer): Promise<void>;
   exists(path: string): Promise<boolean>;
   readDir(path: string): Promise<string[]>;
   mkdir(path: string, options?: { recursive?: boolean }): Promise<void>;
@@ -38,6 +40,7 @@ export interface DatabaseDriver {
   get<T = any>(sql: string, params?: any[]): Promise<T | undefined>;
   all<T = any>(sql: string, params?: any[]): Promise<T[]>;
   prepare(sql: string): Promise<PreparedStatement>;
+  transaction?<T>(fn: () => Promise<T>): Promise<T>;
   close(): Promise<void>;
 }
 
@@ -52,6 +55,16 @@ export class NodeFileSystem implements FileSystemDriver {
     const dir = path.dirname(filePath);
     await fs.mkdir(dir, { recursive: true });
     await fs.writeFile(filePath, content, 'utf8');
+  }
+
+  public async readFileBuffer(filePath: string): Promise<Buffer> {
+    return await fs.readFile(filePath);
+  }
+
+  public async writeFileBuffer(filePath: string, content: Uint8Array | Buffer): Promise<void> {
+    const dir = path.dirname(filePath);
+    await fs.mkdir(dir, { recursive: true });
+    await fs.writeFile(filePath, content);
   }
 
   public async exists(filePath: string): Promise<boolean> {
@@ -250,6 +263,18 @@ export class BetterSqliteDriver implements DatabaseDriver {
     };
   }
 
+  public async transaction<T>(fn: () => Promise<T>): Promise<T> {
+    await this.exec('BEGIN TRANSACTION;');
+    try {
+      const res = await fn();
+      await this.exec('COMMIT;');
+      return res;
+    } catch (err) {
+      await this.exec('ROLLBACK;');
+      throw err;
+    }
+  }
+
   public async close(): Promise<void> {
     if (!this.db) return;
     return new Promise((resolve, reject) => {
@@ -268,6 +293,7 @@ export class BetterSqliteDriver implements DatabaseDriver {
 
 export class VirtualFileSystem implements FileSystemDriver {
   private files = new Map<string, string>();
+  private bufferFiles = new Map<string, Uint8Array>();
 
   constructor(initialFiles?: Record<string, string>) {
     if (initialFiles) {
@@ -284,24 +310,54 @@ export class VirtualFileSystem implements FileSystemDriver {
   public async readFile(filePath: string): Promise<string> {
     const norm = this.normalizePath(filePath);
     const content = this.files.get(norm);
-    if (content === undefined) {
-      throw new Error(`File not found: ${filePath}`);
+    if (content !== undefined) {
+      return content;
     }
-    return content;
+    const buf = this.bufferFiles.get(norm);
+    if (buf !== undefined) {
+      return Buffer.from(buf).toString('utf8');
+    }
+    throw new Error(`File not found: ${filePath}`);
   }
 
   public async writeFile(filePath: string, content: string): Promise<void> {
     const norm = this.normalizePath(filePath);
     this.files.set(norm, content);
+    this.bufferFiles.delete(norm);
+  }
+
+  public async readFileBuffer(filePath: string): Promise<Uint8Array> {
+    const norm = this.normalizePath(filePath);
+    const buf = this.bufferFiles.get(norm);
+    if (buf !== undefined) {
+      return buf;
+    }
+    const content = this.files.get(norm);
+    if (content !== undefined) {
+      return Buffer.from(content, 'utf8');
+    }
+    throw new Error(`File not found: ${filePath}`);
+  }
+
+  public async writeFileBuffer(filePath: string, content: Uint8Array | Buffer): Promise<void> {
+    const norm = this.normalizePath(filePath);
+    const copy = new Uint8Array(content.buffer, content.byteOffset, content.byteLength);
+    this.bufferFiles.set(norm, copy);
+    this.files.delete(norm);
   }
 
   public async exists(filePath: string): Promise<boolean> {
     const norm = this.normalizePath(filePath);
-    if (this.files.has(norm)) {
+    if (this.files.has(norm) || this.bufferFiles.has(norm)) {
       return true;
     }
     const dirPrefix = norm.endsWith('/') ? norm : `${norm}/`;
     for (const key of this.files.keys()) {
+      if (key.startsWith(dirPrefix)) {
+        return true;
+      }
+    }
+    for (const key of this.bufferFiles.keys()) {
       if (key.startsWith(dirPrefix)) {
         return true;
       }
@@ -405,11 +461,16 @@ export class WasmSqliteDriver implements DatabaseDriver {
     if (!data && this.dbPath && this.fsDriver) {
       try {
         if (await this.fsDriver.exists(this.dbPath)) {
-          const content = await this.fsDriver.readFile(this.dbPath);
-          if (content) {
-            data = new Uint8Array(content.length);
-            for (let i = 0; i < content.length; i++) {
-              data[i] = content.charCodeAt(i);
+          if (typeof this.fsDriver.readFileBuffer === 'function') {
+            const buf = await this.fsDriver.readFileBuffer(this.dbPath);
+            data = new Uint8Array(buf.buffer, buf.byteOffset, buf.byteLength);
+          } else {
+            const content = await this.fsDriver.readFile(this.dbPath);
+            if (content) {
+              data = new Uint8Array(content.length);
+              for (let i = 0; i < content.length; i++) {
+                data[i] = content.charCodeAt(i) & 0xff;
+              }
             }
           }
         }
@@ -575,18 +636,34 @@ export class WasmSqliteDriver implements DatabaseDriver {
     };
   }
 
+  public async transaction<T>(fn: () => Promise<T>): Promise<T> {
+    await this.exec('BEGIN TRANSACTION;');
+    try {
+      const res = await fn();
+      await this.exec('COMMIT;');
+      return res;
+    } catch (err) {
+      await this.exec('ROLLBACK;');
+      throw err;
+    }
+  }
+
   public async close(): Promise<void> {
     if (!this.db) return;
 
     if (this.dbPath && this.fsDriver) {
       try {
         const data = this.db.export();
-        let content = '';
-        const batchSize = 8192;
-        for (let i = 0; i < data.length; i += batchSize) {
-          content += String.fromCharCode.apply(null, data.subarray(i, i + batchSize) as any);
+        if (typeof this.fsDriver.writeFileBuffer === 'function') {
+          await this.fsDriver.writeFileBuffer(this.dbPath, data);
+        } else {
+          let content = '';
+          const batchSize = 8192;
+          for (let i = 0; i < data.length; i += batchSize) {
+            content += String.fromCharCode.apply(null, data.subarray(i, i + batchSize) as any);
+          }
+          await this.fsDriver.writeFile(this.dbPath, content);
         }
-        await this.fsDriver.writeFile(this.dbPath, content);
       } catch {
         // Ignore persist errors
       }
