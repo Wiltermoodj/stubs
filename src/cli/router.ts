@@ -741,7 +741,14 @@ Options:
     const targetDir = nonFlagArgs.length > 0 ? nonFlagArgs[0] : undefined;
 
     const config = loadConfig(ctx.configPath);
-    const scanDir = targetDir || config.paths?.specs_dir || 'src';
+    let scanDir = targetDir;
+    if (!scanDir) {
+      if (existsSync(config.paths?.specs_dir || 'src')) {
+        scanDir = config.paths?.specs_dir || 'src';
+      } else {
+        scanDir = '.';
+      }
+    }
 
     const graphEngine = new GraphEngine(config.paths.db_path);
     await graphEngine.initialize();

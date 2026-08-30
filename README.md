@@ -28,7 +28,9 @@ Install `stubs` into your project workspace or global environment:
 ```bash
 # Add as a dev dependency (recommended)
 npm install -D github:Wiltermoodj/stubs
+```
 
+```bash
 # Or initialize directly without local installation
 npx github:Wiltermoodj/stubs install
 ```

@@ -559,16 +559,35 @@ function extractRustGraph(
     const line = lines[i];
     const lineNum = i + 1;
 
-    // use crate::foo::bar;
-    const useMatch = line.match(/^\s*use\s+([^;]+);/);
+    // use crate::foo::bar; or use foo::{bar, baz};
+    const useMatch = line.match(/^\s*(?:pub\s+)?use\s+([^;]+);/);
     if (useMatch) {
-      const modulePath = useMatch[1].replace(/::/g, '/').trim();
-      edges.push({
-        source_id: fileNodeId,
-        target_id: modulePath,
-        relation: 'imports',
-        weight: 1.0,
-      });
+      const rawUse = useMatch[1].trim();
+      if (rawUse.includes('{')) {
+        const groupMatch = rawUse.match(/^(.+?)::\{([^}]+)\}/);
+        if (groupMatch) {
+          const prefix = groupMatch[1].replace(/::/g, '/').trim();
+          const items = groupMatch[2].split(',').map((s) => s.trim()).filter(Boolean);
+          for (const item of items) {
+            const cleanItem = item.split(/\s+as\s+/)[0].trim();
+            const target = `${prefix}/${cleanItem}`;
+            edges.push({
+              source_id: fileNodeId,
+              target_id: target,
+              relation: 'imports',
+              weight: 1.0,
+            });
+          }
+        }
+      } else {
+        const modulePath = rawUse.replace(/::/g, '/').trim();
+        edges.push({
+          source_id: fileNodeId,
+          target_id: modulePath,
+          relation: 'imports',
+          weight: 1.0,
+        });
+      }
       continue;
     }
 
@@ -633,13 +652,36 @@ function extractGoGraph(
   edges: GraphEdge[],
 ): void {
   const lines = code.split('\n');
+  let inMultiImport = false;
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     const lineNum = i + 1;
 
-    // import "foo/bar"
-    const importMatch = line.match(/^\s*import\s+"([^"]+)"/);
+    // Multi-line import block import ( ... )
+    if (line.match(/^\s*import\s*\(/)) {
+      inMultiImport = true;
+      continue;
+    }
+    if (inMultiImport) {
+      if (line.match(/^\s*\)/)) {
+        inMultiImport = false;
+        continue;
+      }
+      const singleMatch = line.match(/["']([^"']+)["']/);
+      if (singleMatch) {
+        edges.push({
+          source_id: fileNodeId,
+          target_id: singleMatch[1],
+          relation: 'imports',
+          weight: 1.0,
+        });
+      }
+      continue;
+    }
+
+    // Single-line import "foo/bar"
+    const importMatch = line.match(/^\s*import\s+(?:[a-zA-Z0-9_]+\s+)?["']([^"']+)["']/);
     if (importMatch) {
       edges.push({
         source_id: fileNodeId,
