@@ -1,6 +1,6 @@
 {
   "name": "stubs",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "description": "stubs AI Agent Skill",
   "main": "dist/cli.cjs",
   "bin": {
@@ -13,6 +13,7 @@
     ".stubs/templates/",
     "src/",
     "scripts/",
+    "public/",
     "README.md",
     "AGENTS.md",
     "LICENSE"
