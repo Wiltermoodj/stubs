@@ -10,7 +10,9 @@ export interface OkfFrontmatter {
     | 'architecture-decision'
     | 'architecture-doc'
     | 'planning-map'
-    | 'initiative-plan';
+    | 'initiative-plan'
+    | 'wiki-subsystem'
+    | 'wiki-portal';
   description: string;
   tags: string[];
   module_depth?: 'deep' | 'shallow';
@@ -303,6 +305,8 @@ function validateFrontmatter(raw: any, result: ParsedOkfSpec): void {
     'architecture-doc',
     'planning-map',
     'initiative-plan',
+    'wiki-subsystem',
+    'wiki-portal',
   ];
   if (raw.type !== undefined && !validTypes.includes(raw.type)) {
     result.errors.push(`Field "type" must be one of: ${validTypes.join(', ')}.`);

@@ -16,6 +16,11 @@ export interface StubsConfig {
   grill: {
     default_depth: 'light_probe' | 'standard_drill' | 'deep_interrogation';
   };
+  architecture_rules?: Array<{
+    source_domain: string;
+    forbidden_target_domain: string;
+    reason?: string;
+  }>;
   github_token?: string;
   remote?: {
     provider: 'github' | string;
@@ -107,6 +112,23 @@ function sanitizeConfig(raw: any): StubsConfig {
 
   const github_token = typeof raw.github_token === 'string' ? raw.github_token : undefined;
 
+  let architecture_rules: StubsConfig['architecture_rules'] = undefined;
+  if (Array.isArray(raw.architecture_rules)) {
+    architecture_rules = raw.architecture_rules
+      .filter(
+        (r: any) =>
+          r &&
+          typeof r === 'object' &&
+          typeof r.source_domain === 'string' &&
+          typeof r.forbidden_target_domain === 'string',
+      )
+      .map((r: any) => ({
+        source_domain: r.source_domain,
+        forbidden_target_domain: r.forbidden_target_domain,
+        reason: typeof r.reason === 'string' ? r.reason : undefined,
+      }));
+  }
+
   let remote: StubsConfig['remote'] = undefined;
   if (raw.remote && typeof raw.remote === 'object') {
     remote = {
@@ -123,6 +145,7 @@ function sanitizeConfig(raw: any): StubsConfig {
     paths,
     search,
     grill,
+    architecture_rules,
     github_token,
     remote,
   };

@@ -1316,16 +1316,18 @@ Decisions: ${decisionsText}
    */
   public async indexCodeWorkspace(
     rootDir: string = '.',
-    _options: { force?: boolean } = {},
+    options: { force?: boolean } = {},
   ): Promise<{
     scanned: number;
     indexed: number;
+    skipped: number;
     errors: Array<{ filePath: string; error: string }>;
   }> {
     await this.ensureInitialized();
     const summary = {
       scanned: 0,
       indexed: 0,
+      skipped: 0,
       errors: [] as Array<{ filePath: string; error: string }>,
     };
 
@@ -1345,12 +1347,39 @@ Decisions: ${decisionsText}
     const matchedFiles = files.filter((f) => codeExts.includes(path.extname(f).toLowerCase()));
     summary.scanned = matchedFiles.length;
 
+    const cachedMetaRows = options.force
+      ? []
+      : await this.all<{ file_path: string; file_hash: string }>(
+          'SELECT file_path, file_hash FROM file_meta;',
+        );
+    const cachedMetaMap = new Map<string, string>();
+    for (const r of cachedMetaRows) {
+      cachedMetaMap.set(r.file_path, r.file_hash);
+    }
+
     for (const f of matchedFiles) {
+      const norm = normalizePosixPath(f);
       try {
-        await this.indexCodeFile(f);
+        const content = await this.fsDriver.readFile(norm);
+        const currentHash = this.calculateHash(content);
+        const cachedHash = cachedMetaMap.get(norm);
+
+        if (!options.force && cachedHash === currentHash) {
+          summary.skipped++;
+          continue;
+        }
+
+        await this.indexCodeFile(norm, content);
+        if (norm.endsWith('.md') && !norm.endsWith('.tpl') && content.trim().startsWith('---')) {
+          try {
+            await this.indexFile(norm);
+          } catch {
+            // Ignore markdown indexing error for malformed sidecars
+          }
+        }
         summary.indexed++;
       } catch (err: any) {
-        summary.errors.push({ filePath: f, error: err.message });
+        summary.errors.push({ filePath: norm, error: err.message });
       }
     }
 

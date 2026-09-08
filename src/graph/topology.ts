@@ -144,6 +144,81 @@ export interface ArchitectureQuestion {
   rationale: string;
 }
 
+export type BlastGuardLevel = 'low' | 'medium' | 'high' | 'critical';
+
+export interface BlastRadiusGuardResult {
+  safe: boolean;
+  target: string;
+  level: BlastGuardLevel;
+  impactCount: number;
+  maxDepth: number;
+  domainsAffected: string[];
+  isGodNode: boolean;
+  reason?: string;
+}
+
+export interface TieredAgentContext {
+  target: string;
+  node: GraphNode | null;
+  community: CommunityInfo | null;
+  l0_target: {
+    id: string;
+    filePath: string;
+    symbolName: string | null;
+    kind: string;
+    domain: string | null;
+    phase: string | null;
+  };
+  l1_dependencies: Array<{ id: string; relation: string; confidence: string }>;
+  l1_dependents: Array<{ id: string; relation: string; confidence: string }>;
+  l2_subsystem: {
+    communityId: number;
+    label: string;
+    hubNode: string;
+    cohesion: number;
+    memberCount: number;
+  } | null;
+  formattedSummary: string;
+}
+
+export interface TopologicalEditOrderResult {
+  orderedFiles: string[];
+  direction: 'dependencies_first' | 'dependents_first';
+  hasCycles: boolean;
+  cycleNodes: string[];
+  dependencyMap: Record<string, string[]>;
+}
+
+export interface ArchitectureLintViolation {
+  sourceId: string;
+  sourceDomain: string;
+  targetId: string;
+  targetDomain: string;
+  relation: string;
+  reason?: string;
+}
+
+export interface ArchitectureLintReport {
+  passed: boolean;
+  violations: ArchitectureLintViolation[];
+  totalViolations: number;
+}
+
+export interface CoChangePair {
+  fileA: string;
+  fileB: string;
+  coChangeCount: number;
+  confidence: number;
+  reason: string;
+}
+
+export interface GitCoChangeResult {
+  targetFile: string;
+  relatedFiles: CoChangePair[];
+  totalCommitsAnalyzed: number;
+}
+
+
 export class TopologyEngine {
   private nodes: Map<string, GraphNode> = new Map();
   private outgoingEdges: Map<string, GraphEdge[]> = new Map(); // source_id -> edges
@@ -1184,4 +1259,364 @@ export class TopologyEngine {
     this.cachedQuestions = questions;
     return questions;
   }
+
+  /**
+   * Pre-execution blast radius safety check. Evaluates downstream blast impact against threshold.
+   */
+  public checkBlastGuard(
+    targetQuery: string,
+    threshold: BlastGuardLevel = 'high',
+    maxDepth: number = 3,
+  ): BlastRadiusGuardResult {
+    const blast = this.getBlastRadius(targetQuery, { depth: maxDepth, direction: 'downstream' });
+    const centralities = this.getNodeCentralities();
+    const matched = this.resolveNodeIds(targetQuery);
+    const startId = matched.length > 0 ? matched[0] : targetQuery;
+    const centrality = centralities.get(startId);
+
+    const isGodNode = centrality ? centrality.isHub || centrality.totalDegree >= 15 : false;
+
+    // Threshold limits for totalAffected count
+    const thresholdLimits: Record<BlastGuardLevel, number> = {
+      low: 2,
+      medium: 5,
+      high: 10,
+      critical: 20,
+    };
+
+    const limit = thresholdLimits[threshold] ?? 10;
+    const exceedsLimit = blast.totalAffected > limit;
+    const isMultiDomainHub = blast.domainsAffected.length >= 3;
+
+    let safe = true;
+    let reason: string | undefined;
+
+    if (threshold === 'low' && blast.totalAffected > limit) {
+      safe = false;
+      reason = `Affected entity count (${blast.totalAffected}) exceeds low safety limit (${limit}).`;
+    } else if (threshold === 'medium' && (blast.totalAffected > limit || (isGodNode && blast.totalAffected > 3))) {
+      safe = false;
+      reason = `Impact (${blast.totalAffected} nodes) exceeds medium threshold (${limit})${isGodNode ? ' on a central God Node' : ''}.`;
+    } else if (threshold === 'high' && (blast.totalAffected > limit || (isGodNode && isMultiDomainHub))) {
+      safe = false;
+      reason = `High blast impact (${blast.totalAffected} nodes, ${blast.domainsAffected.length} domains) across critical architecture boundaries.`;
+    } else if (threshold === 'critical' && (exceedsLimit || (isGodNode && blast.totalAffected >= 10 && isMultiDomainHub))) {
+      safe = false;
+      reason = `CRITICAL BLAST IMPACT: Target is a core architectural hub affecting ${blast.totalAffected} entities across ${blast.domainsAffected.join(', ')}.`;
+    }
+
+    return {
+      safe,
+      target: startId,
+      level: threshold,
+      impactCount: blast.totalAffected,
+      maxDepth: blast.maxDepthReached,
+      domainsAffected: blast.domainsAffected,
+      isGodNode,
+      reason,
+    };
+  }
+
+  /**
+   * Generates a token-compact tiered context model for LLM and agent prompts:
+   * - L0: Target node & metadata
+   * - L1: Immediate incoming and outgoing relationships
+   * - L2: Subsystem community role and coordinator hub
+   */
+  public getTieredAgentContext(targetQuery: string): TieredAgentContext | null {
+    const matched = this.resolveNodeIds(targetQuery);
+    if (matched.length === 0) return null;
+    const nodeId = matched[0];
+    const node = this.nodes.get(nodeId) || null;
+
+    const incoming = this.incomingEdges.get(nodeId) || [];
+    const outgoing = this.outgoingEdges.get(nodeId) || [];
+
+    const communities = this.getCommunities();
+    let communityInfo: CommunityInfo | null = null;
+    for (const c of communities.communityInfo) {
+      if (c.nodes.includes(nodeId) || (node && c.nodes.includes(node.file_path))) {
+        communityInfo = c;
+        break;
+      }
+    }
+
+    const l0_target = {
+      id: nodeId,
+      filePath: node?.file_path || nodeId.split('#')[0],
+      symbolName: node?.symbol_name || (nodeId.includes('#') ? nodeId.split('#')[1] : null),
+      kind: node?.kind || 'symbol',
+      domain: node?.domain || null,
+      phase: node?.lifecycle_phase || null,
+    };
+
+    const l1_dependencies = outgoing.map((e) => ({
+      id: e.target_id,
+      relation: e.relation,
+      confidence: e.confidence || 'EXTRACTED',
+    }));
+
+    const l1_dependents = incoming.map((e) => ({
+      id: e.source_id,
+      relation: e.relation,
+      confidence: e.confidence || 'EXTRACTED',
+    }));
+
+    const l2_subsystem = communityInfo
+      ? {
+          communityId: communityInfo.id,
+          label: communityInfo.label,
+          hubNode: communityInfo.hubNode,
+          cohesion: communityInfo.cohesion,
+          memberCount: communityInfo.nodes.length,
+        }
+      : null;
+
+    const lines: string[] = [];
+    lines.push(`[L0 TARGET]: ${l0_target.id} (${l0_target.kind})`);
+    if (l0_target.domain) lines.push(`Domain: ${l0_target.domain} | Phase: ${l0_target.phase || 'N/A'}`);
+    
+    if (l1_dependencies.length > 0) {
+      lines.push(`[L1 DEPENDS ON (${l1_dependencies.length})]:`);
+      for (const d of l1_dependencies.slice(0, 15)) {
+        lines.push(`  - ──[${d.relation}]──> ${d.id} (${d.confidence})`);
+      }
+    }
+    
+    if (l1_dependents.length > 0) {
+      lines.push(`[L1 DEPENDENTS (${l1_dependents.length})]:`);
+      for (const d of l1_dependents.slice(0, 15)) {
+        lines.push(`  - <──[${d.relation}]── ${d.id} (${d.confidence})`);
+      }
+    }
+
+    if (l2_subsystem) {
+      lines.push(`[L2 SUBSYSTEM]: #${l2_subsystem.communityId} ${l2_subsystem.label}`);
+      lines.push(`Coordinator Hub: ${l2_subsystem.hubNode} | Cohesion: ${(l2_subsystem.cohesion * 100).toFixed(0)}%`);
+    }
+
+    return {
+      target: nodeId,
+      node,
+      community: communityInfo,
+      l0_target,
+      l1_dependencies,
+      l1_dependents,
+      l2_subsystem,
+      formattedSummary: lines.join('\n'),
+    };
+  }
+
+  /**
+   * Computes the topologically ordered sequence of files to edit.
+   * 'dependencies_first' ensures base/imported modules are updated before consumers.
+   * 'dependents_first' ensures consumers are updated before leaf dependencies.
+   */
+  public getTopologicalEditOrder(
+    filePaths: string[],
+    direction: 'dependencies_first' | 'dependents_first' = 'dependencies_first',
+  ): TopologicalEditOrderResult {
+    const inputSet = new Set<string>();
+    const resolvedMap = new Map<string, string>();
+
+    for (const p of filePaths) {
+      const matched = this.resolveNodeIds(p);
+      const canonical = matched.length > 0 ? this.nodes.get(matched[0])?.file_path || matched[0] : p;
+      inputSet.add(canonical);
+      resolvedMap.set(p, canonical);
+    }
+
+    // Build sub-graph dependency adjacency for the input files
+    const adj = new Map<string, Set<string>>();
+    const inDegree = new Map<string, number>();
+    const dependencyMap: Record<string, string[]> = {};
+
+    for (const f of inputSet) {
+      adj.set(f, new Set());
+      inDegree.set(f, 0);
+      dependencyMap[f] = [];
+    }
+
+    for (const f of inputSet) {
+      // Find all outgoing edges from nodes in file f
+      for (const [sourceId, edges] of this.outgoingEdges.entries()) {
+        const srcNode = this.nodes.get(sourceId);
+        const srcFile = srcNode?.file_path || sourceId.split('#')[0];
+        if (srcFile !== f) continue;
+
+        for (const edge of edges) {
+          const tgtNode = this.nodes.get(edge.target_id);
+          const tgtFile = tgtNode?.file_path || edge.target_id.split('#')[0];
+          if (tgtFile !== f && inputSet.has(tgtFile)) {
+            if (direction === 'dependencies_first') {
+              // tgtFile is a dependency of f. tgtFile must come BEFORE f.
+              // Edge in Kahn's algorithm: tgtFile -> f
+              if (!adj.get(tgtFile)!.has(f)) {
+                adj.get(tgtFile)!.add(f);
+                inDegree.set(f, (inDegree.get(f) || 0) + 1);
+                dependencyMap[f].push(tgtFile);
+              }
+            } else {
+              // dependents_first: f comes before tgtFile
+              if (!adj.get(f)!.has(tgtFile)) {
+                adj.get(f)!.add(tgtFile);
+                inDegree.set(tgtFile, (inDegree.get(tgtFile) || 0) + 1);
+                dependencyMap[f].push(tgtFile);
+              }
+            }
+          }
+        }
+      }
+    }
+
+    // Kahn's algorithm for topological sorting
+    const queue: string[] = [];
+    for (const [node, deg] of inDegree.entries()) {
+      if (deg === 0) {
+        queue.push(node);
+      }
+    }
+
+    const orderedFiles: string[] = [];
+    while (queue.length > 0) {
+      const u = queue.shift()!;
+      orderedFiles.push(u);
+
+      for (const v of adj.get(u) || []) {
+        inDegree.set(v, inDegree.get(v)! - 1);
+        if (inDegree.get(v) === 0) {
+          queue.push(v);
+        }
+      }
+    }
+
+    const hasCycles = orderedFiles.length < inputSet.size;
+    const cycleNodes: string[] = [];
+    if (hasCycles) {
+      for (const [node, deg] of inDegree.entries()) {
+        if (deg > 0) {
+          cycleNodes.push(node);
+          orderedFiles.push(node); // Append remaining cycle nodes to maintain list completeness
+        }
+      }
+    }
+
+    return {
+      orderedFiles,
+      direction,
+      hasCycles,
+      cycleNodes,
+      dependencyMap,
+    };
+  }
+
+  /**
+   * Lints current codebase against architecture boundary rules.
+   */
+  public lintArchitectureRules(
+    rules: Array<{
+      source_domain: string;
+      forbidden_target_domain: string;
+      reason?: string;
+    }> = [],
+  ): ArchitectureLintReport {
+    const violations: ArchitectureLintViolation[] = [];
+
+    if (rules.length === 0) {
+      return {
+        passed: true,
+        violations: [],
+        totalViolations: 0,
+      };
+    }
+
+    for (const [sourceId, edges] of this.outgoingEdges.entries()) {
+      const srcNode = this.nodes.get(sourceId);
+      if (!srcNode || !srcNode.domain) continue;
+
+      for (const edge of edges) {
+        const tgtNode = this.nodes.get(edge.target_id);
+        if (!tgtNode || !tgtNode.domain) continue;
+
+        for (const rule of rules) {
+          if (
+            (rule.source_domain === '*' || srcNode.domain === rule.source_domain) &&
+            (rule.forbidden_target_domain === '*' || tgtNode.domain === rule.forbidden_target_domain) &&
+            srcNode.domain !== tgtNode.domain
+          ) {
+            violations.push({
+              sourceId,
+              sourceDomain: srcNode.domain,
+              targetId: edge.target_id,
+              targetDomain: tgtNode.domain,
+              relation: edge.relation,
+              reason: rule.reason || `Forbidden boundary dependency from domain "${srcNode.domain}" to "${tgtNode.domain}"`,
+            });
+          }
+        }
+      }
+    }
+
+    return {
+      passed: violations.length === 0,
+      violations,
+      totalViolations: violations.length,
+    };
+  }
+
+  /**
+   * Analyzes git commit file-change sets to discover temporal / logical co-change coupling.
+   */
+  public analyzeCoChanges(
+    commitFileSets: string[][],
+    targetFile: string,
+    minCoChanges: number = 2,
+  ): GitCoChangeResult {
+    const canonicalTarget = this.resolveNodeIds(targetFile)[0] || targetFile;
+    const coChangeCounts = new Map<string, number>();
+    let targetCommitCount = 0;
+
+    for (const commitFiles of commitFileSets) {
+      const hasTarget = commitFiles.some((f) => {
+        const c = this.resolveNodeIds(f)[0] || f;
+        return c === canonicalTarget;
+      });
+
+      if (!hasTarget) continue;
+      targetCommitCount++;
+
+      for (const f of commitFiles) {
+        const otherCanonical = this.resolveNodeIds(f)[0] || f;
+        if (otherCanonical === canonicalTarget) continue;
+
+        coChangeCounts.set(
+          otherCanonical,
+          (coChangeCounts.get(otherCanonical) || 0) + 1,
+        );
+      }
+    }
+
+    const relatedFiles: CoChangePair[] = [];
+    for (const [otherFile, count] of coChangeCounts.entries()) {
+      if (count >= minCoChanges) {
+        const confidence = targetCommitCount > 0 ? count / targetCommitCount : 0;
+        relatedFiles.push({
+          fileA: canonicalTarget,
+          fileB: otherFile,
+          coChangeCount: count,
+          confidence: parseFloat(confidence.toFixed(2)),
+          reason: `Co-changed in ${count} of ${targetCommitCount} commits (${(confidence * 100).toFixed(0)}% correlation)`,
+        });
+      }
+    }
+
+    relatedFiles.sort((a, b) => b.coChangeCount - a.coChangeCount);
+
+    return {
+      targetFile: canonicalTarget,
+      relatedFiles,
+      totalCommitsAnalyzed: commitFileSets.length,
+    };
+  }
 }
+

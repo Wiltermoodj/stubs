@@ -65,6 +65,8 @@ shared/node_modules/
 /dist/
 /.stubs/*.sqlite
 /.stubs/graph.sqlite*
+/wiki/
+
 
 # kanban runtime state
 /.kanban/HEARTBEAT

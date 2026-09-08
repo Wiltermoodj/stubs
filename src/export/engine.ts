@@ -179,6 +179,24 @@ export class ExportEngine {
       const filePath = `${commDir}/${comm.id}-${commSlug || 'subsystem'}.md`;
 
       const lines: string[] = [];
+      lines.push('---');
+      lines.push(`title: "Subsystem: ${comm.label.replace(/"/g, '\\"')}"`);
+      lines.push('type: wiki-subsystem');
+      lines.push(`description: "Architecture subsystem documentation for ${comm.label.replace(/"/g, '\\"')}"`);
+      lines.push('status: active');
+      lines.push('version: 1');
+      lines.push('status_flag: clean');
+      lines.push(`community_id: ${comm.id}`);
+      if (comm.dominantDomain) lines.push(`domain: "${comm.dominantDomain}"`);
+      lines.push(`hub_node: "${comm.hubNode}"`);
+      lines.push(`cohesion: ${comm.cohesion}`);
+      lines.push(`members_count: ${comm.nodes.length}`);
+      lines.push('tags:');
+      lines.push('  - wiki');
+      lines.push('  - subsystem');
+      if (comm.dominantDomain) lines.push(`  - domain/${comm.dominantDomain}`);
+      lines.push('---');
+      lines.push('');
       lines.push(`# Subsystem: ${comm.label}`);
       lines.push(
         `**Community ID:** \`#${comm.id}\` | **Dominant Domain:** \`${comm.dominantDomain || 'General'}\``,
@@ -231,6 +249,18 @@ export class ExportEngine {
 
     // 2. Generate Main index.md Wiki Portal
     const indexLines: string[] = [];
+    indexLines.push('---');
+    indexLines.push('title: "Codebase Architecture Wiki"');
+    indexLines.push('type: wiki-portal');
+    indexLines.push('description: "Master architecture portal and subsystem directory"');
+    indexLines.push('status: active');
+    indexLines.push('version: 1');
+    indexLines.push('status_flag: clean');
+    indexLines.push('tags:');
+    indexLines.push('  - wiki');
+    indexLines.push('  - architecture');
+    indexLines.push('---');
+    indexLines.push('');
     indexLines.push('# 📖 Codebase Architecture Wiki');
     indexLines.push(`*Generated from AST Knowledge Graph on ${new Date().toLocaleDateString()}*`);
     indexLines.push('');

@@ -130,6 +130,17 @@ export class CliRouter {
         case 'scan':
         case 'index':
           return await this.handleScan(context);
+        case 'plan:order':
+        case 'order':
+          return await this.handleOrder(context);
+        case 'watch':
+          return await this.handleWatch(context);
+        case 'co-change':
+        case 'cochange':
+          return await this.handleCoChange(context);
+        case 'diff:arch':
+        case 'diff-arch':
+          return await this.handleDiffArch(context);
         default:
           console.error(`Error: Unknown command "${context.command}". Use --help for usage.`);
           return 1;
@@ -1749,7 +1760,7 @@ Options:
     const nonFlagArgs = ctx.args.filter((a) => !a.startsWith('-'));
     if (nonFlagArgs.length === 0) {
       console.error('Error: "blast" command requires a target file or symbol name.');
-      console.error('Usage: stubs blast <target> [--upstream|--downstream] [--depth <N>] [--json]');
+      console.error('Usage: stubs blast <target> [--upstream|--downstream] [--depth <N>] [--guard [level]] [--json]');
       return 1;
     }
 
@@ -1760,12 +1771,24 @@ Options:
     const direction = isBoth ? 'both' : isUpstream ? 'upstream' : 'downstream';
 
     let depth = 3;
+    let guardLevel: string | undefined;
+
     for (let i = 0; i < ctx.args.length; i++) {
       if (ctx.args[i] === '--depth' && ctx.args[i + 1]) {
         depth = parseInt(ctx.args[i + 1], 10) || 3;
         i++;
       } else if (ctx.args[i].startsWith('--depth=')) {
         depth = parseInt(ctx.args[i].split('=')[1], 10) || 3;
+      } else if (ctx.args[i] === '--guard') {
+        guardLevel = ctx.args[i + 1] && !ctx.args[i + 1].startsWith('-') ? ctx.args[i + 1] : 'high';
+        if (ctx.args[i + 1] && !ctx.args[i + 1].startsWith('-')) i++;
+      } else if (ctx.args[i].startsWith('--guard=')) {
+        guardLevel = ctx.args[i].split('=')[1] || 'high';
+      } else if (ctx.args[i] === '--threshold' && ctx.args[i + 1]) {
+        guardLevel = ctx.args[i + 1];
+        i++;
+      } else if (ctx.args[i].startsWith('--threshold=')) {
+        guardLevel = ctx.args[i].split('=')[1];
       }
     }
 
@@ -1779,6 +1802,28 @@ Options:
     }
 
     const topology = await graphEngine.getTopologyEngine();
+
+    if (guardLevel) {
+      const validLevel = ['low', 'medium', 'high', 'critical'].includes(guardLevel.toLowerCase())
+        ? (guardLevel.toLowerCase() as any)
+        : 'high';
+      const guardRes = topology.checkBlastGuard(target, validLevel, depth);
+      if (isJson) {
+        console.log(JSON.stringify(guardRes, null, 2));
+      } else {
+        if (guardRes.safe) {
+          console.log(`✓ Blast radius guard PASSED for "${target}" at [${validLevel}] threshold.`);
+          console.log(`  Impact: ${guardRes.impactCount} entities across ${guardRes.domainsAffected.length} domain(s).`);
+        } else {
+          console.error(`✖ Blast radius guard FAILED for "${target}" at [${validLevel}] threshold.`);
+          console.error(`  Reason: ${guardRes.reason}`);
+          console.error(`  Impact: ${guardRes.impactCount} entities across ${guardRes.domainsAffected.length} domain(s).`);
+          return 2;
+        }
+      }
+      return 0;
+    }
+
     const result = topology.getBlastRadius(target, { depth, direction });
 
     if (isJson) {
@@ -2494,5 +2539,202 @@ Options:
       console.error(`Error installing hook rules: ${err.message || err}`);
       return 1;
     }
+  }
+
+  private async handleOrder(ctx: CliContext): Promise<number> {
+    const isJson = ctx.args.includes('--json');
+    const isDependentsFirst = ctx.args.includes('--dependents-first');
+    const direction = isDependentsFirst ? 'dependents_first' : 'dependencies_first';
+
+    const files = ctx.args.filter((a) => !a.startsWith('-'));
+    if (files.length === 0) {
+      console.error('Error: At least one file path is required. Usage: stubs plan:order <file1> <file2> ... [--dependents-first] [--json]');
+      return 1;
+    }
+
+    const config = loadConfig(ctx.configPath);
+    const graphEngine = new GraphEngine(config.paths.db_path);
+    await graphEngine.initialize();
+
+    const topology = await graphEngine.getTopologyEngine();
+    const result = topology.getTopologicalEditOrder(files, direction);
+
+    if (isJson) {
+      console.log(JSON.stringify(result, null, 2));
+    } else {
+      console.log(`📋 Topological Edit Sequence (${result.direction === 'dependencies_first' ? 'Dependencies First' : 'Dependents First'}):`);
+      result.orderedFiles.forEach((file, idx) => {
+        const deps = result.dependencyMap[file] || [];
+        const depTag = deps.length > 0 ? ` (depends on: ${deps.join(', ')})` : '';
+        console.log(`  ${idx + 1}. ${file}${depTag}`);
+      });
+      if (result.hasCycles) {
+        console.warn(`⚠️ Warning: Circular dependencies detected among: ${result.cycleNodes.join(', ')}`);
+      }
+    }
+
+    return 0;
+  }
+
+  private async handleWatch(ctx: CliContext): Promise<number> {
+    let rootDir = 'src';
+    for (let i = 0; i < ctx.args.length; i++) {
+      if (ctx.args[i] === '--dir' && ctx.args[i + 1]) {
+        rootDir = ctx.args[i + 1];
+        i++;
+      } else if (ctx.args[i].startsWith('--dir=')) {
+        rootDir = ctx.args[i].split('=')[1];
+      }
+    }
+
+    const config = loadConfig(ctx.configPath);
+    const graphEngine = new GraphEngine(config.paths.db_path);
+    await graphEngine.initialize();
+
+    console.log(`👁️ Watching "${rootDir}" for changes (updating ${config.paths.db_path})...`);
+    console.log(`Press Ctrl+C to exit.\n`);
+
+    // Initial sync
+    const initialSync = await graphEngine.syncWorkspaceFiles(rootDir);
+    console.log(`✓ Initial sync complete (added: ${initialSync.added}, updated: ${initialSync.updated}, removed: ${initialSync.removed}).`);
+
+    let isSyncing = false;
+    const triggerSync = async () => {
+      if (isSyncing) return;
+      isSyncing = true;
+      try {
+        const syncRes = await graphEngine.syncWorkspaceFiles(rootDir);
+        if (syncRes.added > 0 || syncRes.updated > 0 || syncRes.removed > 0) {
+          const timestamp = new Date().toLocaleTimeString();
+          console.log(`[${timestamp}] ✓ Graph updated: +${syncRes.added} ~${syncRes.updated} -${syncRes.removed}`);
+        }
+      } catch (err: any) {
+        console.error(`Sync error: ${err.message || err}`);
+      } finally {
+        isSyncing = false;
+      }
+    };
+
+    try {
+      const nodeFs = await import('fs');
+      if (typeof nodeFs.watch === 'function') {
+        nodeFs.watch(rootDir, { recursive: true }, () => {
+          triggerSync();
+        });
+      }
+    } catch {
+      console.warn('Recursive file watch not available in this environment.');
+    }
+
+    return 0;
+  }
+
+  private async handleCoChange(ctx: CliContext): Promise<number> {
+    const isJson = ctx.args.includes('--json');
+    const target = ctx.args.find((a) => !a.startsWith('-'));
+
+    if (!target) {
+      console.error('Error: Target file is required. Usage: stubs co-change <file> [--limit <N>] [--json]');
+      return 1;
+    }
+
+    let limit = 50;
+    for (let i = 0; i < ctx.args.length; i++) {
+      if (ctx.args[i] === '--limit' && ctx.args[i + 1]) {
+        limit = parseInt(ctx.args[i + 1], 10) || 50;
+        i++;
+      } else if (ctx.args[i].startsWith('--limit=')) {
+        limit = parseInt(ctx.args[i].split('=')[1], 10) || 50;
+      }
+    }
+
+    try {
+      const { execSync } = await import('child_process');
+      const gitLogOutput = execSync(`git log --name-only --format="COMMIT_DELIM" -n ${limit}`, {
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'ignore'],
+      });
+
+      const commitBlocks = gitLogOutput.split('COMMIT_DELIM');
+      const commitFileSets = commitBlocks
+        .map((b) =>
+          b
+            .split('\n')
+            .map((l) => l.trim())
+            .filter((l) => l.length > 0 && !l.startsWith('COMMIT_DELIM')),
+        )
+        .filter((files) => files.length > 0);
+
+      const config = loadConfig(ctx.configPath);
+      const graphEngine = new GraphEngine(config.paths.db_path);
+      await graphEngine.initialize();
+
+      const topology = await graphEngine.getTopologyEngine();
+      const result = topology.analyzeCoChanges(commitFileSets, target, 1);
+
+      if (isJson) {
+        console.log(JSON.stringify(result, null, 2));
+      } else {
+        console.log(`📊 Git Temporal Co-Change Coupling for "${result.targetFile}" (${result.totalCommitsAnalyzed} commits analyzed):`);
+        if (result.relatedFiles.length === 0) {
+          console.log(`  No frequent co-change relationships detected in the last ${limit} commits.`);
+        } else {
+          result.relatedFiles.forEach((pair, idx) => {
+            console.log(`  ${idx + 1}. ${pair.fileB} — ${pair.reason}`);
+          });
+        }
+      }
+
+      return 0;
+    } catch {
+      console.warn('Git log analysis not available or repository lacks git history.');
+      return 0;
+    }
+  }
+
+  private async handleDiffArch(ctx: CliContext): Promise<number> {
+    const isJson = ctx.args.includes('--json');
+    const config = loadConfig(ctx.configPath);
+    const graphEngine = new GraphEngine(config.paths.db_path);
+    await graphEngine.initialize();
+
+    const { checkInterfaceDrift } = await import('../sanding/ast');
+    const sidecars = await graphEngine.getAllSidecars();
+    const reports: Array<{ file: string; drift: any }> = [];
+
+    for (const sc of sidecars) {
+      if (!sc.targetCodeFile) continue;
+      try {
+        const code = await graphEngine['fsDriver'].readFile(sc.targetCodeFile);
+        const drift = checkInterfaceDrift(sc.exports || [], code, sc.targetCodeFile);
+        if (drift.hasDrift) {
+          reports.push({ file: sc.filePath, drift });
+        }
+      } catch {
+        // Skip unreadable files
+      }
+    }
+
+    if (isJson) {
+      console.log(JSON.stringify({ totalDrifted: reports.length, reports }, null, 2));
+    } else {
+      console.log(`🔍 Architectural Interface Drift Audit (${sidecars.length} sidecars checked):`);
+      if (reports.length === 0) {
+        console.log(`  ✓ All sidecar declared exports perfectly match source code AST!`);
+      } else {
+        console.log(`  ⚠️ Found ${reports.length} sidecars with interface drift:\n`);
+        reports.forEach((r, idx) => {
+          console.log(`  ${idx + 1}. ${r.file}`);
+          if (r.drift.missingInCode.length > 0) {
+            console.log(`     - Missing in code: ${r.drift.missingInCode.join(', ')}`);
+          }
+          if (r.drift.undocumentedExports.length > 0) {
+            console.log(`     - Undocumented code exports: ${r.drift.undocumentedExports.join(', ')}`);
+          }
+        });
+      }
+    }
+
+    return reports.length === 0 ? 0 : 1;
   }
 }

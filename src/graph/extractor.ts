@@ -253,6 +253,8 @@ function extractTypeScriptGraph(
 
     const importedSymbolsMap: Map<string, string> = new Map(); // localSymbol -> modulePath
 
+    let currentScopeId = fileNodeId;
+
     // First pass: extract imports and top-level definitions
     function visitNode(node: ts.Node) {
       // 1. Imports
@@ -329,6 +331,45 @@ function extractTypeScriptGraph(
             }
           }
         }
+
+        const prevScope = currentScopeId;
+        currentScopeId = classNodeId;
+        ts.forEachChild(node, visitNode);
+        currentScopeId = prevScope;
+        return;
+      }
+
+      // Method declarations
+      if (ts.isMethodDeclaration(node) && node.name) {
+        const methodName = node.name.getText(sourceFile);
+        const methodNodeId = `${currentScopeId}.${methodName}`;
+        const start = sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile));
+        const end = sourceFile.getLineAndCharacterOfPosition(node.getEnd());
+
+        nodes.push({
+          id: methodNodeId,
+          file_path: filePath,
+          symbol_name: methodName,
+          kind: 'method',
+          domain,
+          lifecycle_phase: phase,
+          loc_start: start.line + 1,
+          loc_end: end.line + 1,
+        });
+
+        edges.push({
+          source_id: currentScopeId,
+          target_id: methodNodeId,
+          relation: 'contains',
+          confidence: 'EXTRACTED',
+          weight: 1.0,
+        });
+
+        const prevScope = currentScopeId;
+        currentScopeId = methodNodeId;
+        ts.forEachChild(node, visitNode);
+        currentScopeId = prevScope;
+        return;
       }
 
       // 3. Function declarations
@@ -356,6 +397,12 @@ function extractTypeScriptGraph(
           confidence: 'EXTRACTED',
           weight: 1.0,
         });
+
+        const prevScope = currentScopeId;
+        currentScopeId = funcNodeId;
+        ts.forEachChild(node, visitNode);
+        currentScopeId = prevScope;
+        return;
       }
 
       // 4. Interface declarations
@@ -420,7 +467,7 @@ function extractTypeScriptGraph(
 
         if (importedFrom) {
           edges.push({
-            source_id: fileNodeId,
+            source_id: currentScopeId,
             target_id: `${importedFrom}#${callName}`,
             relation: 'calls',
             confidence: 'EXTRACTED',
@@ -452,10 +499,19 @@ function extractPythonGraph(
   edges: GraphEdge[],
 ): void {
   const lines = code.split('\n');
+  let currentClassId: string | null = null;
+  let currentScopeId: string = fileNodeId;
+  const importedSymbols = new Map<string, string>(); // sym -> modulePath
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     const lineNum = i + 1;
+
+    // Reset class context on non-indented lines
+    if (line.trim().length > 0 && !line.startsWith(' ') && !line.startsWith('\t')) {
+      currentClassId = null;
+      currentScopeId = fileNodeId;
+    }
 
     // 1. from x import y, z
     const fromMatch = line.match(/^\s*from\s+([a-zA-Z0-9_.]+)\s+import\s+(.+)$/);
@@ -473,6 +529,7 @@ function extractPythonGraph(
       for (const sym of symbols) {
         const cleanSym = sym.split(/\s+as\s+/)[0].trim();
         if (cleanSym && cleanSym !== '*') {
+          importedSymbols.set(cleanSym, modulePath);
           edges.push({
             source_id: fileNodeId,
             target_id: `${modulePath}#${cleanSym}`,
@@ -489,6 +546,8 @@ function extractPythonGraph(
     const importMatch = line.match(/^\s*import\s+([a-zA-Z0-9_.]+)/);
     if (importMatch) {
       const modulePath = resolveRelativeImport(filePath, importMatch[1].replace(/\./g, '/'));
+      const topPkg = importMatch[1].split('.')[0];
+      importedSymbols.set(topPkg, modulePath);
       edges.push({
         source_id: fileNodeId,
         target_id: modulePath,
@@ -504,6 +563,8 @@ function extractPythonGraph(
     if (classMatch) {
       const className = classMatch[1];
       const classId = `${filePath}#${className}`;
+      currentClassId = classId;
+      currentScopeId = classId;
       nodes.push({
         id: classId,
         file_path: filePath,
@@ -524,9 +585,11 @@ function extractPythonGraph(
       if (classMatch[2]) {
         const bases = classMatch[2].split(',').map((b) => b.trim());
         for (const base of bases) {
+          const importedFrom = importedSymbols.get(base);
+          const targetId = importedFrom ? `${importedFrom}#${base}` : base;
           edges.push({
             source_id: classId,
-            target_id: base,
+            target_id: targetId,
             relation: 'implements',
             confidence: 'EXTRACTED',
             weight: 1.0,
@@ -536,27 +599,44 @@ function extractPythonGraph(
       continue;
     }
 
-    // 4. def func_name(...):
+    // 4. def func_name(self, ...) / def func_name(...):
     const funcMatch = line.match(/^\s*def\s+([a-zA-Z0-9_]+)\s*\(/);
     if (funcMatch) {
       const funcName = funcMatch[1];
-      const funcId = `${filePath}#${funcName}`;
+      const isMethod = currentClassId !== null;
+      const funcId = isMethod ? `${currentClassId}.${funcName}` : `${filePath}#${funcName}`;
+      currentScopeId = funcId;
+
       nodes.push({
         id: funcId,
         file_path: filePath,
         symbol_name: funcName,
-        kind: 'function',
+        kind: isMethod ? 'method' : 'function',
         domain,
         lifecycle_phase: phase,
         loc_start: lineNum,
       });
       edges.push({
-        source_id: fileNodeId,
+        source_id: isMethod ? currentClassId! : fileNodeId,
         target_id: funcId,
         relation: 'contains',
         confidence: 'EXTRACTED',
         weight: 1.0,
       });
+      continue;
+    }
+
+    // Check for call expressions
+    for (const [sym, mod] of importedSymbols.entries()) {
+      if (line.includes(`${sym}(`) || line.includes(`${sym}.`)) {
+        edges.push({
+          source_id: currentScopeId,
+          target_id: `${mod}#${sym}`,
+          relation: 'calls',
+          confidence: 'EXTRACTED',
+          weight: 1.0,
+        });
+      }
     }
   }
 }
@@ -574,6 +654,8 @@ function extractRustGraph(
   edges: GraphEdge[],
 ): void {
   const lines = code.split('\n');
+  let currentImplTarget: string | null = null;
+  let currentScopeId: string = fileNodeId;
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
@@ -616,22 +698,46 @@ function extractRustGraph(
       continue;
     }
 
+    // impl Trait for Struct or impl Struct
+    const implMatch = line.match(/^\s*impl(?:\s*<[^>]+>)?\s+(?:([a-zA-Z0-9_]+)\s+for\s+)?([a-zA-Z0-9_]+)/);
+    if (implMatch) {
+      const traitName = implMatch[1];
+      const structName = implMatch[2];
+      const structId = `${filePath}#${structName}`;
+      currentImplTarget = structId;
+      currentScopeId = structId;
+
+      if (traitName) {
+        edges.push({
+          source_id: structId,
+          target_id: traitName.includes('::') ? traitName.replace(/::/g, '/') : `${filePath}#${traitName}`,
+          relation: 'implements',
+          confidence: 'EXTRACTED',
+          weight: 1.0,
+        });
+      }
+      continue;
+    }
+
     // pub fn / fn
     const fnMatch = line.match(/^\s*(?:pub\s+)?(?:async\s+)?fn\s+([a-zA-Z0-9_]+)\s*\(/);
     if (fnMatch) {
       const fnName = fnMatch[1];
-      const fnId = `${filePath}#${fnName}`;
+      const isMethod = currentImplTarget !== null;
+      const fnId = isMethod ? `${currentImplTarget}.${fnName}` : `${filePath}#${fnName}`;
+      currentScopeId = fnId;
+
       nodes.push({
         id: fnId,
         file_path: filePath,
         symbol_name: fnName,
-        kind: 'function',
+        kind: isMethod ? 'method' : 'function',
         domain,
         lifecycle_phase: phase,
         loc_start: lineNum,
       });
       edges.push({
-        source_id: fileNodeId,
+        source_id: isMethod ? currentImplTarget! : fileNodeId,
         target_id: fnId,
         relation: 'contains',
         confidence: 'EXTRACTED',
@@ -646,6 +752,9 @@ function extractRustGraph(
       const kind = structMatch[1] === 'trait' ? 'interface' : 'class';
       const name = structMatch[2];
       const id = `${filePath}#${name}`;
+      currentImplTarget = null;
+      currentScopeId = id;
+
       nodes.push({
         id,
         file_path: filePath,
@@ -722,7 +831,33 @@ function extractGoGraph(
     }
 
     // func (r *Receiver) Method() or func FuncName()
-    const funcMatch = line.match(/^\s*func\s+(?:\([^)]+\)\s+)?([a-zA-Z0-9_]+)\s*\(/);
+    const receiverMatch = line.match(/^\s*func\s+\((?:[a-zA-Z0-9_]+\s+\*?([a-zA-Z0-9_]+))\)\s+([a-zA-Z0-9_]+)\s*\(/);
+    if (receiverMatch) {
+      const structName = receiverMatch[1];
+      const methodName = receiverMatch[2];
+      const structId = `${filePath}#${structName}`;
+      const methodId = `${structId}.${methodName}`;
+
+      nodes.push({
+        id: methodId,
+        file_path: filePath,
+        symbol_name: methodName,
+        kind: 'method',
+        domain,
+        lifecycle_phase: phase,
+        loc_start: lineNum,
+      });
+      edges.push({
+        source_id: structId,
+        target_id: methodId,
+        relation: 'contains',
+        confidence: 'EXTRACTED',
+        weight: 1.0,
+      });
+      continue;
+    }
+
+    const funcMatch = line.match(/^\s*func\s+([a-zA-Z0-9_]+)\s*\(/);
     if (funcMatch) {
       const funcName = funcMatch[1];
       const funcId = `${filePath}#${funcName}`;

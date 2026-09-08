@@ -54,3 +54,77 @@ export function getAstStructuralHash(code: string, fileName = 'file.ts'): string
 export function typeCheckCode(filePath: string, code: string): TypeCheckResult {
   return typeCheckVirtualFile(filePath, code);
 }
+
+export interface InterfaceDriftReport {
+  hasDrift: boolean;
+  missingInCode: string[];
+  undocumentedExports: string[];
+  declaredExports: string[];
+  actualExports: string[];
+}
+
+/**
+ * Checks for signature and export drift between declared sidecar exports and actual code AST.
+ */
+export function checkInterfaceDrift(
+  declaredExports: string[] = [],
+  sourceCode: string,
+  fileName = 'file.ts',
+): InterfaceDriftReport {
+  const ext = path.extname(fileName).toLowerCase();
+  const isTsOrJs = ext === '.ts' || ext === '.tsx' || ext === '.js' || ext === '.jsx' || !ext;
+
+  const actualExports: string[] = [];
+  if (isTsOrJs) {
+    try {
+      const sourceFile = ts.createSourceFile(fileName, sourceCode, ts.ScriptTarget.Latest, false);
+      for (const statement of sourceFile.statements) {
+        const modifiers = ts.canHaveModifiers(statement) ? ts.getModifiers(statement) : undefined;
+        const isExported = modifiers?.some(
+          (m) => m.kind === ts.SyntaxKind.ExportKeyword || m.kind === ts.SyntaxKind.DefaultKeyword,
+        );
+
+        if (isExported) {
+          if (
+            (ts.isFunctionDeclaration(statement) ||
+              ts.isClassDeclaration(statement) ||
+              ts.isInterfaceDeclaration(statement) ||
+              ts.isTypeAliasDeclaration(statement) ||
+              ts.isEnumDeclaration(statement)) &&
+            statement.name
+          ) {
+            actualExports.push(statement.name.text);
+          } else if (ts.isVariableStatement(statement)) {
+            for (const decl of statement.declarationList.declarations) {
+              if (ts.isIdentifier(decl.name)) {
+                actualExports.push(decl.name.text);
+              }
+            }
+          }
+        } else if (ts.isExportDeclaration(statement)) {
+          if (statement.exportClause && ts.isNamedExports(statement.exportClause)) {
+            for (const element of statement.exportClause.elements) {
+              actualExports.push(element.name.text);
+            }
+          }
+        }
+      }
+    } catch {
+      // Fallback
+    }
+  }
+
+  const declaredSet = new Set(declaredExports);
+  const actualSet = new Set(actualExports);
+
+  const missingInCode = declaredExports.filter((e) => !actualSet.has(e));
+  const undocumentedExports = actualExports.filter((e) => !declaredSet.has(e));
+
+  return {
+    hasDrift: missingInCode.length > 0 || undocumentedExports.length > 0,
+    missingInCode,
+    undocumentedExports,
+    declaredExports,
+    actualExports,
+  };
+}

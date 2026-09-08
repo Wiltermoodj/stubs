@@ -90,6 +90,64 @@ export const STUBS_MCP_TOOLS: McpTool[] = [
       properties: {},
     },
   },
+  {
+    name: 'stubs_plan_order',
+    description:
+      'Compute the optimal topological sequence of files to modify during multi-file refactoring to avoid broken intermediate states.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        files: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'List of file paths to order.',
+        },
+        direction: {
+          type: 'string',
+          enum: ['dependencies_first', 'dependents_first'],
+          description: 'Sort order (dependencies_first = base before consumers).',
+        },
+      },
+      required: ['files'],
+    },
+  },
+  {
+    name: 'stubs_blast_guard',
+    description:
+      'Perform a pre-execution safety check on the blast radius of a file or symbol before modifying it.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        target: { type: 'string', description: 'Target file or symbol name.' },
+        threshold: {
+          type: 'string',
+          enum: ['low', 'medium', 'high', 'critical'],
+          description: 'Safety risk threshold level (default: high).',
+        },
+      },
+      required: ['target'],
+    },
+  },
+  {
+    name: 'stubs_tiered_context',
+    description:
+      'Get a token-compact tiered context model (L0 Target, L1 Neighbors, L2 Subsystem) for an agent prompt.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        target: { type: 'string', description: 'Target file or symbol name.' },
+      },
+      required: ['target'],
+    },
+  },
+  {
+    name: 'stubs_lint_arch',
+    description: 'Audit codebase dependencies against defined architectural boundary rules.',
+    inputSchema: {
+      type: 'object',
+      properties: {},
+    },
+  },
 ];
 
 export class McpServer {
@@ -297,6 +355,64 @@ export class McpServer {
             id,
             result: {
               content: [{ type: 'text', text: lines.join('\n') }],
+            },
+          };
+        }
+
+        case 'stubs_plan_order': {
+          const files = Array.isArray(args.files) ? args.files : [];
+          const direction = args.direction || 'dependencies_first';
+          const res = topology.getTopologicalEditOrder(files, direction);
+          return {
+            jsonrpc: '2.0',
+            id,
+            result: {
+              content: [{ type: 'text', text: JSON.stringify(res, null, 2) }],
+            },
+          };
+        }
+
+        case 'stubs_blast_guard': {
+          const threshold = args.threshold || 'high';
+          const res = topology.checkBlastGuard(args.target, threshold);
+          return {
+            jsonrpc: '2.0',
+            id,
+            result: {
+              content: [{ type: 'text', text: JSON.stringify(res, null, 2) }],
+            },
+          };
+        }
+
+        case 'stubs_tiered_context': {
+          const res = topology.getTieredAgentContext(args.target);
+          if (!res) {
+            return {
+              jsonrpc: '2.0',
+              id,
+              result: {
+                content: [{ type: 'text', text: `Node not found: ${args.target}` }],
+                isError: true,
+              },
+            };
+          }
+          return {
+            jsonrpc: '2.0',
+            id,
+            result: {
+              content: [{ type: 'text', text: res.formattedSummary }],
+            },
+          };
+        }
+
+        case 'stubs_lint_arch': {
+          const config = loadConfig();
+          const res = topology.lintArchitectureRules(config.architecture_rules || []);
+          return {
+            jsonrpc: '2.0',
+            id,
+            result: {
+              content: [{ type: 'text', text: JSON.stringify(res, null, 2) }],
             },
           };
         }
