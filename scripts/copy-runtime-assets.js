@@ -146,3 +146,19 @@ if (fs.existsSync(skillsSrc)) {
   }
   console.log(`Agent skills staged across ${targetDirs.length} dist folders.`);
 }
+
+
+
+// Stage web client assets
+const webSrc = path.join(repoRoot, 'dist/web');
+if (fs.existsSync(webSrc)) {
+  for (const dir of targetDirs) {
+    const webDest = path.join(dir, 'web');
+    if (path.resolve(webSrc) !== path.resolve(webDest)) {
+      fs.cpSync(webSrc, webDest, { recursive: true });
+    }
+  }
+  console.log(`Web client assets staged across ${targetDirs.length} dist folders.`);
+} else {
+  console.warn(`[Warning] Web client assets not found at ${webSrc}; web portal UI may be incomplete.`);
+}

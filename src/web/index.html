@@ -135,13 +135,26 @@
       });
 
       // Register Service Worker for Progressive Web App (PWA) offline usage
+      // Bypassed on localhost / 127.0.0.1 to avoid stale caching during local development
       if ('serviceWorker' in navigator) {
-        window.addEventListener('load', () => {
-          navigator.serviceWorker
-            .register('sw.js')
-            .then((reg) => console.log('ServiceWorker registered successfully:', reg.scope))
-            .catch((err) => console.warn('ServiceWorker registration failed:', err));
-        });
+        const isLocalhost =
+          window.location.hostname === 'localhost' ||
+          window.location.hostname === '127.0.0.1' ||
+          window.location.hostname === '0.0.0.0';
+        if (isLocalhost) {
+          navigator.serviceWorker.getRegistrations().then((registrations) => {
+            for (const registration of registrations) {
+              registration.unregister();
+            }
+          });
+        } else {
+          window.addEventListener('load', () => {
+            navigator.serviceWorker
+              .register('sw.js')
+              .then((reg) => console.log('ServiceWorker registered successfully:', reg.scope))
+              .catch((err) => console.warn('ServiceWorker registration failed:', err));
+          });
+        }
       }
     </script>
   </body>

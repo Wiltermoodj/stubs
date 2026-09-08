@@ -45,7 +45,7 @@ describe('CLI Router', () => {
   });
 
   it('should run serve command successfully', async () => {
-    const code = await router.route(['serve']);
+    const code = await router.route(['serve', '--port', '3998']);
     expect(code).toBe(0);
     expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('Starting stubs Web Portal'));
   });

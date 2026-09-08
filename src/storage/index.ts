@@ -435,10 +435,17 @@ export class WasmSqliteDriver implements DatabaseDriver {
 
   public async initialize(): Promise<void> {
     if (this.db) return;
-    const isNode = typeof process !== 'undefined' && process.versions && process.versions.node;
+    const isNode =
+      typeof (globalThis as any).window === 'undefined' &&
+      typeof process !== 'undefined' &&
+      Boolean(process.versions && process.versions.node);
     const SQL = await initSqlJs({
       locateFile: (file) => {
-        if (isNode) {
+        if (
+          typeof (globalThis as any).window === 'undefined' &&
+          isNode &&
+          typeof __dirname !== 'undefined'
+        ) {
           const possiblePaths = [
             path.join(__dirname, file),
             path.join(__dirname, '../../node_modules/sql.js/dist', file),

@@ -15,6 +15,13 @@ import { GitHubClient, RepositoryInfo } from '../server/github';
 let pat = localStorage.getItem('STUBS_GITHUB_PAT') || '';
 let currentRepo: string = localStorage.getItem('STUBS_CURRENT_REPO') || '';
 let currentBranch: string = localStorage.getItem('STUBS_CURRENT_BRANCH') || 'main';
+let workspaceSource: 'local-server' | 'local-folder' | 'github-remote' =
+  (localStorage.getItem('STUBS_WORKSPACE_SOURCE') as any) || 'local-server';
+let localServerAvailable = false;
+let localProjectName = '';
+let localFolderName = localStorage.getItem('STUBS_LOCAL_FOLDER_NAME') || '';
+const localFileHandles: Map<string, any> = new Map();
+let sseEventSource: EventSource | null = null;
 
 let reposList: RepositoryInfo[] = [];
 let branchesList: string[] = [];
@@ -40,6 +47,210 @@ const graphEngine = new GraphEngine({
   dbDriver: wasmDb,
   dbPath: ':memory:',
 });
+
+// Helper to check if local server (stubs serve) is available
+async function checkLocalServer(): Promise<boolean> {
+  try {
+    const res = await fetch('/api/v1/graph', {
+      method: 'GET',
+      headers: { Accept: 'application/json' },
+    });
+    if (res.ok) {
+      const data = await res.json();
+      localServerAvailable = true;
+      localProjectName = data.projectName || 'Local Workspace';
+      return true;
+    }
+  } catch {
+    // Local server unreachable
+  }
+  localServerAvailable = false;
+  return false;
+}
+
+// Load specifications from active local server (stubs serve)
+async function loadLocalServerWorkspace() {
+  showToast('Connecting to local stubs serve instance...', 'info');
+  try {
+    const res = await fetch('/api/v1/graph');
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    localProjectName = data.projectName || 'Local Workspace';
+    localServerAvailable = true;
+
+    await graphEngine.clearIndex();
+    const sidecars = data.sidecars || [];
+    for (const sc of sidecars) {
+      const filePath = sc.file_path || sc.filePath;
+      if (!filePath) continue;
+      const rawBody = sc.raw_content || sc.body || '';
+      const rawFm = sc.frontmatter || {
+        title: sc.title || filePath,
+        type: sc.type || 'sidecar-spec',
+        description: sc.description || '',
+        tags: sc.tags ? String(sc.tags).split(' ').filter(Boolean) : [],
+        exports: sc.exports ? String(sc.exports).split(' ').filter(Boolean) : [],
+        status: sc.status || 'spec',
+        version: sc.version || 1,
+        target_code_file: sc.target_code_file || './' + filePath.replace(/\.md$/, ''),
+        status_flag: sc.status_flag || 'clean',
+      };
+      const fullText = stringifyOkfSpec(rawFm, rawBody);
+      await virtualFs.writeFile(filePath, fullText);
+    }
+
+    await graphEngine.indexWorkspace('/', { force: true });
+    filesList = await graphEngine.getFilesIndexed();
+    localStorage.setItem('STUBS_FILES_LIST', JSON.stringify(filesList));
+    showToast(`Loaded ${filesList.length} specifications from local server.`, 'success');
+
+    connectLocalSse();
+    renderApp();
+  } catch (err: any) {
+    showToast('Failed to load from local server: ' + err.message, 'error');
+  }
+}
+
+async function reloadLocalServerWorkspaceSilent() {
+  try {
+    const res = await fetch('/api/v1/graph');
+    if (!res.ok) return;
+    const data = await res.json();
+    localProjectName = data.projectName || 'Local Workspace';
+
+    await graphEngine.clearIndex();
+    const sidecars = data.sidecars || [];
+    for (const sc of sidecars) {
+      const filePath = sc.file_path || sc.filePath;
+      if (!filePath) continue;
+      const rawBody = sc.raw_content || sc.body || '';
+      const rawFm = sc.frontmatter || {
+        title: sc.title || filePath,
+        type: sc.type || 'sidecar-spec',
+        description: sc.description || '',
+        tags: sc.tags ? String(sc.tags).split(' ').filter(Boolean) : [],
+        exports: sc.exports ? String(sc.exports).split(' ').filter(Boolean) : [],
+        status: sc.status || 'spec',
+        version: sc.version || 1,
+        target_code_file: sc.target_code_file || './' + filePath.replace(/\.md$/, ''),
+        status_flag: sc.status_flag || 'clean',
+      };
+      const fullText = stringifyOkfSpec(rawFm, rawBody);
+      await virtualFs.writeFile(filePath, fullText);
+    }
+
+    await graphEngine.indexWorkspace('/', { force: true });
+    filesList = await graphEngine.getFilesIndexed();
+    localStorage.setItem('STUBS_FILES_LIST', JSON.stringify(filesList));
+    renderSpecsList();
+    renderRightPanel();
+    if (selectedPath) {
+      await loadAndRenderSidecarDetail(selectedPath);
+    }
+  } catch {}
+}
+
+function connectLocalSse() {
+  if (sseEventSource) {
+    sseEventSource.close();
+    sseEventSource = null;
+  }
+  if (typeof EventSource !== 'undefined') {
+    try {
+      sseEventSource = new EventSource('/api/v1/events');
+      sseEventSource.onmessage = async (e) => {
+        try {
+          const payload = JSON.parse(e.data);
+          if (
+            payload.type === 'graph:updated' ||
+            payload.type === 'file:changed' ||
+            payload.type === 'update' ||
+            payload.type === 'directive:created'
+          ) {
+            await reloadLocalServerWorkspaceSilent();
+          }
+        } catch {}
+      };
+    } catch {}
+  }
+}
+
+// Open a local directory directly via HTML5 File System Access API
+async function openLocalDirectoryPicker() {
+  if (typeof (window as any).showDirectoryPicker !== 'function') {
+    showToast(
+      'HTML5 File System Access API is not supported in this browser. Use Chromium/Edge or run "stubs serve".',
+      'warning',
+    );
+    return;
+  }
+
+  try {
+    const dirHandle = await (window as any).showDirectoryPicker({ mode: 'readwrite' });
+    localFolderName = dirHandle.name || 'Local Project';
+    localStorage.setItem('STUBS_LOCAL_FOLDER_NAME', localFolderName);
+    workspaceSource = 'local-folder';
+    localStorage.setItem('STUBS_WORKSPACE_SOURCE', 'local-folder');
+
+    showToast(`Scanning directory: ${localFolderName}...`, 'info');
+    localFileHandles.clear();
+    await graphEngine.clearIndex();
+
+    await scanDirectoryRecursive(dirHandle, '', localFileHandles);
+
+    await graphEngine.indexWorkspace('/', { force: true });
+    filesList = await graphEngine.getFilesIndexed();
+    localStorage.setItem('STUBS_FILES_LIST', JSON.stringify(filesList));
+
+    showToast(`Successfully indexed ${filesList.length} specifications from ${localFolderName}.`, 'success');
+    renderApp();
+  } catch (err: any) {
+    if (err.name !== 'AbortError') {
+      showToast('Error opening directory: ' + err.message, 'error');
+    }
+  }
+}
+
+(window as any).openLocalDirectoryPicker = openLocalDirectoryPicker;
+
+async function scanDirectoryRecursive(
+  dirHandle: any,
+  currentPath: string,
+  handlesMap: Map<string, any>,
+) {
+  for await (const [name, entry] of dirHandle.entries()) {
+    if (
+      name === 'node_modules' ||
+      name === '.git' ||
+      name === 'dist' ||
+      name === 'build' ||
+      name === '.stubs'
+    ) {
+      continue;
+    }
+    const relPath = currentPath ? `${currentPath}/${name}` : name;
+    if (entry.kind === 'directory') {
+      await scanDirectoryRecursive(entry, relPath, handlesMap);
+    } else if (entry.kind === 'file') {
+      if (
+        name.endsWith('.md') ||
+        name.endsWith('.ts.md') ||
+        name.endsWith('.ts') ||
+        name.endsWith('.json') ||
+        name.endsWith('.tpl')
+      ) {
+        handlesMap.set(relPath, entry);
+        try {
+          const file = await entry.getFile();
+          const text = await file.text();
+          await virtualFs.writeFile(relPath, text);
+        } catch (e) {
+          console.warn(`Failed reading file ${relPath}:`, e);
+        }
+      }
+    }
+  }
+}
 
 // Helper to load offline files into the virtual filesystem
 async function loadCachedFilesForCurrentRepoBranch() {
@@ -80,49 +291,100 @@ let isRightDrawerOpen = false;
 let container: HTMLElement;
 
 // Boot strap
-window.addEventListener('DOMContentLoaded', async () => {
+async function startApp() {
   container = document.getElementById('app-container') || document.body;
-  await wasmDb.initialize();
-
-  // Pre-load from local storage cache for instant offline startup
-  if (currentRepo && currentBranch) {
-    try {
-      const cachedFiles = JSON.parse(
-        localStorage.getItem(`STUBS_OFFLINE_FILES_${currentRepo}_${currentBranch}`) || '{}',
-      );
-      for (const [filePath, content] of Object.entries(cachedFiles)) {
-        await virtualFs.writeFile(filePath, content as string);
-      }
-    } catch (e) {
-      console.warn('Failed to populate initial virtual files from cache:', e);
-    }
+  try {
+    await wasmDb.initialize();
+  } catch (e) {
+    console.warn('wasmDb initialization warning:', e);
   }
 
-  await graphEngine.initialize();
+  try {
+    await graphEngine.initialize();
+  } catch (e) {
+    console.warn('graphEngine initialization warning:', e);
+  }
 
-  if (filesList.length > 0) {
+  // 1. Check if local server (stubs serve) is running
+  const hasLocalServer = await checkLocalServer();
+
+  if (hasLocalServer && (workspaceSource === 'local-server' || !currentRepo)) {
+    workspaceSource = 'local-server';
+    localStorage.setItem('STUBS_WORKSPACE_SOURCE', 'local-server');
+    await loadLocalServerWorkspace();
+  } else if (workspaceSource === 'local-folder' && localFolderName && filesList.length > 0) {
+    try {
+      await graphEngine.indexWorkspace('/', { force: true });
+    } catch {}
+    renderApp();
+  } else if (workspaceSource === 'github-remote' && currentRepo && pat) {
+    await loadWorkspace().catch(async (err) => {
+      console.warn('Could not sync remote workspace on startup, using offline cache:', err);
+      showToast('Offline mode active. Using cached specifications.', 'info');
+      await loadCachedFilesForCurrentRepoBranch();
+    });
+  } else if (hasLocalServer) {
+    workspaceSource = 'local-server';
+    localStorage.setItem('STUBS_WORKSPACE_SOURCE', 'local-server');
+    await loadLocalServerWorkspace();
+  } else if (pat) {
+    await loadWorkspace().catch(() => {});
+  } else if (filesList.length > 0) {
     try {
       await graphEngine.indexWorkspace('/', { force: true });
     } catch (e) {
       console.warn('Failed to index cached workspace:', e);
     }
+    renderApp();
+  } else {
+    renderApp();
   }
 
-  renderApp();
   setupPwaInstallBanner();
   updateOfflineStatus();
+}
 
-  if (!pat) {
-    showPatModal();
-  } else {
-    await loadWorkspace().catch((err) => {
-      console.warn('Could not sync remote workspace on startup, using offline cache:', err);
-      showToast('Offline mode active. Using cached specifications.', 'info');
-    });
+if (document.readyState === 'loading') {
+  window.addEventListener('DOMContentLoaded', startApp);
+} else {
+  startApp();
+}
+
+async function handleSourceChange(value: string) {
+  if (value === '__open_local_folder__') {
+    await openLocalDirectoryPicker();
+    return;
   }
-});
+  if (value === '__local_server__') {
+    workspaceSource = 'local-server';
+    localStorage.setItem('STUBS_WORKSPACE_SOURCE', 'local-server');
+    await loadLocalServerWorkspace();
+    return;
+  }
+  if (value === '__connect_pat__') {
+    showPatModal();
+    return;
+  }
+  if (value === '__current_local_folder__') {
+    return;
+  }
+  if (value) {
+    workspaceSource = 'github-remote';
+    localStorage.setItem('STUBS_WORKSPACE_SOURCE', 'github-remote');
+    await selectRepo(value);
+  }
+}
+
+(window as any).handleSourceChange = handleSourceChange;
 
 function renderApp() {
+  const activeWorkspaceName =
+    workspaceSource === 'local-server'
+      ? `🖥️ Local: ${localProjectName || 'Active Server'}`
+      : workspaceSource === 'local-folder'
+        ? `📁 Local: ${localFolderName || 'Folder'}`
+        : currentRepo || 'No workspace connected';
+
   container.innerHTML = `
     <!-- Top Nav Header -->
     <header class="h-16 border-b border-slate-800 bg-slate-900/50 backdrop-blur px-4 flex items-center justify-between z-[50] select-none shrink-0">
@@ -138,8 +400,8 @@ function renderApp() {
         <span class="text-xl" aria-hidden="true">🧩</span>
         <div>
           <h1 class="text-sm font-semibold tracking-tight text-white">Stubs Spec PWA</h1>
-          <p class="text-[10px] text-slate-500 truncate max-w-[140px] sm:max-w-[200px]" id="current-repo-display">
-            ${currentRepo || 'No repo connected'}
+          <p class="text-[10px] text-slate-400 truncate max-w-[140px] sm:max-w-[220px]" id="current-repo-display">
+            ${activeWorkspaceName}
           </p>
         </div>
       </div>
@@ -154,9 +416,17 @@ function renderApp() {
           <span aria-hidden="true">⚡</span><span>Bootstrap Codebase</span>
         </button>
         <button
+          onclick="openLocalDirectoryPicker()"
+          aria-label="Open Local Folder"
+          title="Open Local Folder (Browser File System API)"
+          class="min-w-[44px] min-h-[44px] flex items-center justify-center text-slate-400 hover:text-slate-200 rounded-lg transition-[color] duration-200 text-sm"
+        >
+          📁
+        </button>
+        <button
           onclick="showPatModal()"
           aria-label="PAT Setup"
-          title="PAT Setup"
+          title="GitHub PAT Setup"
           class="min-w-[44px] min-h-[44px] flex items-center justify-center text-slate-400 hover:text-slate-200 rounded-lg transition-[color] duration-200"
         >
           🔑
@@ -186,20 +456,39 @@ function renderApp() {
             >✕</button>
           </div>
 
-          <!-- Repo dropdown selector -->
+          <!-- Workspace / Repo dropdown selector -->
           <div class="space-y-1">
-            <label for="repo-sel" class="text-[9px] font-bold text-slate-500 uppercase">Repository</label>
-            <select id="repo-sel" onchange="selectRepo(this.value)" class="w-full bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 transition-[border-color,box-shadow] duration-200">
-              <option value="">— Choose Repository</option>
-              ${reposList.map((r) => `<option value="${r.fullName}" ${r.fullName === currentRepo ? 'selected' : ''}>${r.fullName}</option>`).join('')}
+            <label for="repo-sel" class="text-[9px] font-bold text-slate-500 uppercase">Workspace Source</label>
+            <select id="repo-sel" onchange="handleSourceChange(this.value)" class="w-full bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 transition-[border-color,box-shadow] duration-200">
+              <optgroup label="Local Workspaces">
+                ${localServerAvailable ? `<option value="__local_server__" ${workspaceSource === 'local-server' ? 'selected' : ''}>🖥️ Local Server: ${localProjectName || 'Active'}</option>` : ''}
+                <option value="__open_local_folder__">📁 Open Local Folder (Browser API)...</option>
+                ${localFolderName ? `<option value="__current_local_folder__" ${workspaceSource === 'local-folder' ? 'selected' : ''}>📁 Local: ${localFolderName}</option>` : ''}
+              </optgroup>
+              ${
+                reposList.length > 0
+                  ? `
+                <optgroup label="GitHub Repositories">
+                  ${reposList.map((r) => `<option value="${r.fullName}" ${workspaceSource === 'github-remote' && r.fullName === currentRepo ? 'selected' : ''}>${r.fullName}</option>`).join('')}
+                </optgroup>
+              `
+                  : ''
+              }
+              <option value="__connect_pat__">🔑 ${pat ? 'Manage GitHub Token...' : 'Connect GitHub Token (PAT)...'}</option>
             </select>
           </div>
 
           <!-- Branch dropdown selector -->
           <div class="space-y-1">
-            <label for="branch-sel" class="text-[9px] font-bold text-slate-500 uppercase">Branch</label>
-            <select id="branch-sel" onchange="selectBranch(this.value)" class="w-full bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 font-mono focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 transition-[border-color,box-shadow] duration-200">
-              ${branchesList.map((b) => `<option value="${b}" ${b === currentBranch ? 'selected' : ''}>${b}</option>`).join('')}
+            <label for="branch-sel" class="text-[9px] font-bold text-slate-500 uppercase">Branch / Target</label>
+            <select id="branch-sel" onchange="selectBranch(this.value)" class="w-full bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 font-mono focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 transition-[border-color,box-shadow] duration-200" ${workspaceSource !== 'github-remote' ? 'disabled' : ''}>
+              ${
+                workspaceSource === 'local-server'
+                  ? `<option value="local">🖥️ local (live filesystem)</option>`
+                  : workspaceSource === 'local-folder'
+                    ? `<option value="local">📁 local (${localFolderName || 'directory'})</option>`
+                    : branchesList.map((b) => `<option value="${b}" ${b === currentBranch ? 'selected' : ''}>${b}</option>`).join('')
+              }
             </select>
           </div>
 
@@ -219,8 +508,9 @@ function renderApp() {
           <div class="flex flex-col items-center justify-center text-center py-8 px-4 space-y-3">
             <span class="text-2xl" aria-hidden="true">📂</span>
             <p class="text-xs text-slate-400 font-medium">No specifications loaded</p>
-            <p class="text-[11px] text-slate-500">Connect a GitHub repo above to load sidecar specs, or
-              <button onclick="showPatModal()" class="text-indigo-400 hover:underline font-medium">configure your PAT</button> to get started.
+            <p class="text-[11px] text-slate-500">
+              Open a local folder via <button onclick="openLocalDirectoryPicker()" class="text-indigo-400 hover:underline font-medium">Directory Picker</button>, run <code>stubs serve</code>, or
+              <button onclick="showPatModal()" class="text-indigo-400 hover:underline font-medium">connect a GitHub repo</button>.
             </p>
           </div>
         </div>
@@ -1193,7 +1483,7 @@ Provisional template for human review.
   renderRightPanel();
 };
 
-// Submit dynamic directive note to sidecar and push to GitHub
+// Submit dynamic directive note to sidecar
 async function submitDirective() {
   const fileSelect = document.getElementById('new-dir-file') as HTMLSelectElement;
   const textInput = document.getElementById('new-dir-text') as HTMLTextAreaElement;
@@ -1211,9 +1501,33 @@ async function submitDirective() {
     return;
   }
 
-  showToast('Saving directive and committing to GitHub...', 'info');
+  showToast('Saving directive...', 'info');
+
+  const noteId = `NOTE-${Date.now()}`;
+  const newNote = {
+    id: noteId,
+    timestamp: new Date().toISOString(),
+    text,
+    status: 'pending',
+  };
 
   try {
+    if (workspaceSource === 'local-server') {
+      const res = await fetch('/api/v1/directives', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ filePath, text, id: noteId }),
+      });
+      if (!res.ok) {
+        const errJson = await res.json().catch(() => ({}));
+        throw new Error(errJson.error || `Server returned status ${res.status}`);
+      }
+      showToast('Directive saved to local server!', 'success');
+      textInput.value = '';
+      await reloadLocalServerWorkspaceSilent();
+      return;
+    }
+
     // 1. Read existing spec file from virtual filesystem
     const content = await virtualFs.readFile(filePath);
     const parsed = parseOkfSpec(content);
@@ -1224,14 +1538,6 @@ async function submitDirective() {
     }
 
     // 2. Add new user note
-    const noteId = `NOTE-${Date.now()}`;
-    const newNote = {
-      id: noteId,
-      timestamp: new Date().toISOString(),
-      text,
-      status: 'pending',
-    };
-
     const notes = parsed.frontmatter.user_notes || [];
     notes.push(newNote);
     parsed.frontmatter.user_notes = notes;
@@ -1240,40 +1546,53 @@ async function submitDirective() {
     const updatedContent = stringifyOkfSpec(parsed.frontmatter, parsed.body);
     await virtualFs.writeFile(filePath, updatedContent);
 
-    // Update offline cache
-    try {
-      const cachedFiles = JSON.parse(
-        localStorage.getItem(`STUBS_OFFLINE_FILES_${currentRepo}_${currentBranch}`) || '{}',
-      );
-      cachedFiles[filePath] = updatedContent;
-      localStorage.setItem(
-        `STUBS_OFFLINE_FILES_${currentRepo}_${currentBranch}`,
-        JSON.stringify(cachedFiles),
-      );
-    } catch (e) {
-      console.warn('Failed to update cache on submitDirective:', e);
+    if (workspaceSource === 'local-folder' && localFileHandles.has(filePath)) {
+      try {
+        const handle = localFileHandles.get(filePath);
+        const writable = await handle.createWritable();
+        await writable.write(updatedContent);
+        await writable.close();
+        showToast('Directive saved directly to local file on disk!', 'success');
+      } catch (e: any) {
+        showToast('Saved to browser memory (disk permission needed): ' + e.message, 'warning');
+      }
+    } else if (workspaceSource === 'github-remote') {
+      // Update offline cache
+      try {
+        const cachedFiles = JSON.parse(
+          localStorage.getItem(`STUBS_OFFLINE_FILES_${currentRepo}_${currentBranch}`) || '{}',
+        );
+        cachedFiles[filePath] = updatedContent;
+        localStorage.setItem(
+          `STUBS_OFFLINE_FILES_${currentRepo}_${currentBranch}`,
+          JSON.stringify(cachedFiles),
+        );
+      } catch (e) {
+        console.warn('Failed to update cache on submitDirective:', e);
+      }
+
+      // Commit to GitHub directly
+      if (currentRepo && pat) {
+        const [owner, name] = currentRepo.split('/');
+        const client = new GitHubClient(pat);
+        await client
+          .createOrUpdateFile(
+            owner,
+            name,
+            filePath,
+            updatedContent,
+            `Add user note ${noteId} via PWA`,
+            currentBranch,
+          )
+          .catch((err) => {
+            showToast('Offline save succeeded locally. GitHub sync failed: ' + err.message, 'warning');
+          });
+      }
+      showToast('Successfully saved directive note!', 'success');
     }
 
     // 4. Force index update in-memory
     await graphEngine.indexWorkspace('/', { force: true });
-
-    // 5. Commit to GitHub directly
-    const [owner, name] = currentRepo.split('/');
-    const client = new GitHubClient(pat);
-    await client
-      .createOrUpdateFile(
-        owner,
-        name,
-        filePath,
-        updatedContent,
-        `Add user note ${noteId} via PWA`,
-        currentBranch,
-      )
-      .catch((err) => {
-        showToast('Offline save succeeded locally. GitHub sync failed: ' + err.message, 'warning');
-      });
-
-    showToast('Successfully saved directive note!', 'success');
     textInput.value = '';
 
     // Close mobile right drawer
@@ -1283,6 +1602,8 @@ async function submitDirective() {
       document.getElementById('drawer-overlay')?.classList.add('hidden');
     }
 
+    renderSpecsList();
+    renderRightPanel();
     await loadAndRenderSidecarDetail(filePath);
   } catch (err: any) {
     showToast('Failed to save directive: ' + err.message, 'error');
@@ -1291,11 +1612,26 @@ async function submitDirective() {
 
 (window as any).submitDirective = submitDirective;
 
-// Resolve directive note on both virtual database + remote commit
+// Resolve directive note on virtual database, local server, or remote commit
 async function resolveDirective(filePath: string, noteId: string) {
-  showToast('Resolving directive and pushing commit...', 'info');
+  showToast('Resolving directive...', 'info');
 
   try {
+    if (workspaceSource === 'local-server') {
+      const res = await fetch('/api/v1/directives/resolve', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ filePath, id: noteId }),
+      });
+      if (!res.ok) {
+        const errJson = await res.json().catch(() => ({}));
+        throw new Error(errJson.error || `Server returned status ${res.status}`);
+      }
+      showToast('Directive resolved on local server!', 'success');
+      await reloadLocalServerWorkspaceSilent();
+      return;
+    }
+
     const content = await virtualFs.readFile(filePath);
     const parsed = parseOkfSpec(content);
     if (!parsed.isValid || !parsed.frontmatter) {
@@ -1315,41 +1651,56 @@ async function resolveDirective(filePath: string, noteId: string) {
     const updatedContent = stringifyOkfSpec(parsed.frontmatter, parsed.body);
     await virtualFs.writeFile(filePath, updatedContent);
 
-    // Update offline cache
-    try {
-      const cachedFiles = JSON.parse(
-        localStorage.getItem(`STUBS_OFFLINE_FILES_${currentRepo}_${currentBranch}`) || '{}',
-      );
-      cachedFiles[filePath] = updatedContent;
-      localStorage.setItem(
-        `STUBS_OFFLINE_FILES_${currentRepo}_${currentBranch}`,
-        JSON.stringify(cachedFiles),
-      );
-    } catch (e) {
-      console.warn('Failed to update cache on resolveDirective:', e);
+    if (workspaceSource === 'local-folder' && localFileHandles.has(filePath)) {
+      try {
+        const handle = localFileHandles.get(filePath);
+        const writable = await handle.createWritable();
+        await writable.write(updatedContent);
+        await writable.close();
+        showToast('Directive resolved on local disk file!', 'success');
+      } catch (e: any) {
+        showToast('Resolved in memory: ' + e.message, 'warning');
+      }
+    } else if (workspaceSource === 'github-remote') {
+      // Update offline cache
+      try {
+        const cachedFiles = JSON.parse(
+          localStorage.getItem(`STUBS_OFFLINE_FILES_${currentRepo}_${currentBranch}`) || '{}',
+        );
+        cachedFiles[filePath] = updatedContent;
+        localStorage.setItem(
+          `STUBS_OFFLINE_FILES_${currentRepo}_${currentBranch}`,
+          JSON.stringify(cachedFiles),
+        );
+      } catch (e) {
+        console.warn('Failed to update cache on resolveDirective:', e);
+      }
+
+      if (currentRepo && pat) {
+        const [owner, name] = currentRepo.split('/');
+        const client = new GitHubClient(pat);
+        await client
+          .createOrUpdateFile(
+            owner,
+            name,
+            filePath,
+            updatedContent,
+            `Resolve user note ${noteId} via PWA`,
+            currentBranch,
+          )
+          .catch((err) => {
+            showToast(
+              'Offline resolve succeeded locally. GitHub sync failed: ' + err.message,
+              'warning',
+            );
+          });
+      }
+      showToast('Successfully resolved directive note!', 'success');
     }
 
     await graphEngine.indexWorkspace('/', { force: true });
-
-    const [owner, name] = currentRepo.split('/');
-    const client = new GitHubClient(pat);
-    await client
-      .createOrUpdateFile(
-        owner,
-        name,
-        filePath,
-        updatedContent,
-        `Resolve user note ${noteId} via PWA`,
-        currentBranch,
-      )
-      .catch((err) => {
-        showToast(
-          'Offline resolve succeeded locally. GitHub sync failed: ' + err.message,
-          'warning',
-        );
-      });
-
-    showToast('Successfully resolved directive note!', 'success');
+    renderSpecsList();
+    renderRightPanel();
     await loadAndRenderSidecarDetail(filePath);
   } catch (err: any) {
     showToast('Failed to resolve directive: ' + err.message, 'error');
@@ -1398,7 +1749,7 @@ async function openBootstrapModal() {
       '<p class="text-xs text-slate-500 italic p-2">Scanning workspace for unbootstrapped files...</p>';
 
   function getQueryParams() {
-    if (currentRepo) {
+    if (workspaceSource === 'github-remote' && currentRepo) {
       return `?mode=remote&repo=${encodeURIComponent(currentRepo)}&branch=${encodeURIComponent(currentBranch)}`;
     }
     return '';
@@ -1407,7 +1758,7 @@ async function openBootstrapModal() {
   try {
     const scanRes = await fetch('/api/v1/bootstrap/scan' + getQueryParams());
     const scanData = await scanRes.json();
-    bootstrapFiles = scanData.files || [];
+    bootstrapFiles = scanData.files || scanData.unbootstrapped || [];
 
     if (listContainer) {
       if (bootstrapFiles.length === 0) {
@@ -1510,7 +1861,7 @@ async function previewBootstrapFile(filePath: string) {
   const templateName = templateSelect ? templateSelect.value : '';
 
   function getQueryParams() {
-    if (currentRepo) {
+    if (workspaceSource === 'github-remote' && currentRepo) {
       return `?mode=remote&repo=${encodeURIComponent(currentRepo)}&branch=${encodeURIComponent(currentBranch)}`;
     }
     return '';
@@ -1575,7 +1926,7 @@ async function commitBootstrapSidecars() {
   showToast(`Generating sidecars for ${chks.length} files...`, 'info');
 
   function getQueryParams() {
-    if (currentRepo) {
+    if (workspaceSource === 'github-remote' && currentRepo) {
       return `?mode=remote&repo=${encodeURIComponent(currentRepo)}&branch=${encodeURIComponent(currentBranch)}`;
     }
     return '';
@@ -1623,7 +1974,9 @@ async function commitBootstrapSidecars() {
       closeBootstrapModal();
 
       // Refresh spec file lists
-      if (typeof (window as any).fetchSpecsFromGithub === 'function') {
+      if (workspaceSource === 'local-server') {
+        await reloadLocalServerWorkspaceSilent();
+      } else if (typeof (window as any).fetchSpecsFromGithub === 'function') {
         await (window as any).fetchSpecsFromGithub();
       } else if (typeof (window as any).loadWorkspace === 'function') {
         await (window as any).loadWorkspace();

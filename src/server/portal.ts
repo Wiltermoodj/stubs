@@ -1,10 +1,32 @@
-import { OkfFrontmatter } from '../parser/okf';
+
 import * as http from 'http';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as crypto from 'crypto';
 import * as yaml from 'js-yaml';
+import { OkfFrontmatter } from '../parser/okf';
 import { GraphEngine } from '../graph/engine';
+
+function resolveWebPath(...segments: string[]): string {
+  const candidates = [
+    // Adjacent to bundle in dist (e.g. dist/web or .agents/skills/stubs/dist/web)
+    path.resolve(__dirname, 'web', ...segments),
+    path.resolve(__dirname, '../web', ...segments),
+    path.resolve(__dirname, '../dist/web', ...segments),
+    path.resolve(__dirname, '../../dist/web', ...segments),
+    path.resolve(__dirname, '../../../dist/web', ...segments),
+    path.resolve(__dirname, '../../.agents/skills/stubs/dist/web', ...segments),
+    path.resolve(__dirname, '../.agents/skills/stubs/dist/web', ...segments),
+    path.resolve(__dirname, '../../web', ...segments),
+    // Relative to execution workspace cwd
+    path.resolve(process.cwd(), 'dist/web', ...segments),
+    path.resolve(process.cwd(), '.agents/skills/stubs/dist/web', ...segments),
+    path.resolve(process.cwd(), 'node_modules/stubs/dist/web', ...segments),
+    path.resolve(process.cwd(), 'node_modules/stubs/.agents/skills/stubs/dist/web', ...segments),
+  ];
+  const found = candidates.find((c) => fs.existsSync(c));
+  return found || candidates[0];
+}
 
 export function extractExports(code: string): string[] {
   const exports: string[] = [];
@@ -441,21 +463,31 @@ Using EJS/Handlebars to render a standard service module.
 
       // 1. Dashboard UI Root - PWA primary
       if (pathname === '/' && req.method === 'GET') {
-        const pwaIndex = path.resolve(__dirname, '../../dist/web/index.html');
+        const pwaIndex = resolveWebPath('index.html');
         if (fs.existsSync(pwaIndex)) {
           const html = fs.readFileSync(pwaIndex, 'utf8');
-          res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+          res.writeHead(200, {
+            'Content-Type': 'text/html; charset=utf-8',
+            'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+            Pragma: 'no-cache',
+            Expires: '0',
+          });
           res.end(html);
           return;
         }
 
-        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+        res.writeHead(200, {
+          'Content-Type': 'text/html; charset=utf-8',
+          'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+          Pragma: 'no-cache',
+          Expires: '0',
+        });
         res.end(this.getDashboardHtml());
         return;
       }
 
       // 1b. PWA static assets
-      const pwaRoot = path.resolve(__dirname, '../../dist/web');
+      const pwaRoot = resolveWebPath();
       const pwaAssetPaths = new Set([
         '/app.js',
         '/app.js.map',
@@ -475,7 +507,10 @@ Using EJS/Handlebars to render a standard service module.
             '.wasm': 'application/wasm',
             '.json': 'application/json',
           };
-          res.writeHead(200, { 'Content-Type': mimeMap[ext] || 'application/octet-stream' });
+          res.writeHead(200, {
+            'Content-Type': mimeMap[ext] || 'application/octet-stream',
+            'Cache-Control': 'no-cache, must-revalidate',
+          });
           fs.createReadStream(filePath).pipe(res);
           return;
         }
@@ -1270,7 +1305,7 @@ No custom interfaces specified yet.
       // ---------------------------------------------------------
       if (!pathname.startsWith('/api')) {
         const path = await import('path');
-        const pwaIndex = path.resolve(process.cwd(), 'dist', 'web', 'index.html');
+        const pwaIndex = resolveWebPath('index.html');
         let htmlContent = '';
         if (fs.existsSync(pwaIndex)) {
           htmlContent = fs.readFileSync(pwaIndex, 'utf8');
